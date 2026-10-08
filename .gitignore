@@ -20,3 +20,6 @@ dist/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Local app data (uploaded photos, edit graphs)
+.data/

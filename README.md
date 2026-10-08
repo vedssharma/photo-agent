@@ -17,7 +17,17 @@ That installs dependencies, creates `.env` from `.env.example` on first run, and
 - Web app: http://localhost:5173
 - API docs: http://localhost:8000/docs
 
-Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it from there or from the environment; the hello page tells you whether it found one. Ctrl-C stops both servers. Override ports with `make dev WEB_PORT=3000 SERVER_PORT=9000`.
+Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it from there or from the environment; the start page tells you whether it found one. Ctrl-C stops both servers. Override ports with `make dev WEB_PORT=3000 SERVER_PORT=9000`.
+
+## Using it
+
+1. Open a JPEG, PNG, or HEIC photo (choose one or drop it on the page).
+2. Tell the agent what you want, e.g. "make this look warmer and less washed out, and crop it for Instagram". It streams its reply and lists the edits as it makes them.
+3. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
+4. **Undo** / **Redo** (Ctrl/⌘+Z, Shift+Ctrl/⌘+Z) step through the agent's turns.
+5. **Download** renders the edits at full resolution as JPEG or PNG. Camera EXIF is kept; GPS location is removed unless you ask to keep it.
+
+Photos and their edit histories are kept in `.data/` at the repo root. A downsized preview of the photo is sent to Claude with each request so the agent can see it; the original never leaves your computer. Set `ANTHROPIC_MODEL` in `.env` to use a different Claude model.
 
 ## Common tasks
 
@@ -38,3 +48,5 @@ api/      OpenAPI contract shared by web and server (generated)
 docs/     Design notes
 fixtures/ Test photos (JPEG, PNG, HEIC; portrait, landscape, low light)
 ```
+
+See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.

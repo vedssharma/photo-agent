@@ -4,6 +4,167 @@
  */
 
 export interface paths {
+    "/api/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Document
+         * @description Upload a JPEG, PNG, or HEIC photo to start editing it.
+         */
+        post: operations["createDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document */
+        get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo
+         * @description Step back one agent turn.
+         */
+        post: operations["undo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redo
+         * @description Re-apply the most recently undone agent turn.
+         */
+        post: operations["redo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/original": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Original
+         * @description The unedited photo at preview size, as JPEG (browsers cannot show HEIC).
+         */
+        get: operations["getOriginal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview
+         * @description The photo with the current edits applied, at preview size, as JPEG.
+         *
+         *     Add `?revision=<document revision>` to make the URL unique per edit state; the response
+         *     is the current state either way.
+         */
+        get: operations["getPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export
+         * @description Render the edits at full resolution and return the file to download.
+         */
+        post: operations["exportDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/before": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Before
+         * @description The unedited look with the current framing (crop, rotation, flips) applied, so it lines
+         *     up with the preview for before/after comparison.
+         */
+        get: operations["getBefore"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -28,6 +189,316 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Blacks
+         * @description Move the black point: negative makes blacks deeper, positive lifts them (matte look).
+         */
+        Blacks: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "blacks";
+            /** Amount */
+            amount: number;
+        };
+        /** Body_createDocument */
+        Body_createDocument: {
+            /** File */
+            file: string;
+        };
+        /**
+         * ChatEntry
+         * @description One line of the conversation shown in the chat panel and replayed to the agent.
+         *
+         *     The conversation is linear even when edits are undone: an undo or redo is recorded as an
+         *     `event` entry, so the agent knows its earlier change is no longer in effect.
+         */
+        ChatEntry: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant" | "event";
+            /** Text */
+            text: string;
+            /** Turn Id */
+            turn_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+        };
+        /**
+         * Clarity
+         * @description Add (positive) or soften (negative) midtone local contrast and texture.
+         */
+        Clarity: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "clarity";
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * Contrast
+         * @description Increase or decrease overall contrast around the midtones.
+         */
+        Contrast: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "contrast";
+            /**
+             * Amount
+             * @description Positive adds punch; negative flattens.
+             */
+            amount: number;
+        };
+        /**
+         * Crop
+         * @description Crop to a region of the current frame, optionally locked to an aspect ratio.
+         *
+         *     The box is given as fractions of the current width and height (0 = left/top edge,
+         *     1 = right/bottom edge). With an aspect ratio, the result is the largest rectangle of that
+         *     ratio centered inside the box, so a full-frame box plus "4:5" is a centered Instagram crop.
+         */
+        Crop: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "crop";
+            /**
+             * Left
+             * @default 0
+             */
+            left: number;
+            /**
+             * Top
+             * @default 0
+             */
+            top: number;
+            /**
+             * Right
+             * @default 1
+             */
+            right: number;
+            /**
+             * Bottom
+             * @default 1
+             */
+            bottom: number;
+            /**
+             * Aspect
+             * @description Aspect ratio as width:height.
+             * @default free
+             * @enum {string}
+             */
+            aspect: "free" | "original" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
+        };
+        /**
+         * Dehaze
+         * @description Cut through haze or fog (positive), or add atmosphere (negative).
+         */
+        Dehaze: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "dehaze";
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * DocumentView
+         * @description What the web app sees of a document.
+         */
+        DocumentView: {
+            /** Id */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Format */
+            format: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Step */
+            step: number;
+            /** Revision */
+            revision: string;
+            /** Operations */
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            /** Can Undo */
+            can_undo: boolean;
+            /** Can Redo */
+            can_redo: boolean;
+            /** Turns */
+            turns: components["schemas"]["TurnView"][];
+            /** Chat */
+            chat: components["schemas"]["ChatEntry"][];
+        };
+        /** ExportOptions */
+        ExportOptions: {
+            /**
+             * Format
+             * @default jpeg
+             * @enum {string}
+             */
+            format: "jpeg" | "png";
+            /**
+             * Quality
+             * @description JPEG quality; ignored for PNG.
+             * @default 92
+             */
+            quality: number;
+            /**
+             * Keep Location
+             * @description Keep GPS location from the original. Off by default for privacy.
+             * @default false
+             */
+            keep_location: boolean;
+        };
+        /**
+         * Exposure
+         * @description Brighten or darken the whole photo, like changing the camera exposure.
+         */
+        Exposure: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "exposure";
+            /**
+             * Stops
+             * @description Exposure change in stops; +1 doubles light.
+             */
+            stops: number;
+        };
+        /**
+         * Flip
+         * @description Mirror the photo.
+         */
+        Flip: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "flip";
+            /**
+             * Axis
+             * @default horizontal
+             * @enum {string}
+             */
+            axis: "horizontal" | "vertical";
+        };
+        /**
+         * Grain
+         * @description Add film-like grain.
+         */
+        Grain: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "grain";
+            /** Amount */
+            amount: number;
+            /**
+             * Size
+             * @description Grain size; larger is coarser.
+             * @default 25
+             */
+            size: number;
+        };
+        /**
+         * HSL
+         * @description Adjust hue, saturation, and luminance of one color band (e.g. deepen blue skies).
+         */
+        HSL: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "hsl";
+            /**
+             * Band
+             * @enum {string}
+             */
+            band: "red" | "orange" | "yellow" | "green" | "aqua" | "blue" | "purple" | "magenta";
+            /**
+             * Hue
+             * @description Shift the band's hue toward its neighbors.
+             * @default 0
+             */
+            hue: number;
+            /**
+             * Saturation
+             * @default 0
+             */
+            saturation: number;
+            /**
+             * Luminance
+             * @default 0
+             */
+            luminance: number;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -36,6 +507,368 @@ export interface components {
             version: string;
             /** Anthropic Configured */
             anthropic_configured: boolean;
+        };
+        /**
+         * Highlights
+         * @description Recover (negative) or boost (positive) the brightest areas without touching shadows.
+         */
+        Highlights: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "highlights";
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * NoiseReduction
+         * @description Smooth out grain and color speckles, typical of low-light photos.
+         */
+        NoiseReduction: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "noise_reduction";
+            /**
+             * Luminance
+             * @description Smooths grainy brightness noise.
+             * @default 0
+             */
+            luminance: number;
+            /**
+             * Color
+             * @description Removes colored speckles.
+             * @default 0
+             */
+            color: number;
+        };
+        /**
+         * Rotate
+         * @description Rotate the photo clockwise by a quarter, half, or three-quarter turn.
+         */
+        Rotate: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "rotate";
+            /**
+             * Degrees
+             * @enum {integer}
+             */
+            degrees: 90 | 180 | 270;
+        };
+        /**
+         * Saturation
+         * @description Uniformly increase or decrease color intensity; -100 makes black and white.
+         */
+        Saturation: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "saturation";
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * Shadows
+         * @description Lift (positive) or deepen (negative) the darkest areas without touching highlights.
+         */
+        Shadows: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "shadows";
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * Sharpen
+         * @description Sharpen edges and fine detail.
+         */
+        Sharpen: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "sharpen";
+            /**
+             * Amount
+             * @description Strength; 25-50 is typical.
+             */
+            amount: number;
+            /**
+             * Radius
+             * @description Detail size in full-res pixels.
+             * @default 1
+             */
+            radius: number;
+        };
+        /**
+         * Straighten
+         * @description Rotate by a small angle to level a tilted horizon, cropping away the empty corners.
+         */
+        Straighten: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "straighten";
+            /**
+             * Angle
+             * @description Degrees; positive turns clockwise.
+             */
+            angle: number;
+        };
+        /**
+         * ToneCurve
+         * @description Remap tones with a curve through control points (input, output), both 0..1.
+         *
+         *     The curve always passes through its points in order of input. An S-shape adds contrast;
+         *     lifting the (0, y) point gives faded blacks.
+         */
+        ToneCurve: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "tone_curve";
+            /**
+             * Points
+             * @description [input, output] pairs.
+             */
+            points: number[][];
+            /**
+             * Channel
+             * @default rgb
+             * @enum {string}
+             */
+            channel: "rgb" | "red" | "green" | "blue";
+        };
+        /** TurnView */
+        TurnView: {
+            /** Id */
+            id: string;
+            /** Request */
+            request: string;
+            /** Reply */
+            reply: string;
+            /** Operations */
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            /** Applied */
+            applied: boolean;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+        /**
+         * Vibrance
+         * @description Boost or reduce saturation mostly in muted colors, protecting skin and saturated areas.
+         */
+        Vibrance: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "vibrance";
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * Vignette
+         * @description Darken (negative) or lighten (positive) the edges to draw the eye inward.
+         */
+        Vignette: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "vignette";
+            /** Amount */
+            amount: number;
+            /**
+             * Midpoint
+             * @description How far in the effect reaches; lower is wider.
+             * @default 50
+             */
+            midpoint: number;
+        };
+        /**
+         * WhiteBalance
+         * @description Shift color temperature and tint to fix a color cast or set a mood.
+         */
+        WhiteBalance: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "white_balance";
+            /**
+             * Temperature
+             * @description Positive is warmer (yellow), negative cooler.
+             * @default 0
+             */
+            temperature: number;
+            /**
+             * Tint
+             * @description Positive is more magenta, negative more green.
+             * @default 0
+             */
+            tint: number;
+        };
+        /**
+         * Whites
+         * @description Move the white point: positive makes the brightest tones brighter, negative dims them.
+         */
+        Whites: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "whites";
+            /** Amount */
+            amount: number;
+        };
+        /** AgentError */
+        AgentError: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+            /** Message */
+            message: string;
+        };
+        /** OperationEvent */
+        OperationEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "operation";
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "added" | "updated" | "removed";
+            /** Summary */
+            summary: string;
+        };
+        /** TextDelta */
+        TextDelta: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+            /** Text */
+            text: string;
+        };
+        /** TurnDone */
+        TurnDone: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "done";
+            document: components["schemas"]["DocumentView"];
+        };
+        /** TurnStarted */
+        TurnStarted: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "turn_started";
+        };
+        ChatEvent: components["schemas"]["TurnStarted"] | components["schemas"]["TextDelta"] | components["schemas"]["OperationEvent"] | components["schemas"]["TurnDone"] | components["schemas"]["AgentError"];
+        /**
+         * ChatMessage
+         * @description What the browser sends over the chat WebSocket.
+         */
+        ChatMessage: {
+            /**
+             * Type
+             * @default message
+             * @constant
+             */
+            type: "message";
+            /** Text */
+            text: string;
         };
     };
     responses: never;
@@ -46,6 +879,275 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    createDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_createDocument"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description File too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a photo */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getOriginal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportOptions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getBefore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
