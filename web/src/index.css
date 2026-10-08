@@ -97,10 +97,36 @@ button.primary {
 
 .picker {
   margin: 1.5rem 0;
-  padding: 2.5rem 3rem;
+  padding: 2rem;
   border: 2px dashed var(--border);
   border-radius: 12px;
-  max-width: 32rem;
+  width: min(40rem, 100%);
+  box-sizing: border-box;
+}
+
+.picker-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+
+.picker-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.picker-option p {
+  flex: 1;
+}
+
+.picker-hint {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .picker.dragging {
@@ -109,7 +135,8 @@ button.primary {
 }
 
 .picker h2 {
-  margin-top: 0;
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .error {

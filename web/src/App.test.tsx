@@ -207,7 +207,7 @@ describe('Projects', () => {
     })
     render(<App projectStore={memoryProjectStore()} />)
     await userEvent.upload(
-      screen.getByLabelText('Photo file'),
+      screen.getByLabelText('Project file'),
       new File(['zip'], 'trip.photoagent'),
     )
     expect(
