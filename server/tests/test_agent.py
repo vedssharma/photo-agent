@@ -12,6 +12,7 @@ from photo_agent.agent import (
     AgentEvent,
     AgentService,
     Editor,
+    TextDelta,
     ToolError,
     history_messages,
 )
@@ -88,7 +89,6 @@ def test_turn_records_operations_and_reply(upload: Upload, settings: Settings) -
         "TextDelta",
         "OperationEvent",
         "OperationEvent",
-        "TextDelta",
         "TextDelta",
         "TurnDone",
     ]
@@ -228,3 +228,11 @@ def test_no_self_check_when_nothing_changed(upload: Upload, settings: Settings) 
     result = model.calls[1][-1]["content"][0]
     assert result["is_error"] is True
     assert isinstance(result["content"], str)
+
+
+def test_silent_turn_still_gets_a_reply(upload: Upload, settings: Settings) -> None:
+    doc = upload("portrait.jpg")
+    model = FakeModel([tool("exposure", {"stops": 0.2})], [])
+    events, result = run_turn(settings, doc["id"], "brighter", model)
+    assert result.chat[-1].text == "Done."
+    assert not any(isinstance(e, TextDelta) and e.text.strip() == "" for e in events)

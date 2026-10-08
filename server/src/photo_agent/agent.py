@@ -314,9 +314,7 @@ def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam],
             continue
         text = entry.text
         if entry.role == "user" and pending_events:
-            text = (
-                f"(Since your last reply, the person used: {'; '.join(pending_events)}.)\n\n{text}"
-            )
+            text = events_note(pending_events) + text
             pending_events = []
         if messages and messages[-1]["role"] == entry.role:
             prev = messages[-1]["content"]
@@ -404,14 +402,19 @@ class AgentService:
             },
         ]
         reply_parts: list[str] = []
+        new_paragraph = False
 
         async def on_text(delta: str) -> None:
+            nonlocal new_paragraph
+            if new_paragraph and reply_parts:
+                delta = "\n\n" + delta.lstrip()
+            new_paragraph = False
             reply_parts.append(delta)
             await emit(TextDelta(text=delta))
 
         for _ in range(MAX_MODEL_CALLS):
-            if reply_parts and not "".join(reply_parts).endswith("\n"):
-                await on_text("\n\n")
+            # Text from separate model calls reads as separate paragraphs.
+            new_paragraph = True
             response = await self.model.create(
                 system=SYSTEM_PROMPT, tools=TOOLS, messages=messages, on_text=on_text
             )
@@ -447,6 +450,9 @@ class AgentService:
                 await self._attach_self_check(doc, editor, results, baseline)
             messages.append({"role": "user", "content": results})  # type: ignore[typeddict-item]
         else:
+            new_paragraph = True
             await on_text("I stopped here to keep things quick; tell me if you want more changes.")
 
+        if not "".join(reply_parts).strip():
+            await on_text("Done." if editor.operations != doc.operations else "OK.")
         return "".join(reply_parts).strip()
