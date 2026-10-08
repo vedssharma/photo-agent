@@ -17,6 +17,7 @@ import { MaskOverlay } from './components/MaskOverlay'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
 import { useManualEdit } from './hooks/useManualEdit'
+import { useOperationSpecs } from './hooks/useOperationSpecs'
 import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
 import { updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
@@ -62,7 +63,8 @@ function Editor({
   const [selectedLayer, setSelectedLayer] = useState<string | null>(null)
   const [maskTool, setMaskTool] = useState<MaskTool>(DEFAULT_MASK_TOOL)
   const manual = useManualEdit(doc, onDocument)
-  const locked = chat.busy || manual.working
+  const specs = useOperationSpecs()
+  const locked = chat.busy
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
   const mask = layer?.mask ?? null
   const showOverlay = layer && mask && (isDrawn(mask.kind) || maskTool.show)
@@ -77,15 +79,20 @@ function Editor({
           onSelect={setSelectedLayer}
           maskTool={maskTool}
           onMaskTool={setMaskTool}
+          specs={specs}
         />
-        <HistoryPanel doc={doc} onDocument={onDocument} disabled={chat.busy} />
+        <HistoryPanel
+          doc={doc}
+          onDocument={onDocument}
+          disabled={chat.busy || manual.working}
+        />
       </aside>
       <div className="editor">
         <div className="toolbar">
           <HistoryButtons
             doc={doc}
             onDocument={onDocument}
-            disabled={chat.busy}
+            disabled={chat.busy || manual.working}
           />
           {manual.error && (
             <span className="error" role="alert">
@@ -122,7 +129,7 @@ function Editor({
                     onChange={(next, label) =>
                       manual.edit(
                         `${label} on “${layer.name}”`,
-                        updateLayer(doc.state, layer.id, { mask: next }),
+                        (s) => updateLayer(s, layer.id, { mask: next }),
                         `layer:${layer.id}:mask:draw`,
                       )
                     }

@@ -1,37 +1,50 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { type DocumentView, type EditState, editByHand } from '../api/documents'
 
+/** Computes the new edit state from the latest one. */
+export type StateUpdate = (state: EditState) => EditState
+
 export type EditFn = (
   label: string,
-  state: EditState,
+  update: StateUpdate,
   coalesce?: string,
 ) => Promise<void>
 
 /**
  * Sends manual changes (layer settings, sliders, masks) to the server, one at a time, and
  * hands back the updated document. Each becomes a named step in the history.
+ *
+ * Changes are queued and each is applied to the state the previous one produced, so quick
+ * successive tweaks never undo each other.
  */
 export function useManualEdit(
   doc: DocumentView,
   onDocument: (doc: DocumentView) => void,
 ) {
-  const [working, setWorking] = useState(false)
+  const [pending, setPending] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const queue = useRef(Promise.resolve())
+  const latest = useRef(doc.state)
   const docId = doc.id
+  useEffect(() => {
+    latest.current = doc.state
+  }, [doc.state])
 
   const edit: EditFn = useCallback(
-    (label, state, coalesce) => {
+    (label, update, coalesce) => {
+      setPending((n) => n + 1)
       const run = async () => {
-        setWorking(true)
         setError(null)
         try {
-          onDocument(await editByHand(docId, { label, state, coalesce }))
+          const state = update(latest.current)
+          const next = await editByHand(docId, { label, state, coalesce })
+          latest.current = next.state
+          onDocument(next)
         } catch (err) {
           setError((err as Error).message)
         } finally {
-          setWorking(false)
+          setPending((n) => n - 1)
         }
       }
       queue.current = queue.current.then(run)
@@ -40,5 +53,5 @@ export function useManualEdit(
     [docId, onDocument],
   )
 
-  return { edit, working, error }
+  return { edit, working: pending > 0, error }
 }

@@ -529,6 +529,32 @@
           }
         }
       }
+    },
+    "/api/operations": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Operations",
+        "description": "Every operation with its parameters' ranges, for building manual controls.",
+        "operationId": "listOperations",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperationSpec"
+                  },
+                  "type": "array",
+                  "title": "Response Listoperations"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1597,6 +1623,144 @@
         "type": "object",
         "title": "NoiseReduction",
         "description": "Smooth out grain and color speckles, typical of low-light photos."
+      },
+      "OperationSpec": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "title": "Op"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "light",
+              "color",
+              "detail",
+              "framing",
+              "finishing"
+            ],
+            "title": "Group"
+          },
+          "framing": {
+            "type": "boolean",
+            "title": "Framing"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ParamSpec"
+            },
+            "type": "array",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "op",
+          "label",
+          "description",
+          "group",
+          "framing",
+          "params"
+        ],
+        "title": "OperationSpec"
+      },
+      "ParamSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "number",
+              "choice",
+              "curve"
+            ],
+            "title": "Kind"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          },
+          "default": {
+            "title": "Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "kind"
+        ],
+        "title": "ParamSpec"
       },
       "RadialGradientMask": {
         "properties": {

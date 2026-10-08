@@ -1,4 +1,5 @@
 import type { Operation } from '../api/documents'
+import type { ParamSpec } from '../api/operations'
 
 /** "white_balance" → "White balance" */
 export function humanize(name: string): string {
@@ -21,4 +22,11 @@ export function opSummary(op: Operation): string {
     .map(([key, value]) => `${key} ${format(value)}`)
   const title = humanize(op.op)
   return params.length > 0 ? `${title} (${params.join(', ')})` : title
+}
+
+/** A slider value as shown next to it: signed when the range is, two decimals for fine steps. */
+export function formatValue(param: ParamSpec, value: number): string {
+  const decimals = (param.step ?? 1) < 1 ? 2 : 0
+  const text = value.toFixed(decimals)
+  return (param.min ?? 0) < 0 && value > 0 ? `+${text}` : text
 }

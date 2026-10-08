@@ -21,9 +21,14 @@ export function ChatPanel({ doc, chat }: Props) {
   const log = useRef<HTMLOListElement>(null)
   const active = new Set(doc.history.filter((s) => s.active).map((s) => s.id))
 
+  // Manual edits are listed in the history panel; the agent still hears about them.
+  const shown = doc.chat
+    .map((entry, i) => ({ entry, i }))
+    .filter(({ entry }) => !(entry.role === 'event' && entry.step_id))
+
   useEffect(() => {
     log.current?.lastElementChild?.scrollIntoView?.({ block: 'end' })
-  }, [doc.chat.length, chat.pending])
+  }, [shown.length, chat.pending])
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
@@ -37,7 +42,7 @@ export function ChatPanel({ doc, chat }: Props) {
       submit(e)
   }
 
-  const empty = doc.chat.length === 0 && !chat.pending
+  const empty = shown.length === 0 && !chat.pending
   return (
     <aside className="chat" aria-label="Chat with the editor">
       <ol className="chat-log" ref={log} aria-live="polite">
@@ -57,7 +62,7 @@ export function ChatPanel({ doc, chat }: Props) {
             </div>
           </li>
         )}
-        {doc.chat.map((entry, i) =>
+        {shown.map(({ entry, i }) =>
           entry.role === 'event' ? (
             <li key={i} className="chat-event">
               {entry.text}

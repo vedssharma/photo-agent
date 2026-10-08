@@ -247,6 +247,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operations
+         * @description Every operation with its parameters' ranges, for building manual controls.
+         */
+        get: operations["listOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -806,6 +826,51 @@ export interface components {
              * @default 0
              */
             color: number;
+        };
+        /** OperationSpec */
+        OperationSpec: {
+            /** Op */
+            op: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "light" | "color" | "detail" | "framing" | "finishing";
+            /** Framing */
+            framing: boolean;
+            /** Params */
+            params: components["schemas"]["ParamSpec"][];
+        };
+        /** ParamSpec */
+        ParamSpec: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "choice" | "curve";
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Step */
+            step?: number | null;
+            /** Choices */
+            choices?: (string | number)[] | null;
+            /** Default */
+            default?: unknown;
         };
         /**
          * RadialGradientMask
@@ -1580,6 +1645,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    listOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationSpec"][];
                 };
             };
         };

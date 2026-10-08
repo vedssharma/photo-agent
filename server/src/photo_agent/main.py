@@ -8,6 +8,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from photo_agent import __version__, routes
 from photo_agent.agent import ChatEvent, ChatMessage
+from photo_agent.controls import OperationSpec, operation_specs
 from photo_agent.settings import Settings, get_settings
 
 app = FastAPI(title="photo-agent", version=__version__)
@@ -28,6 +29,12 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRespon
         version=__version__,
         anthropic_configured=settings.anthropic_api_key is not None,
     )
+
+
+@app.get("/api/operations", operation_id="listOperations", tags=["meta"])
+def operations() -> list[OperationSpec]:
+    """Every operation with its parameters' ranges, for building manual controls."""
+    return operation_specs()
 
 
 def openapi() -> dict[str, Any]:

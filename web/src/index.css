@@ -413,7 +413,7 @@ button.primary {
 }
 
 .side {
-  width: 17rem;
+  width: 19rem;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -533,14 +533,19 @@ button.icon {
 .slider,
 .field {
   display: grid;
-  grid-template-columns: 5.5rem 1fr 3rem;
+  grid-template-columns: 5rem minmax(0, 1fr) 3.2rem;
   align-items: center;
   gap: 0.4rem;
   font-size: 0.82rem;
 }
 
 .field {
-  grid-template-columns: 5.5rem 1fr;
+  grid-template-columns: 5rem minmax(0, 1fr);
+}
+
+.field select {
+  width: 100%;
+  min-width: 0;
 }
 
 .slider input {
@@ -646,6 +651,7 @@ select {
 .mask-overlay {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   cursor: crosshair;
   touch-action: none;
 }
@@ -653,7 +659,6 @@ select {
 .mask-overlay svg {
   position: absolute;
   inset: 0;
-  overflow: visible;
   pointer-events: none;
 }
 
@@ -696,4 +701,33 @@ select {
 
 .stroke-preview.erase {
   stroke: rgb(255 255 255 / 40%);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.op-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0;
+  border-top: 1px dashed var(--border);
+}
+
+.op-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.op-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.add-op {
+  margin-top: 0.2rem;
 }
