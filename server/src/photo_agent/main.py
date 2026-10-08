@@ -5,10 +5,11 @@ from typing import Annotated
 from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
-from photo_agent import __version__
+from photo_agent import __version__, routes
 from photo_agent.settings import Settings, get_settings
 
 app = FastAPI(title="photo-agent", version=__version__)
+app.include_router(routes.router)
 
 
 class HealthResponse(BaseModel):

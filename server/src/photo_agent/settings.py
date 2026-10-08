@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     """Key for the Claude API. Optional until the agent service lands in Phase 1."""
 
+    data_dir: Path = REPO_ROOT / ".data"
+    """Where uploaded photos and their edit graphs are kept."""
+
 
 @lru_cache
 def get_settings() -> Settings:

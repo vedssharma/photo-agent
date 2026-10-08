@@ -5,6 +5,221 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/documents": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Create Document",
+        "description": "Upload a JPEG, PNG, or HEIC photo to start editing it.",
+        "operationId": "createDocument",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_createDocument"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large"
+          },
+          "415": {
+            "description": "Not a photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Document",
+        "operationId": "getDocument",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/undo": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Undo",
+        "description": "Step back one agent turn.",
+        "operationId": "undo",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/redo": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Redo",
+        "description": "Re-apply the most recently undone agent turn.",
+        "operationId": "redo",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/original": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Original",
+        "description": "The unedited photo at preview size, as JPEG (browsers cannot show HEIC).",
+        "operationId": "getOriginal",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -30,6 +245,523 @@
   },
   "components": {
     "schemas": {
+      "Blacks": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "blacks",
+            "title": "Op",
+            "default": "blacks"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Blacks",
+        "description": "Move the black point: negative makes blacks deeper, positive lifts them (matte look)."
+      },
+      "Body_createDocument": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_createDocument"
+      },
+      "Clarity": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "clarity",
+            "title": "Op",
+            "default": "clarity"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Clarity",
+        "description": "Add (positive) or soften (negative) midtone local contrast and texture."
+      },
+      "Contrast": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "contrast",
+            "title": "Op",
+            "default": "contrast"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount",
+            "description": "Positive adds punch; negative flattens."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Contrast",
+        "description": "Increase or decrease overall contrast around the midtones."
+      },
+      "Crop": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "crop",
+            "title": "Op",
+            "default": "crop"
+          },
+          "left": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Left",
+            "default": 0
+          },
+          "top": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Top",
+            "default": 0
+          },
+          "right": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Right",
+            "default": 1
+          },
+          "bottom": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bottom",
+            "default": 1
+          },
+          "aspect": {
+            "type": "string",
+            "enum": [
+              "free",
+              "original",
+              "1:1",
+              "4:5",
+              "5:4",
+              "3:4",
+              "4:3",
+              "2:3",
+              "3:2",
+              "9:16",
+              "16:9"
+            ],
+            "title": "Aspect",
+            "description": "Aspect ratio as width:height.",
+            "default": "free"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Crop",
+        "description": "Crop to a region of the current frame, optionally locked to an aspect ratio.\n\nThe box is given as fractions of the current width and height (0 = left/top edge,\n1 = right/bottom edge). With an aspect ratio, the result is the largest rectangle of that\nratio centered inside the box, so a full-frame box plus \"4:5\" is a centered Instagram crop."
+      },
+      "Dehaze": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "dehaze",
+            "title": "Op",
+            "default": "dehaze"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Dehaze",
+        "description": "Cut through haze or fog (positive), or add atmosphere (negative)."
+      },
+      "DocumentView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "step": {
+            "type": "integer",
+            "title": "Step"
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Exposure"
+                },
+                {
+                  "$ref": "#/components/schemas/Contrast"
+                },
+                {
+                  "$ref": "#/components/schemas/Highlights"
+                },
+                {
+                  "$ref": "#/components/schemas/Shadows"
+                },
+                {
+                  "$ref": "#/components/schemas/Whites"
+                },
+                {
+                  "$ref": "#/components/schemas/Blacks"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalance"
+                },
+                {
+                  "$ref": "#/components/schemas/Vibrance"
+                },
+                {
+                  "$ref": "#/components/schemas/Saturation"
+                },
+                {
+                  "$ref": "#/components/schemas/HSL"
+                },
+                {
+                  "$ref": "#/components/schemas/Sharpen"
+                },
+                {
+                  "$ref": "#/components/schemas/NoiseReduction"
+                },
+                {
+                  "$ref": "#/components/schemas/Clarity"
+                },
+                {
+                  "$ref": "#/components/schemas/Dehaze"
+                },
+                {
+                  "$ref": "#/components/schemas/Crop"
+                },
+                {
+                  "$ref": "#/components/schemas/Rotate"
+                },
+                {
+                  "$ref": "#/components/schemas/Straighten"
+                },
+                {
+                  "$ref": "#/components/schemas/Flip"
+                },
+                {
+                  "$ref": "#/components/schemas/Vignette"
+                },
+                {
+                  "$ref": "#/components/schemas/Grain"
+                },
+                {
+                  "$ref": "#/components/schemas/ToneCurve"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "blacks": "#/components/schemas/Blacks",
+                  "clarity": "#/components/schemas/Clarity",
+                  "contrast": "#/components/schemas/Contrast",
+                  "crop": "#/components/schemas/Crop",
+                  "dehaze": "#/components/schemas/Dehaze",
+                  "exposure": "#/components/schemas/Exposure",
+                  "flip": "#/components/schemas/Flip",
+                  "grain": "#/components/schemas/Grain",
+                  "highlights": "#/components/schemas/Highlights",
+                  "hsl": "#/components/schemas/HSL",
+                  "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "rotate": "#/components/schemas/Rotate",
+                  "saturation": "#/components/schemas/Saturation",
+                  "shadows": "#/components/schemas/Shadows",
+                  "sharpen": "#/components/schemas/Sharpen",
+                  "straighten": "#/components/schemas/Straighten",
+                  "tone_curve": "#/components/schemas/ToneCurve",
+                  "vibrance": "#/components/schemas/Vibrance",
+                  "vignette": "#/components/schemas/Vignette",
+                  "white_balance": "#/components/schemas/WhiteBalance",
+                  "whites": "#/components/schemas/Whites"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Operations"
+          },
+          "can_undo": {
+            "type": "boolean",
+            "title": "Can Undo"
+          },
+          "can_redo": {
+            "type": "boolean",
+            "title": "Can Redo"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/TurnView"
+            },
+            "type": "array",
+            "title": "Turns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "format",
+          "width",
+          "height",
+          "step",
+          "revision",
+          "operations",
+          "can_undo",
+          "can_redo",
+          "turns"
+        ],
+        "title": "DocumentView",
+        "description": "What the web app sees of a document."
+      },
+      "Exposure": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "exposure",
+            "title": "Op",
+            "default": "exposure"
+          },
+          "stops": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": -5.0,
+            "title": "Stops",
+            "description": "Exposure change in stops; +1 doubles light."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stops"
+        ],
+        "title": "Exposure",
+        "description": "Brighten or darken the whole photo, like changing the camera exposure."
+      },
+      "Flip": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "flip",
+            "title": "Op",
+            "default": "flip"
+          },
+          "axis": {
+            "type": "string",
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "title": "Axis",
+            "default": "horizontal"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Flip",
+        "description": "Mirror the photo."
+      },
+      "Grain": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "grain",
+            "title": "Op",
+            "default": "grain"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount"
+          },
+          "size": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Size",
+            "description": "Grain size; larger is coarser.",
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Grain",
+        "description": "Add film-like grain."
+      },
+      "HSL": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "hsl",
+            "title": "Op",
+            "default": "hsl"
+          },
+          "band": {
+            "type": "string",
+            "enum": [
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "aqua",
+              "blue",
+              "purple",
+              "magenta"
+            ],
+            "title": "Band"
+          },
+          "hue": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Hue",
+            "description": "Shift the band's hue toward its neighbors.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Saturation",
+            "default": 0
+          },
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Luminance",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "band"
+        ],
+        "title": "HSL",
+        "description": "Adjust hue, saturation, and luminance of one color band (e.g. deepen blue skies)."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -52,6 +784,571 @@
           "anthropic_configured"
         ],
         "title": "HealthResponse"
+      },
+      "Highlights": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "highlights",
+            "title": "Op",
+            "default": "highlights"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Highlights",
+        "description": "Recover (negative) or boost (positive) the brightest areas without touching shadows."
+      },
+      "NoiseReduction": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "noise_reduction",
+            "title": "Op",
+            "default": "noise_reduction"
+          },
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Luminance",
+            "description": "Smooths grainy brightness noise.",
+            "default": 0
+          },
+          "color": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Color",
+            "description": "Removes colored speckles.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NoiseReduction",
+        "description": "Smooth out grain and color speckles, typical of low-light photos."
+      },
+      "Rotate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "rotate",
+            "title": "Op",
+            "default": "rotate"
+          },
+          "degrees": {
+            "type": "integer",
+            "enum": [
+              90,
+              180,
+              270
+            ],
+            "title": "Degrees"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "degrees"
+        ],
+        "title": "Rotate",
+        "description": "Rotate the photo clockwise by a quarter, half, or three-quarter turn."
+      },
+      "Saturation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "saturation",
+            "title": "Op",
+            "default": "saturation"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Saturation",
+        "description": "Uniformly increase or decrease color intensity; -100 makes black and white."
+      },
+      "Shadows": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "shadows",
+            "title": "Op",
+            "default": "shadows"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Shadows",
+        "description": "Lift (positive) or deepen (negative) the darkest areas without touching highlights."
+      },
+      "Sharpen": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "sharpen",
+            "title": "Op",
+            "default": "sharpen"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 150.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "Strength; 25-50 is typical."
+          },
+          "radius": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.5,
+            "title": "Radius",
+            "description": "Detail size in full-res pixels.",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Sharpen",
+        "description": "Sharpen edges and fine detail."
+      },
+      "Straighten": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "straighten",
+            "title": "Op",
+            "default": "straighten"
+          },
+          "angle": {
+            "type": "number",
+            "maximum": 45.0,
+            "minimum": -45.0,
+            "title": "Angle",
+            "description": "Degrees; positive turns clockwise."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "angle"
+        ],
+        "title": "Straighten",
+        "description": "Rotate by a small angle to level a tilted horizon, cropping away the empty corners."
+      },
+      "ToneCurve": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "tone_curve",
+            "title": "Op",
+            "default": "tone_curve"
+          },
+          "points": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "maximum": 1.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "number",
+                  "maximum": 1.0,
+                  "minimum": 0.0
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Points"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "rgb",
+              "red",
+              "green",
+              "blue"
+            ],
+            "title": "Channel",
+            "default": "rgb"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "title": "ToneCurve",
+        "description": "Remap tones with a curve through control points (input, output), both 0..1.\n\nThe curve always passes through its points in order of input. An S-shape adds contrast;\nlifting the (0, y) point gives faded blacks."
+      },
+      "TurnView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "request": {
+            "type": "string",
+            "title": "Request"
+          },
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Exposure"
+                },
+                {
+                  "$ref": "#/components/schemas/Contrast"
+                },
+                {
+                  "$ref": "#/components/schemas/Highlights"
+                },
+                {
+                  "$ref": "#/components/schemas/Shadows"
+                },
+                {
+                  "$ref": "#/components/schemas/Whites"
+                },
+                {
+                  "$ref": "#/components/schemas/Blacks"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalance"
+                },
+                {
+                  "$ref": "#/components/schemas/Vibrance"
+                },
+                {
+                  "$ref": "#/components/schemas/Saturation"
+                },
+                {
+                  "$ref": "#/components/schemas/HSL"
+                },
+                {
+                  "$ref": "#/components/schemas/Sharpen"
+                },
+                {
+                  "$ref": "#/components/schemas/NoiseReduction"
+                },
+                {
+                  "$ref": "#/components/schemas/Clarity"
+                },
+                {
+                  "$ref": "#/components/schemas/Dehaze"
+                },
+                {
+                  "$ref": "#/components/schemas/Crop"
+                },
+                {
+                  "$ref": "#/components/schemas/Rotate"
+                },
+                {
+                  "$ref": "#/components/schemas/Straighten"
+                },
+                {
+                  "$ref": "#/components/schemas/Flip"
+                },
+                {
+                  "$ref": "#/components/schemas/Vignette"
+                },
+                {
+                  "$ref": "#/components/schemas/Grain"
+                },
+                {
+                  "$ref": "#/components/schemas/ToneCurve"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "blacks": "#/components/schemas/Blacks",
+                  "clarity": "#/components/schemas/Clarity",
+                  "contrast": "#/components/schemas/Contrast",
+                  "crop": "#/components/schemas/Crop",
+                  "dehaze": "#/components/schemas/Dehaze",
+                  "exposure": "#/components/schemas/Exposure",
+                  "flip": "#/components/schemas/Flip",
+                  "grain": "#/components/schemas/Grain",
+                  "highlights": "#/components/schemas/Highlights",
+                  "hsl": "#/components/schemas/HSL",
+                  "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "rotate": "#/components/schemas/Rotate",
+                  "saturation": "#/components/schemas/Saturation",
+                  "shadows": "#/components/schemas/Shadows",
+                  "sharpen": "#/components/schemas/Sharpen",
+                  "straighten": "#/components/schemas/Straighten",
+                  "tone_curve": "#/components/schemas/ToneCurve",
+                  "vibrance": "#/components/schemas/Vibrance",
+                  "vignette": "#/components/schemas/Vignette",
+                  "white_balance": "#/components/schemas/WhiteBalance",
+                  "whites": "#/components/schemas/Whites"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Operations"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "request",
+          "reply",
+          "operations",
+          "applied"
+        ],
+        "title": "TurnView"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "Vibrance": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "vibrance",
+            "title": "Op",
+            "default": "vibrance"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Vibrance",
+        "description": "Boost or reduce saturation mostly in muted colors, protecting skin and saturated areas."
+      },
+      "Vignette": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "vignette",
+            "title": "Op",
+            "default": "vignette"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          },
+          "midpoint": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Midpoint",
+            "description": "How far in the effect reaches; lower is wider.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Vignette",
+        "description": "Darken (negative) or lighten (positive) the edges to draw the eye inward."
+      },
+      "WhiteBalance": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "white_balance",
+            "title": "Op",
+            "default": "white_balance"
+          },
+          "temperature": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Temperature",
+            "description": "Positive is warmer (yellow), negative cooler.",
+            "default": 0
+          },
+          "tint": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Tint",
+            "description": "Positive is more magenta, negative more green.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WhiteBalance",
+        "description": "Shift color temperature and tint to fix a color cast or set a mood."
+      },
+      "Whites": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "whites",
+            "title": "Op",
+            "default": "whites"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "Whites",
+        "description": "Move the white point: positive makes the brightest tones brighter, negative dims them."
       }
     }
   }
