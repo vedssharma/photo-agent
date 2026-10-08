@@ -235,7 +235,9 @@ class ToneCurve(OpBase):
     """
 
     op: Literal["tone_curve"] = "tone_curve"
-    points: list[tuple[Unit, Unit]] = Field(min_length=2, max_length=16)
+    points: list[Annotated[list[Unit], Field(min_length=2, max_length=2)]] = Field(
+        min_length=2, max_length=16, description="[input, output] pairs."
+    )
     channel: Literal["rgb", "red", "green", "blue"] = "rgb"
 
 

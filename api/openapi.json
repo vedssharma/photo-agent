@@ -1182,18 +1182,11 @@
           },
           "points": {
             "items": {
-              "prefixItems": [
-                {
-                  "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
-                },
-                {
-                  "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
-                }
-              ],
+              "items": {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
               "type": "array",
               "maxItems": 2,
               "minItems": 2
@@ -1201,7 +1194,8 @@
             "type": "array",
             "maxItems": 16,
             "minItems": 2,
-            "title": "Points"
+            "title": "Points",
+            "description": "[input, output] pairs."
           },
           "channel": {
             "type": "string",

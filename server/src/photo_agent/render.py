@@ -385,10 +385,10 @@ def _grain(x: Array, op: ops.Grain, ctx: RenderContext) -> Array:
     return x + ((op.amount / 100) * 0.07 * noise * weight)[..., None]
 
 
-def monotone_curve(points: Sequence[tuple[float, float]], samples: int = LUT_SIZE) -> Array:
+def monotone_curve(points: Sequence[Sequence[float]], samples: int = LUT_SIZE) -> Array:
     """Sample a monotone cubic (Fritsch-Carlson) through the points on a 0..1 grid."""
     pts: dict[float, float] = {}
-    for px, py in sorted(points):
+    for px, py, *_ in sorted(points, key=lambda p: p[0]):
         pts[px] = py
     xs = np.array(list(pts.keys()), dtype=np.float64)
     ys = np.array(list(pts.values()), dtype=np.float64)

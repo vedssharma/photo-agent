@@ -656,11 +656,11 @@ export interface components {
              * @enum {string}
              */
             op: "tone_curve";
-            /** Points */
-            points: [
-                number,
-                number
-            ][];
+            /**
+             * Points
+             * @description [input, output] pairs.
+             */
+            points: number[][];
             /**
              * Channel
              * @default rgb
