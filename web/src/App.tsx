@@ -30,6 +30,7 @@ import { liveTarget } from './lib/livePreview'
 import { type Preview, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
 import { RecentProjects } from './components/RecentProjects'
+import { RecipesPanel } from './components/RecipesPanel'
 import { useAutosave } from './hooks/useAutosave'
 import {
   type ProjectStore,
@@ -120,6 +121,11 @@ function Editor({
           onMaskTool={setMaskTool}
           specs={specs}
           onPreview={(p) => setPreview(p && { ...p, revision: doc.revision })}
+        />
+        <RecipesPanel
+          doc={doc}
+          onDocument={onDocument}
+          disabled={chat.busy || manual.working}
         />
         <HistoryPanel
           doc={doc}

@@ -357,6 +357,61 @@
         }
       }
     },
+    "/api/documents/{doc_id}/recipes/{recipe_id}": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Recipe",
+        "description": "Add a recipe's layers on top of the current edits, as one step in the history.",
+        "operationId": "applyRecipe",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recipe Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or recipe"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/checkout": {
       "post": {
         "tags": [
@@ -664,6 +719,110 @@
           },
           "415": {
             "description": "Not a project or photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recipes": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "List Recipes",
+        "description": "Saved recipes, newest first.",
+        "operationId": "listRecipes",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Recipe"
+                  },
+                  "type": "array",
+                  "title": "Response Listrecipes"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Create Recipe",
+        "description": "Save a set of layers as a recipe to apply to other photos.",
+        "operationId": "createRecipe",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewRecipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recipes/{recipe_id}": {
+      "delete": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Delete Recipe",
+        "operationId": "deleteRecipe",
+        "parameters": [
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recipe Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such recipe"
           },
           "422": {
             "description": "Validation Error",
@@ -1874,6 +2033,31 @@
         ],
         "title": "ManualEdit"
       },
+      "NewRecipe": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Layers",
+            "description": "The layers to keep. Brush masks are dropped, since they only fit the photo they were painted on."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "layers"
+        ],
+        "title": "NewRecipe"
+      },
       "NoiseReduction": {
         "properties": {
           "id": {
@@ -2105,6 +2289,41 @@
         ],
         "title": "RadialGradientMask",
         "description": "Full effect inside an ellipse, fading out toward its edge. Invert it to affect\neverything outside instead (for example, to darken around a subject)."
+      },
+      "Recipe": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Layers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "layers"
+        ],
+        "title": "Recipe"
       },
       "Rotate": {
         "properties": {

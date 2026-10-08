@@ -19,13 +19,13 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import imaging, projects
+from photo_agent import imaging, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
-from photo_agent.layers import EditState
+from photo_agent.layers import EditState, Layer
 from photo_agent.render import RenderCache, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
@@ -37,6 +37,7 @@ previews = RenderCache()
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
+recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
 
 @lru_cache
@@ -49,6 +50,18 @@ def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentS
 
 
 Store = Annotated[DocumentStore, Depends(get_store)]
+
+
+@lru_cache
+def _recipes_for(data_dir: Path) -> recipes.RecipeStore:
+    return recipes.RecipeStore(data_dir)
+
+
+def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes.RecipeStore:
+    return _recipes_for(settings.data_dir)
+
+
+Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
 
 
 def load(store: DocumentStore, doc_id: str) -> Document:
@@ -202,6 +215,23 @@ def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
     """Record a change made with the manual controls as a named step in the history."""
     doc = load(store, doc_id)
     if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
+        store.save(doc)
+    return DocumentView.of(doc)
+
+
+@router.post(
+    "/{doc_id}/recipes/{recipe_id}",
+    operation_id="applyRecipe",
+    responses={404: {"description": "No such document or recipe"}},
+)
+def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> DocumentView:
+    """Add a recipe's layers on top of the current edits, as one step in the history."""
+    doc = load(store, doc_id)
+    try:
+        recipe = saved.get(recipe_id)
+    except recipes.RecipeNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None
+    if doc.edit_by_hand(f"Apply recipe “{recipe.name}”", recipes.apply(recipe, doc.state)):
         store.save(doc)
     return DocumentView.of(doc)
 
@@ -383,3 +413,39 @@ async def chat(
                 await emit(AgentError(message=f"Something went wrong: {exc}"))
     except WebSocketDisconnect:
         pass
+
+
+@recipes_router.get("", operation_id="listRecipes")
+def list_recipes(saved: Recipes) -> list[recipes.Recipe]:
+    """Saved recipes, newest first."""
+    return saved.all()
+
+
+class NewRecipe(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=80)
+    layers: list[Layer] = Field(
+        min_length=1,
+        description="The layers to keep. Brush masks are dropped, since they only fit the "
+        "photo they were painted on.",
+    )
+
+
+@recipes_router.post("", operation_id="createRecipe", status_code=status.HTTP_201_CREATED)
+def create_recipe(body: NewRecipe, saved: Recipes) -> recipes.Recipe:
+    """Save a set of layers as a recipe to apply to other photos."""
+    return saved.create(body.name, body.layers)
+
+
+@recipes_router.delete(
+    "/{recipe_id}",
+    operation_id="deleteRecipe",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "No such recipe"}},
+)
+def delete_recipe(recipe_id: str, saved: Recipes) -> None:
+    try:
+        saved.delete(recipe_id)
+    except recipes.RecipeNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None

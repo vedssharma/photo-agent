@@ -772,3 +772,49 @@ select {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+.recipes-panel {
+  flex: 0 1 auto;
+  max-height: 30%;
+}
+
+.recipe-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.recipe-form input {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.recipe-form .fine-print {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.recipe-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.recipe {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.recipe-apply {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
