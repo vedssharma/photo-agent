@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI
-from pydantic import BaseModel
+from fastapi.openapi.utils import get_openapi
+from pydantic import BaseModel, TypeAdapter
 
 from photo_agent import __version__, routes
+from photo_agent.agent import ChatEvent, ChatMessage
 from photo_agent.settings import Settings, get_settings
 
 app = FastAPI(title="photo-agent", version=__version__)
@@ -26,3 +28,26 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRespon
         version=__version__,
         anthropic_configured=settings.anthropic_api_key is not None,
     )
+
+
+def openapi() -> dict[str, Any]:
+    """OpenAPI schema, plus the chat WebSocket's message types (OpenAPI cannot describe
+    WebSockets, but the web client still wants generated types for them)."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    components = schema.setdefault("components", {}).setdefault("schemas", {})
+    ref = "#/components/schemas/{model}"
+    for name, adapter, mode in (
+        ("ChatEvent", TypeAdapter(ChatEvent), "serialization"),
+        ("ChatMessage", TypeAdapter(ChatMessage), "validation"),
+    ):
+        extra = adapter.json_schema(ref_template=ref, mode=mode)  # type: ignore[arg-type]
+        for def_name, definition in extra.pop("$defs", {}).items():
+            components.setdefault(def_name, definition)
+        components.setdefault(name, extra)
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = openapi  # type: ignore[method-assign]

@@ -326,6 +326,46 @@
         ],
         "title": "Body_createDocument"
       },
+      "ChatEntry": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "event"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "ChatEntry",
+        "description": "One line of the conversation shown in the chat panel and replayed to the agent.\n\nThe conversation is linear even when edits are undone: an undo or redo is recorded as an\n`event` entry, so the agent knows its earlier change is no longer in effect."
+      },
       "Clarity": {
         "properties": {
           "id": {
@@ -618,6 +658,13 @@
             },
             "type": "array",
             "title": "Turns"
+          },
+          "chat": {
+            "items": {
+              "$ref": "#/components/schemas/ChatEntry"
+            },
+            "type": "array",
+            "title": "Chat"
           }
         },
         "type": "object",
@@ -632,7 +679,8 @@
           "operations",
           "can_undo",
           "can_redo",
-          "turns"
+          "turns",
+          "chat"
         ],
         "title": "DocumentView",
         "description": "What the web app sees of a document."
@@ -1388,6 +1436,152 @@
         ],
         "title": "Whites",
         "description": "Move the white point: positive makes the brightest tones brighter, negative dims them."
+      },
+      "AgentError": {
+        "properties": {
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "AgentError",
+        "type": "object"
+      },
+      "OperationEvent": {
+        "properties": {
+          "type": {
+            "const": "operation",
+            "default": "operation",
+            "title": "Type",
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "added",
+              "updated",
+              "removed"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "summary"
+        ],
+        "title": "OperationEvent",
+        "type": "object"
+      },
+      "TextDelta": {
+        "properties": {
+          "type": {
+            "const": "text",
+            "default": "text",
+            "title": "Type",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextDelta",
+        "type": "object"
+      },
+      "TurnDone": {
+        "properties": {
+          "type": {
+            "const": "done",
+            "default": "done",
+            "title": "Type",
+            "type": "string"
+          },
+          "document": {
+            "$ref": "#/components/schemas/DocumentView"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "TurnDone",
+        "type": "object"
+      },
+      "TurnStarted": {
+        "properties": {
+          "type": {
+            "const": "turn_started",
+            "default": "turn_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "TurnStarted",
+        "type": "object"
+      },
+      "ChatEvent": {
+        "discriminator": {
+          "mapping": {
+            "done": "#/components/schemas/TurnDone",
+            "error": "#/components/schemas/AgentError",
+            "operation": "#/components/schemas/OperationEvent",
+            "text": "#/components/schemas/TextDelta",
+            "turn_started": "#/components/schemas/TurnStarted"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TurnStarted"
+          },
+          {
+            "$ref": "#/components/schemas/TextDelta"
+          },
+          {
+            "$ref": "#/components/schemas/OperationEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnDone"
+          },
+          {
+            "$ref": "#/components/schemas/AgentError"
+          }
+        ]
+      },
+      "ChatMessage": {
+        "description": "What the browser sends over the chat WebSocket.",
+        "properties": {
+          "type": {
+            "const": "message",
+            "default": "message",
+            "title": "Type",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
       }
     }
   }

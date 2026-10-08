@@ -6,10 +6,19 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import Response
 
 from photo_agent import imaging
+from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.graph import Document, DocumentView
 from photo_agent.render import RenderCache
 from photo_agent.settings import Settings, get_settings
@@ -123,3 +132,57 @@ def preview(doc_id: str, store: Store) -> Response:
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
     loaded = store.image(doc.id)
     return previews.get_or_render(doc.id, loaded.proxy, doc.operations, loaded.proxy_context)
+
+
+def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:
+    key = settings.anthropic_api_key
+    return ClaudeModel(key.get_secret_value(), settings.anthropic_model) if key else None
+
+
+@router.websocket("/{doc_id}/chat")
+async def chat(
+    ws: WebSocket,
+    doc_id: str,
+    store: Store,
+    model: Annotated[ModelClient | None, Depends(get_model)],
+) -> None:
+    """Chat with the agent about one document.
+
+    The client sends `{"type": "message", "text": "..."}`. For each message the server streams
+    `turn_started`, then `text` deltas and `operation` notices as the agent works, then `done`
+    with the updated document (or `error`).
+    """
+    await ws.accept()
+    try:
+        store.get(doc_id)
+    except DocumentNotFoundError:
+        await ws.close(code=4404, reason="No such document.")
+        return
+
+    async def emit(event: AgentEvent) -> None:
+        await ws.send_text(event.model_dump_json())
+
+    agent = AgentService(store, previews, model) if model else None
+    try:
+        while True:
+            incoming = await ws.receive_json()
+            text = str(incoming.get("text", "")).strip() if isinstance(incoming, dict) else ""
+            if not text:
+                await emit(AgentError(message="Type what you would like to change."))
+                continue
+            if agent is None:
+                await emit(
+                    AgentError(
+                        message="The agent needs a Claude API key. Set ANTHROPIC_API_KEY in "
+                        ".env at the repo root and restart the server."
+                    )
+                )
+                continue
+            try:
+                await agent.run_turn(doc_id, text, emit)
+            except WebSocketDisconnect:
+                raise
+            except Exception as exc:  # Report, keep the socket open for the next message.
+                await emit(AgentError(message=f"Something went wrong: {exc}"))
+    except WebSocketDisconnect:
+        pass

@@ -172,6 +172,29 @@ export interface components {
             file: string;
         };
         /**
+         * ChatEntry
+         * @description One line of the conversation shown in the chat panel and replayed to the agent.
+         *
+         *     The conversation is linear even when edits are undone: an undo or redo is recorded as an
+         *     `event` entry, so the agent knows its earlier change is no longer in effect.
+         */
+        ChatEntry: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant" | "event";
+            /** Text */
+            text: string;
+            /** Turn Id */
+            turn_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+        };
+        /**
          * Clarity
          * @description Add (positive) or soften (negative) midtone local contrast and texture.
          */
@@ -302,6 +325,8 @@ export interface components {
             can_redo: boolean;
             /** Turns */
             turns: components["schemas"]["TurnView"][];
+            /** Chat */
+            chat: components["schemas"]["ChatEntry"][];
         };
         /**
          * Exposure
@@ -715,6 +740,73 @@ export interface components {
             op: "whites";
             /** Amount */
             amount: number;
+        };
+        /** AgentError */
+        AgentError: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+            /** Message */
+            message: string;
+        };
+        /** OperationEvent */
+        OperationEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "operation";
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "added" | "updated" | "removed";
+            /** Summary */
+            summary: string;
+        };
+        /** TextDelta */
+        TextDelta: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+            /** Text */
+            text: string;
+        };
+        /** TurnDone */
+        TurnDone: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "done";
+            document: components["schemas"]["DocumentView"];
+        };
+        /** TurnStarted */
+        TurnStarted: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "turn_started";
+        };
+        ChatEvent: components["schemas"]["TurnStarted"] | components["schemas"]["TextDelta"] | components["schemas"]["OperationEvent"] | components["schemas"]["TurnDone"] | components["schemas"]["AgentError"];
+        /**
+         * ChatMessage
+         * @description What the browser sends over the chat WebSocket.
+         */
+        ChatMessage: {
+            /**
+             * Type
+             * @default message
+             * @constant
+             */
+            type: "message";
+            /** Text */
+            text: string;
         };
     };
     responses: never;

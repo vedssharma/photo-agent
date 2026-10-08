@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,20 @@ class Turn(BaseModel):
     created_at: datetime = Field(default_factory=now)
 
 
+class ChatEntry(BaseModel):
+    """One line of the conversation shown in the chat panel and replayed to the agent.
+
+    The conversation is linear even when edits are undone: an undo or redo is recorded as an
+    `event` entry, so the agent knows its earlier change is no longer in effect.
+    """
+
+    role: Literal["user", "assistant", "event"]
+    text: str
+    turn_id: str | None = None
+    """The turn whose edits this entry produced, for assistant replies that changed the photo."""
+    created_at: datetime = Field(default_factory=now)
+
+
 class Document(BaseModel):
     """A photo being edited. Stored as JSON next to the original file."""
 
@@ -50,6 +65,7 @@ class Document(BaseModel):
     turns: list[Turn] = Field(default_factory=list)
     cursor: int = 0
     """How many turns are applied. Turns past the cursor were undone and can be redone."""
+    chat: list[ChatEntry] = Field(default_factory=list)
 
     @property
     def applied_turns(self) -> list[Turn]:
@@ -82,12 +98,16 @@ class Document(BaseModel):
         if not self.can_undo:
             return False
         self.cursor -= 1
+        undone = self.turns[self.cursor]
+        self.chat.append(ChatEntry(role="event", text=f"Undid: {undone.request}"))
         return True
 
     def redo(self) -> bool:
         if not self.can_redo:
             return False
+        redone = self.turns[self.cursor]
         self.cursor += 1
+        self.chat.append(ChatEntry(role="event", text=f"Redid: {redone.request}"))
         return True
 
 
@@ -115,6 +135,7 @@ class DocumentView(BaseModel):
     can_undo: bool
     can_redo: bool
     turns: list[TurnView]
+    chat: list[ChatEntry]
 
     @classmethod
     def of(cls, doc: Document) -> DocumentView:
@@ -139,4 +160,5 @@ class DocumentView(BaseModel):
                 )
                 for i, t in enumerate(doc.turns)
             ],
+            chat=doc.chat,
         )
