@@ -1,0 +1,69 @@
+[
+  {
+    "file": "portrait.jpg",
+    "width": 512,
+    "height": 512,
+    "format": "JPEG",
+    "tags": [
+      "portrait",
+      "person",
+      "face"
+    ],
+    "source": "astronaut"
+  },
+  {
+    "file": "portrait-exif-rotated.jpg",
+    "width": 512,
+    "height": 512,
+    "format": "JPEG",
+    "orientation": 6,
+    "stored_width": 512,
+    "stored_height": 512,
+    "tags": [
+      "portrait",
+      "person",
+      "face",
+      "exif-orientation"
+    ],
+    "source": "astronaut"
+  },
+  {
+    "file": "landscape.png",
+    "width": 640,
+    "height": 427,
+    "format": "PNG",
+    "tags": [
+      "landscape",
+      "outdoor",
+      "sky"
+    ],
+    "source": "rocket"
+  },
+  {
+    "file": "low-light.jpg",
+    "width": 600,
+    "height": 400,
+    "format": "JPEG",
+    "tags": [
+      "low-light",
+      "underexposed",
+      "noisy",
+      "indoor"
+    ],
+    "source": "coffee"
+  },
+  {
+    "file": "phone.heic",
+    "width": 451,
+    "height": 300,
+    "format": "HEIF",
+    "has_gps": true,
+    "tags": [
+      "heic",
+      "phone",
+      "pet",
+      "gps"
+    ],
+    "source": "chelsea"
+  }
+]
