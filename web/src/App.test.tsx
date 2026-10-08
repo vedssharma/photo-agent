@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { healthy, makeDoc, stubApi } from './test/fixtures'
 
 function stubFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -51,5 +53,50 @@ describe('App', () => {
     expect(
       await screen.findByText(/Backend unreachable: Error: HTTP 502/),
     ).toBeInTheDocument()
+  })
+})
+
+describe('App with a photo', () => {
+  it('uploads a picked photo and shows its preview', async () => {
+    const doc = makeDoc()
+    const fetchMock = stubApi({
+      'GET /api/health': healthy,
+      'POST /api/documents': () => Response.json(doc, { status: 201 }),
+    })
+
+    render(<App />)
+    await userEvent.upload(
+      screen.getByLabelText('Photo file'),
+      new File(['x'], 'cat.heic', { type: '' }),
+    )
+
+    const img = await screen.findByRole('img', { name: 'cat.heic' })
+    expect(img).toHaveAttribute(
+      'src',
+      '/api/documents/abc123abc123/preview?revision=original',
+    )
+    const upload = fetchMock.mock.calls.find(([r]) => r.method === 'POST')![0]
+    expect((await upload.formData()).get('file')).toBeTruthy()
+  })
+
+  it('explains why a photo could not be opened', async () => {
+    stubApi({
+      'GET /api/health': healthy,
+      'POST /api/documents': () =>
+        Response.json(
+          { detail: 'Could not read this file as an image.' },
+          { status: 415 },
+        ),
+    })
+
+    render(<App />)
+    await userEvent.upload(
+      screen.getByLabelText('Photo file'),
+      new File(['x'], 'bad.jpg'),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not open bad.jpg: Could not read this file as an image.',
+    )
   })
 })
