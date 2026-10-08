@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from photo_agent import imaging
 from photo_agent.graph import Document
-from photo_agent.render import render
+from photo_agent.render import render_state
 from photo_agent.store import LoadedImage
 
 EXIF_ORIENTATION = 0x0112
@@ -28,7 +28,7 @@ class ExportOptions(BaseModel):
 
 
 def export_bytes(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes:
-    pixels = render(loaded.source.pixels, doc.operations, loaded.full_context)
+    pixels = render_state(loaded.source.pixels, doc.state, loaded.full_context)
     exif = export_exif(loaded.source.exif, pixels.shape[1], pixels.shape[0], options.keep_location)
     if options.format == "png":
         return imaging.encode_png(pixels, exif=exif)

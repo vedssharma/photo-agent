@@ -95,13 +95,136 @@
         }
       }
     },
+    "/api/documents/{doc_id}/project": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Download Project",
+        "description": "The original photo and all its edits as one `.photoagent` file, to keep and reopen.",
+        "operationId": "downloadProject",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/vnd.photo-agent.project+zip": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/graph": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Graph",
+        "description": "The full stored document (history, layers, chat), as kept for browser autosave.",
+        "operationId": "getGraph",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/source": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Source",
+        "description": "The original file exactly as uploaded.",
+        "operationId": "getSource",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/heic": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/undo": {
       "post": {
         "tags": [
           "documents"
         ],
         "summary": "Undo",
-        "description": "Step back one agent turn.",
+        "description": "Step back one step in the history.",
         "operationId": "undo",
         "parameters": [
           {
@@ -144,7 +267,7 @@
           "documents"
         ],
         "summary": "Redo",
-        "description": "Re-apply the most recently undone agent turn.",
+        "description": "Re-apply the most recently undone step.",
         "operationId": "redo",
         "parameters": [
           {
@@ -167,6 +290,170 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/edits": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Edit By Hand",
+        "description": "Record a change made with the manual controls as a named step in the history.",
+        "operationId": "editByHand",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/recipes/{recipe_id}": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Recipe",
+        "description": "Add a recipe's layers on top of the current edits, as one step in the history.",
+        "operationId": "applyRecipe",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recipe Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or recipe"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/checkout": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Checkout",
+        "description": "Jump to any step in the history. Editing from there starts a new branch; the steps\nafter it stay in the history.",
+        "operationId": "checkout",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Checkout"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or step"
           },
           "422": {
             "description": "Validation Error",
@@ -348,6 +635,208 @@
         }
       }
     },
+    "/api/documents/{doc_id}/layers/{layer_id}/mask": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Layer Mask",
+        "description": "Where a layer of the current state applies, at preview size, as a grayscale PNG\n(white is full effect). Add `?revision=` to make the URL unique per edit state.",
+        "operationId": "getLayerMask",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "layer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Layer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "404": {
+            "description": "No such layer"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Open Project",
+        "description": "Reopen a saved project: either a `.photoagent` project `file`, or an `original`\nphoto plus its `graph` (the document JSON), as the browser keeps them for autosave.\n\nThe project keeps its id unless another document already has it.",
+        "operationId": "openProject",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_openProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large"
+          },
+          "415": {
+            "description": "Not a project or photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recipes": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "List Recipes",
+        "description": "Saved recipes, newest first.",
+        "operationId": "listRecipes",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Recipe"
+                  },
+                  "type": "array",
+                  "title": "Response Listrecipes"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Create Recipe",
+        "description": "Save a set of layers as a recipe to apply to other photos.",
+        "operationId": "createRecipe",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewRecipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recipes/{recipe_id}": {
+      "delete": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "Delete Recipe",
+        "operationId": "deleteRecipe",
+        "parameters": [
+          {
+            "name": "recipe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recipe Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such recipe"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -363,6 +852,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/operations": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Operations",
+        "description": "Every operation with its parameters' ranges, for building manual controls.",
+        "operationId": "listOperations",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperationSpec"
+                  },
+                  "type": "array",
+                  "title": "Response Listoperations"
                 }
               }
             }
@@ -415,6 +930,125 @@
         ],
         "title": "Body_createDocument"
       },
+      "Body_openProject": {
+        "properties": {
+          "file": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph"
+          }
+        },
+        "type": "object",
+        "title": "Body_openProject"
+      },
+      "BrushMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "brush",
+            "title": "Kind",
+            "default": "brush"
+          },
+          "strokes": {
+            "items": {
+              "$ref": "#/components/schemas/BrushStroke"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Strokes",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BrushMask",
+        "description": "Painted by hand: the layer applies where the strokes are."
+      },
+      "BrushStroke": {
+        "properties": {
+          "points": {
+            "items": {
+              "items": {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": -1.0
+              },
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2,
+              "description": "[x, y] as fractions of the photo."
+            },
+            "type": "array",
+            "maxItems": 4000,
+            "minItems": 1,
+            "title": "Points"
+          },
+          "size": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.002,
+            "title": "Size",
+            "description": "Brush radius as a fraction of the photo's long edge."
+          },
+          "hardness": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Hardness",
+            "description": "0 is a soft edge, 100 a hard one.",
+            "default": 50
+          },
+          "erase": {
+            "type": "boolean",
+            "title": "Erase",
+            "description": "Remove from the mask instead of adding to it.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "points",
+          "size"
+        ],
+        "title": "BrushStroke"
+      },
       "ChatEntry": {
         "properties": {
           "role": {
@@ -430,7 +1064,7 @@
             "type": "string",
             "title": "Text"
           },
-          "turn_id": {
+          "step_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -439,7 +1073,7 @@
                 "type": "null"
               }
             ],
-            "title": "Turn Id"
+            "title": "Step Id"
           },
           "created_at": {
             "type": "string",
@@ -453,7 +1087,28 @@
           "text"
         ],
         "title": "ChatEntry",
-        "description": "One line of the conversation shown in the chat panel and replayed to the agent.\n\nThe conversation is linear even when edits are undone: an undo or redo is recorded as an\n`event` entry, so the agent knows its earlier change is no longer in effect."
+        "description": "One line of the conversation shown in the chat panel and replayed to the agent.\n\nThe conversation is linear even when the history branches: undo, redo, and jumps are\nrecorded as `event` entries, so the agent knows its earlier change is no longer in effect."
+      },
+      "Checkout": {
+        "properties": {
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id",
+            "description": "Step to show, or null for the original photo."
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id"
+        ],
+        "title": "Checkout"
       },
       "Clarity": {
         "properties": {
@@ -606,6 +1261,80 @@
         "title": "Dehaze",
         "description": "Cut through haze or fog (positive), or add atmosphere (negative)."
       },
+      "Document": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          },
+          "chat": {
+            "items": {
+              "$ref": "#/components/schemas/ChatEntry"
+            },
+            "type": "array",
+            "title": "Chat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "format",
+          "width",
+          "height"
+        ],
+        "title": "Document",
+        "description": "A photo being edited. Stored as JSON next to the original file."
+      },
       "DocumentView": {
         "properties": {
           "id": {
@@ -628,110 +1357,34 @@
             "type": "integer",
             "title": "Height"
           },
-          "step": {
-            "type": "integer",
-            "title": "Step"
-          },
           "revision": {
             "type": "string",
             "title": "Revision"
           },
-          "operations": {
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Exposure"
-                },
-                {
-                  "$ref": "#/components/schemas/Contrast"
-                },
-                {
-                  "$ref": "#/components/schemas/Highlights"
-                },
-                {
-                  "$ref": "#/components/schemas/Shadows"
-                },
-                {
-                  "$ref": "#/components/schemas/Whites"
-                },
-                {
-                  "$ref": "#/components/schemas/Blacks"
-                },
-                {
-                  "$ref": "#/components/schemas/WhiteBalance"
-                },
-                {
-                  "$ref": "#/components/schemas/Vibrance"
-                },
-                {
-                  "$ref": "#/components/schemas/Saturation"
-                },
-                {
-                  "$ref": "#/components/schemas/HSL"
-                },
-                {
-                  "$ref": "#/components/schemas/Sharpen"
-                },
-                {
-                  "$ref": "#/components/schemas/NoiseReduction"
-                },
-                {
-                  "$ref": "#/components/schemas/Clarity"
-                },
-                {
-                  "$ref": "#/components/schemas/Dehaze"
-                },
-                {
-                  "$ref": "#/components/schemas/Crop"
-                },
-                {
-                  "$ref": "#/components/schemas/Rotate"
-                },
-                {
-                  "$ref": "#/components/schemas/Straighten"
-                },
-                {
-                  "$ref": "#/components/schemas/Flip"
-                },
-                {
-                  "$ref": "#/components/schemas/Vignette"
-                },
-                {
-                  "$ref": "#/components/schemas/Grain"
-                },
-                {
-                  "$ref": "#/components/schemas/ToneCurve"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "op",
-                "mapping": {
-                  "blacks": "#/components/schemas/Blacks",
-                  "clarity": "#/components/schemas/Clarity",
-                  "contrast": "#/components/schemas/Contrast",
-                  "crop": "#/components/schemas/Crop",
-                  "dehaze": "#/components/schemas/Dehaze",
-                  "exposure": "#/components/schemas/Exposure",
-                  "flip": "#/components/schemas/Flip",
-                  "grain": "#/components/schemas/Grain",
-                  "highlights": "#/components/schemas/Highlights",
-                  "hsl": "#/components/schemas/HSL",
-                  "noise_reduction": "#/components/schemas/NoiseReduction",
-                  "rotate": "#/components/schemas/Rotate",
-                  "saturation": "#/components/schemas/Saturation",
-                  "shadows": "#/components/schemas/Shadows",
-                  "sharpen": "#/components/schemas/Sharpen",
-                  "straighten": "#/components/schemas/Straighten",
-                  "tone_curve": "#/components/schemas/ToneCurve",
-                  "vibrance": "#/components/schemas/Vibrance",
-                  "vignette": "#/components/schemas/Vignette",
-                  "white_balance": "#/components/schemas/WhiteBalance",
-                  "whites": "#/components/schemas/Whites"
-                }
+          "state": {
+            "$ref": "#/components/schemas/EditState"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
               }
-            },
-            "type": "array",
-            "title": "Operations"
+            ],
+            "title": "Head"
+          },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
           },
           "can_undo": {
             "type": "boolean",
@@ -741,12 +1394,34 @@
             "type": "boolean",
             "title": "Can Redo"
           },
-          "turns": {
+          "undo_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undo Label"
+          },
+          "redo_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redo Label"
+          },
+          "history": {
             "items": {
-              "$ref": "#/components/schemas/TurnView"
+              "$ref": "#/components/schemas/StepView"
             },
             "type": "array",
-            "title": "Turns"
+            "title": "History"
           },
           "chat": {
             "items": {
@@ -763,16 +1438,65 @@
           "format",
           "width",
           "height",
-          "step",
           "revision",
-          "operations",
+          "state",
+          "head",
+          "tip",
           "can_undo",
           "can_redo",
-          "turns",
+          "undo_label",
+          "redo_label",
+          "history",
           "chat"
         ],
         "title": "DocumentView",
         "description": "What the web app sees of a document."
+      },
+      "EditState": {
+        "properties": {
+          "framing": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Crop"
+                },
+                {
+                  "$ref": "#/components/schemas/Rotate"
+                },
+                {
+                  "$ref": "#/components/schemas/Straighten"
+                },
+                {
+                  "$ref": "#/components/schemas/Flip"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "crop": "#/components/schemas/Crop",
+                  "flip": "#/components/schemas/Flip",
+                  "rotate": "#/components/schemas/Rotate",
+                  "straighten": "#/components/schemas/Straighten"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Framing",
+            "default": []
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "title": "Layers",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EditState",
+        "description": "Everything needed to render the photo from the original."
       },
       "ExportOptions": {
         "properties": {
@@ -1018,6 +1742,322 @@
         "title": "Highlights",
         "description": "Recover (negative) or boost (positive) the brightest areas without touching shadows."
       },
+      "Layer": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id; new layers get one from `new_layer_id`."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "opacity": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Opacity",
+            "description": "0 is no effect, 100 is full effect.",
+            "default": 100
+          },
+          "blend_mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "multiply",
+              "screen",
+              "overlay",
+              "soft_light",
+              "color",
+              "luminosity"
+            ],
+            "title": "Blend Mode",
+            "description": "How the layer's result combines with the layers below: normal replaces them; luminosity changes only brightness (contrast without color shifts); color changes only color; multiply darkens; screen lightens; overlay and soft_light add contrast.",
+            "default": "normal"
+          },
+          "mask": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BrushMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinearGradientMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RadialGradientMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LuminosityMask"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "brush": "#/components/schemas/BrushMask",
+                    "linear": "#/components/schemas/LinearGradientMask",
+                    "luminosity": "#/components/schemas/LuminosityMask",
+                    "radial": "#/components/schemas/RadialGradientMask"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask",
+            "description": "Limits the layer to part of the photo; null applies it everywhere."
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Exposure"
+                },
+                {
+                  "$ref": "#/components/schemas/Contrast"
+                },
+                {
+                  "$ref": "#/components/schemas/Highlights"
+                },
+                {
+                  "$ref": "#/components/schemas/Shadows"
+                },
+                {
+                  "$ref": "#/components/schemas/Whites"
+                },
+                {
+                  "$ref": "#/components/schemas/Blacks"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalance"
+                },
+                {
+                  "$ref": "#/components/schemas/Vibrance"
+                },
+                {
+                  "$ref": "#/components/schemas/Saturation"
+                },
+                {
+                  "$ref": "#/components/schemas/HSL"
+                },
+                {
+                  "$ref": "#/components/schemas/Sharpen"
+                },
+                {
+                  "$ref": "#/components/schemas/NoiseReduction"
+                },
+                {
+                  "$ref": "#/components/schemas/Clarity"
+                },
+                {
+                  "$ref": "#/components/schemas/Dehaze"
+                },
+                {
+                  "$ref": "#/components/schemas/Vignette"
+                },
+                {
+                  "$ref": "#/components/schemas/Grain"
+                },
+                {
+                  "$ref": "#/components/schemas/ToneCurve"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "blacks": "#/components/schemas/Blacks",
+                  "clarity": "#/components/schemas/Clarity",
+                  "contrast": "#/components/schemas/Contrast",
+                  "dehaze": "#/components/schemas/Dehaze",
+                  "exposure": "#/components/schemas/Exposure",
+                  "grain": "#/components/schemas/Grain",
+                  "highlights": "#/components/schemas/Highlights",
+                  "hsl": "#/components/schemas/HSL",
+                  "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "saturation": "#/components/schemas/Saturation",
+                  "shadows": "#/components/schemas/Shadows",
+                  "sharpen": "#/components/schemas/Sharpen",
+                  "tone_curve": "#/components/schemas/ToneCurve",
+                  "vibrance": "#/components/schemas/Vibrance",
+                  "vignette": "#/components/schemas/Vignette",
+                  "white_balance": "#/components/schemas/WhiteBalance",
+                  "whites": "#/components/schemas/Whites"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Operations",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Layer",
+        "description": "A named group of adjustments with its own visibility, opacity, and blend mode."
+      },
+      "LinearGradientMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "linear",
+            "title": "Kind",
+            "default": "linear"
+          },
+          "start": {
+            "items": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": -1.0
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Start",
+            "description": "[x, y] as fractions of the photo."
+          },
+          "end": {
+            "items": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": -1.0
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "End",
+            "description": "[x, y] as fractions of the photo."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "LinearGradientMask",
+        "description": "Full effect on the `start` side, fading to none at `end`. For skies, use a start at\nthe top and an end a little below the horizon."
+      },
+      "LuminosityMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "luminosity",
+            "title": "Kind",
+            "default": "luminosity"
+          },
+          "low": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Low",
+            "default": 0
+          },
+          "high": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "High",
+            "default": 1
+          },
+          "feather": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Feather",
+            "description": "Softness of the range edges.",
+            "default": 0.1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LuminosityMask",
+        "description": "Applies to tones between `low` and `high` brightness (0 black, 1 white). For example\n0.65 to 1 targets highlights, 0 to 0.35 shadows."
+      },
+      "ManualEdit": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "description": "Name for the history."
+          },
+          "state": {
+            "$ref": "#/components/schemas/EditState",
+            "description": "The complete edit state after the change."
+          },
+          "coalesce": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coalesce",
+            "description": "What was tweaked, e.g. one slider. Repeated tweaks with the same key update the previous step instead of adding another."
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "state"
+        ],
+        "title": "ManualEdit"
+      },
+      "NewRecipe": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Layers",
+            "description": "The layers to keep. Brush masks are dropped, since they only fit the photo they were painted on."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "layers"
+        ],
+        "title": "NewRecipe"
+      },
       "NoiseReduction": {
         "properties": {
           "id": {
@@ -1052,6 +2092,238 @@
         "type": "object",
         "title": "NoiseReduction",
         "description": "Smooth out grain and color speckles, typical of low-light photos."
+      },
+      "OperationSpec": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "title": "Op"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "light",
+              "color",
+              "detail",
+              "framing",
+              "finishing"
+            ],
+            "title": "Group"
+          },
+          "framing": {
+            "type": "boolean",
+            "title": "Framing"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ParamSpec"
+            },
+            "type": "array",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "op",
+          "label",
+          "description",
+          "group",
+          "framing",
+          "params"
+        ],
+        "title": "OperationSpec"
+      },
+      "ParamSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "number",
+              "choice",
+              "curve"
+            ],
+            "title": "Kind"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          },
+          "default": {
+            "title": "Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "kind"
+        ],
+        "title": "ParamSpec"
+      },
+      "RadialGradientMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "radial",
+            "title": "Kind",
+            "default": "radial"
+          },
+          "center": {
+            "items": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": -1.0
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Center",
+            "description": "[x, y] as fractions of the photo."
+          },
+          "radius_x": {
+            "type": "number",
+            "maximum": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Radius X",
+            "description": "Half-width as a fraction of photo width."
+          },
+          "radius_y": {
+            "type": "number",
+            "maximum": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Radius Y",
+            "description": "Half-height as a fraction of photo height."
+          },
+          "feather": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Feather",
+            "description": "How gradually the edge fades.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "center",
+          "radius_x",
+          "radius_y"
+        ],
+        "title": "RadialGradientMask",
+        "description": "Full effect inside an ellipse, fading out toward its edge. Invert it to affect\neverything outside instead (for example, to darken around a subject)."
+      },
+      "Recipe": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Layers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "layers"
+        ],
+        "title": "Recipe"
       },
       "Rotate": {
         "properties": {
@@ -1177,6 +2449,123 @@
         "title": "Sharpen",
         "description": "Sharpen edges and fine detail."
       },
+      "Step": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "manual"
+            ],
+            "title": "Kind",
+            "default": "agent"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "request": {
+            "type": "string",
+            "title": "Request",
+            "default": ""
+          },
+          "reply": {
+            "type": "string",
+            "title": "Reply",
+            "default": ""
+          },
+          "state": {
+            "$ref": "#/components/schemas/EditState"
+          },
+          "coalesce": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coalesce"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "Step",
+        "description": "One named change to the photo and the edit state it left behind."
+      },
+      "StepView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "manual"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "parent",
+          "kind",
+          "label",
+          "created_at",
+          "active"
+        ],
+        "title": "StepView"
+      },
       "Straighten": {
         "properties": {
           "id": {
@@ -1255,132 +2644,6 @@
         ],
         "title": "ToneCurve",
         "description": "Remap tones with a curve through control points (input, output), both 0..1.\n\nThe curve always passes through its points in order of input. An S-shape adds contrast;\nlifting the (0, y) point gives faded blacks."
-      },
-      "TurnView": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "request": {
-            "type": "string",
-            "title": "Request"
-          },
-          "reply": {
-            "type": "string",
-            "title": "Reply"
-          },
-          "operations": {
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Exposure"
-                },
-                {
-                  "$ref": "#/components/schemas/Contrast"
-                },
-                {
-                  "$ref": "#/components/schemas/Highlights"
-                },
-                {
-                  "$ref": "#/components/schemas/Shadows"
-                },
-                {
-                  "$ref": "#/components/schemas/Whites"
-                },
-                {
-                  "$ref": "#/components/schemas/Blacks"
-                },
-                {
-                  "$ref": "#/components/schemas/WhiteBalance"
-                },
-                {
-                  "$ref": "#/components/schemas/Vibrance"
-                },
-                {
-                  "$ref": "#/components/schemas/Saturation"
-                },
-                {
-                  "$ref": "#/components/schemas/HSL"
-                },
-                {
-                  "$ref": "#/components/schemas/Sharpen"
-                },
-                {
-                  "$ref": "#/components/schemas/NoiseReduction"
-                },
-                {
-                  "$ref": "#/components/schemas/Clarity"
-                },
-                {
-                  "$ref": "#/components/schemas/Dehaze"
-                },
-                {
-                  "$ref": "#/components/schemas/Crop"
-                },
-                {
-                  "$ref": "#/components/schemas/Rotate"
-                },
-                {
-                  "$ref": "#/components/schemas/Straighten"
-                },
-                {
-                  "$ref": "#/components/schemas/Flip"
-                },
-                {
-                  "$ref": "#/components/schemas/Vignette"
-                },
-                {
-                  "$ref": "#/components/schemas/Grain"
-                },
-                {
-                  "$ref": "#/components/schemas/ToneCurve"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "op",
-                "mapping": {
-                  "blacks": "#/components/schemas/Blacks",
-                  "clarity": "#/components/schemas/Clarity",
-                  "contrast": "#/components/schemas/Contrast",
-                  "crop": "#/components/schemas/Crop",
-                  "dehaze": "#/components/schemas/Dehaze",
-                  "exposure": "#/components/schemas/Exposure",
-                  "flip": "#/components/schemas/Flip",
-                  "grain": "#/components/schemas/Grain",
-                  "highlights": "#/components/schemas/Highlights",
-                  "hsl": "#/components/schemas/HSL",
-                  "noise_reduction": "#/components/schemas/NoiseReduction",
-                  "rotate": "#/components/schemas/Rotate",
-                  "saturation": "#/components/schemas/Saturation",
-                  "shadows": "#/components/schemas/Shadows",
-                  "sharpen": "#/components/schemas/Sharpen",
-                  "straighten": "#/components/schemas/Straighten",
-                  "tone_curve": "#/components/schemas/ToneCurve",
-                  "vibrance": "#/components/schemas/Vibrance",
-                  "vignette": "#/components/schemas/Vignette",
-                  "white_balance": "#/components/schemas/WhiteBalance",
-                  "whites": "#/components/schemas/Whites"
-                }
-              }
-            },
-            "type": "array",
-            "title": "Operations"
-          },
-          "applied": {
-            "type": "boolean",
-            "title": "Applied"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "request",
-          "reply",
-          "operations",
-          "applied"
-        ],
-        "title": "TurnView"
       },
       "ValidationError": {
         "properties": {

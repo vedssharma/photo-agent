@@ -1,4 +1,4 @@
-"""HTTP routes for documents: upload, inspect, undo/redo, previews, chat, and export."""
+"""HTTP routes for documents: upload, inspect, history, previews, chat, and export."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from urllib.parse import quote
 from fastapi import (
     APIRouter,
     Depends,
+    Form,
     HTTPException,
     UploadFile,
     WebSocket,
@@ -18,15 +19,16 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import imaging
+from photo_agent import imaging, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
-from photo_agent.operations import GEOMETRY_TYPES
-from photo_agent.render import RenderCache
+from photo_agent.layers import EditState, Layer
+from photo_agent.render import RenderCache, render_layer_mask
 from photo_agent.settings import Settings, get_settings
-from photo_agent.store import DocumentNotFoundError, DocumentStore
+from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 PREVIEW_QUALITY = 88
@@ -34,6 +36,8 @@ PREVIEW_QUALITY = 88
 previews = RenderCache()
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
+recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
 
 @lru_cache
@@ -46,6 +50,18 @@ def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentS
 
 
 Store = Annotated[DocumentStore, Depends(get_store)]
+
+
+@lru_cache
+def _recipes_for(data_dir: Path) -> recipes.RecipeStore:
+    return recipes.RecipeStore(data_dir)
+
+
+def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes.RecipeStore:
+    return _recipes_for(settings.data_dir)
+
+
+Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
 
 
 def load(store: DocumentStore, doc_id: str) -> Document:
@@ -73,14 +89,101 @@ async def create_document(file: UploadFile, store: Store) -> DocumentView:
     return DocumentView.of(doc)
 
 
+@projects_router.post(
+    "",
+    operation_id="openProject",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        413: {"description": "File too large"},
+        415: {"description": "Not a project or photo"},
+    },
+)
+async def open_project(
+    store: Store,
+    file: UploadFile | None = None,
+    original: UploadFile | None = None,
+    graph: Annotated[str | None, Form()] = None,
+) -> DocumentView:
+    """Reopen a saved project: either a `.photoagent` project `file`, or an `original`
+    photo plus its `graph` (the document JSON), as the browser keeps them for autosave.
+
+    The project keeps its id unless another document already has it."""
+    try:
+        if file is not None:
+            data = await _read_limited(
+                file, projects.MAX_ORIGINAL_BYTES + projects.MAX_DOCUMENT_BYTES
+            )
+            source, edits = projects.unpack(data)
+        elif original is not None and graph is not None:
+            source = await _read_limited(original, MAX_UPLOAD_BYTES)
+            edits = projects.parse_document(graph)
+        else:
+            raise projects.ProjectError("Send a project file, or a photo and its edits.")
+        doc = store.create(edits.filename, source, edits)
+    except (projects.ProjectError, MismatchError, imaging.UnsupportedImageError) as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from None
+    return DocumentView.of(doc)
+
+
+async def _read_limited(file: UploadFile, limit: int) -> bytes:
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That file is too large.")
+    return data
+
+
 @router.get("/{doc_id}", operation_id="getDocument")
 def get_document(doc_id: str, store: Store) -> DocumentView:
     return DocumentView.of(load(store, doc_id))
 
 
+@router.get(
+    "/{doc_id}/project",
+    operation_id="downloadProject",
+    response_class=Response,
+    responses={200: {"content": {projects.MEDIA_TYPE: {}}}},
+)
+def download_project(doc_id: str, store: Store) -> Response:
+    """The original photo and all its edits as one `.photoagent` file, to keep and reopen."""
+    doc = load(store, doc_id)
+    original = store.original_file(doc_id)
+    data = projects.pack(doc, original.read_bytes(), original.suffix)
+    stem = doc.filename.rsplit(".", 1)[0] or "photo"
+    filename = f"{stem}{projects.EXTENSION}"
+    return Response(
+        data,
+        media_type=projects.MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.get("/{doc_id}/graph", operation_id="getGraph")
+def get_graph(doc_id: str, store: Store) -> Document:
+    """The full stored document (history, layers, chat), as kept for browser autosave."""
+    return load(store, doc_id)
+
+
+@router.get(
+    "/{doc_id}/source",
+    operation_id="getSource",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}, "image/png": {}, "image/heic": {}}}},
+)
+def get_source(doc_id: str, store: Store) -> Response:
+    """The original file exactly as uploaded."""
+    load(store, doc_id)
+    path = store.original_file(doc_id)
+    media = {".jpg": "image/jpeg", ".png": "image/png", ".heic": "image/heic"}
+    return Response(
+        path.read_bytes(),
+        media_type=media.get(path.suffix, "application/octet-stream"),
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
 @router.post("/{doc_id}/undo", operation_id="undo")
 def undo(doc_id: str, store: Store) -> DocumentView:
-    """Step back one agent turn."""
+    """Step back one step in the history."""
     doc = load(store, doc_id)
     if doc.undo():
         store.save(doc)
@@ -89,9 +192,68 @@ def undo(doc_id: str, store: Store) -> DocumentView:
 
 @router.post("/{doc_id}/redo", operation_id="redo")
 def redo(doc_id: str, store: Store) -> DocumentView:
-    """Re-apply the most recently undone agent turn."""
+    """Re-apply the most recently undone step."""
     doc = load(store, doc_id)
     if doc.redo():
+        store.save(doc)
+    return DocumentView.of(doc)
+
+
+class ManualEdit(BaseModel):
+    label: str = Field(min_length=1, max_length=120, description="Name for the history.")
+    state: EditState = Field(description="The complete edit state after the change.")
+    coalesce: str | None = Field(
+        None,
+        max_length=200,
+        description="What was tweaked, e.g. one slider. Repeated tweaks with the same key "
+        "update the previous step instead of adding another.",
+    )
+
+
+@router.post("/{doc_id}/edits", operation_id="editByHand")
+def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
+    """Record a change made with the manual controls as a named step in the history."""
+    doc = load(store, doc_id)
+    if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
+        store.save(doc)
+    return DocumentView.of(doc)
+
+
+@router.post(
+    "/{doc_id}/recipes/{recipe_id}",
+    operation_id="applyRecipe",
+    responses={404: {"description": "No such document or recipe"}},
+)
+def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> DocumentView:
+    """Add a recipe's layers on top of the current edits, as one step in the history."""
+    doc = load(store, doc_id)
+    try:
+        recipe = saved.get(recipe_id)
+    except recipes.RecipeNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None
+    if doc.edit_by_hand(f"Apply recipe “{recipe.name}”", recipes.apply(recipe, doc.state)):
+        store.save(doc)
+    return DocumentView.of(doc)
+
+
+class Checkout(BaseModel):
+    step_id: str | None = Field(description="Step to show, or null for the original photo.")
+
+
+@router.post(
+    "/{doc_id}/checkout",
+    operation_id="checkout",
+    responses={404: {"description": "No such document or step"}},
+)
+def checkout(doc_id: str, body: Checkout, store: Store) -> DocumentView:
+    """Jump to any step in the history. Editing from there starts a new branch; the steps
+    after it stay in the history."""
+    doc = load(store, doc_id)
+    try:
+        changed = doc.checkout(body.step_id)
+    except KeyError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such step.") from None
+    if changed:
         store.save(doc)
     return DocumentView.of(doc)
 
@@ -163,7 +325,7 @@ def before(doc_id: str, store: Store) -> Response:
     up with the preview for before/after comparison."""
     doc = load(store, doc_id)
     loaded = store.image(doc_id)
-    framing = [op for op in doc.operations if isinstance(op, GEOMETRY_TYPES)]
+    framing = EditState(framing=doc.state.framing)
     pixels = previews.get_or_render(doc.id, loaded.proxy, framing, loaded.proxy_context)
     return Response(
         imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
@@ -172,9 +334,31 @@ def before(doc_id: str, store: Store) -> Response:
     )
 
 
+@router.get(
+    "/{doc_id}/layers/{layer_id}/mask",
+    operation_id="getLayerMask",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}}, 404: {"description": "No such layer"}},
+)
+def layer_mask(doc_id: str, layer_id: str, store: Store) -> Response:
+    """Where a layer of the current state applies, at preview size, as a grayscale PNG
+    (white is full effect). Add `?revision=` to make the URL unique per edit state."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    try:
+        alpha = render_layer_mask(loaded.proxy, doc.state, layer_id, loaded.proxy_context)
+    except KeyError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such layer.") from None
+    return Response(
+        imaging.encode_gray_png(alpha),
+        media_type="image/png",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
     loaded = store.image(doc.id)
-    return previews.get_or_render(doc.id, loaded.proxy, doc.operations, loaded.proxy_context)
+    return previews.get_or_render(doc.id, loaded.proxy, doc.state, loaded.proxy_context)
 
 
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:
@@ -229,3 +413,39 @@ async def chat(
                 await emit(AgentError(message=f"Something went wrong: {exc}"))
     except WebSocketDisconnect:
         pass
+
+
+@recipes_router.get("", operation_id="listRecipes")
+def list_recipes(saved: Recipes) -> list[recipes.Recipe]:
+    """Saved recipes, newest first."""
+    return saved.all()
+
+
+class NewRecipe(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=80)
+    layers: list[Layer] = Field(
+        min_length=1,
+        description="The layers to keep. Brush masks are dropped, since they only fit the "
+        "photo they were painted on.",
+    )
+
+
+@recipes_router.post("", operation_id="createRecipe", status_code=status.HTTP_201_CREATED)
+def create_recipe(body: NewRecipe, saved: Recipes) -> recipes.Recipe:
+    """Save a set of layers as a recipe to apply to other photos."""
+    return saved.create(body.name, body.layers)
+
+
+@recipes_router.delete(
+    "/{recipe_id}",
+    operation_id="deleteRecipe",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "No such recipe"}},
+)
+def delete_recipe(recipe_id: str, saved: Recipes) -> None:
+    try:
+        saved.delete(recipe_id)
+    except recipes.RecipeNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None

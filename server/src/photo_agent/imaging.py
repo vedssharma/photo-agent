@@ -154,3 +154,11 @@ def encode_png(pixels: Array, exif: bytes | None = None) -> bytes:
         kwargs["exif"] = exif
     img.save(buf, format="PNG", **kwargs)
     return buf.getvalue()
+
+
+def encode_gray_png(values: Array) -> bytes:
+    """Encode a single-channel 0..1 array as an 8-bit grayscale PNG."""
+    img = Image.fromarray(to_uint8(values), mode="L")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()

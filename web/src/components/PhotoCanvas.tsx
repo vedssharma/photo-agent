@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
   PointerEvent as ReactPointerEvent,
+  ReactNode,
   WheelEvent as ReactWheelEvent,
 } from 'react'
 
@@ -12,6 +13,29 @@ interface Props {
   alt: string
   /** Show a "working" veil over the photo, e.g. while the agent edits. */
   busy?: boolean
+  /**
+   * Drawn exactly over the photo and zoomed with it, e.g. mask handles. Gets the photo's
+   * on-screen size before zooming.
+   */
+  overlay?: (frame: { width: number; height: number }) => ReactNode
+}
+
+interface Size {
+  width: number
+  height: number
+}
+
+/** Where an image of `natural` size sits inside `box` with object-fit: contain. */
+function containedRect(box: Size, natural: Size) {
+  const scale = Math.min(box.width / natural.width, box.height / natural.height)
+  const width = natural.width * scale
+  const height = natural.height * scale
+  return {
+    left: (box.width - width) / 2,
+    top: (box.height - height) / 2,
+    width,
+    height,
+  }
 }
 
 interface View {
@@ -42,12 +66,31 @@ function isTyping(target: EventTarget | null) {
  * panning by dragging, and two ways to compare with the original: hold the Compare button
  * (or the backslash key), or turn on a split view with a slider.
  */
-export function PhotoCanvas({ src, beforeSrc, alt, busy = false }: Props) {
+export function PhotoCanvas({
+  src,
+  beforeSrc,
+  alt,
+  busy = false,
+  overlay,
+}: Props) {
   const [view, setView] = useState<View>(FIT)
   const [holding, setHolding] = useState(false)
   const [split, setSplit] = useState<number | null>(null)
+  const [box, setBox] = useState<Size | null>(null)
+  const [natural, setNatural] = useState<Size | null>(null)
   const viewport = useRef<HTMLDivElement>(null)
+  const stage = useRef<HTMLDivElement>(null)
   const drag = useRef<{ x: number; y: number; view: View } | null>(null)
+
+  useEffect(() => {
+    const el = stage.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() =>
+      setBox({ width: el.clientWidth, height: el.clientHeight }),
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -102,6 +145,8 @@ export function PhotoCanvas({ src, beforeSrc, alt, busy = false }: Props) {
   }
 
   const showBefore = holding
+  const frame =
+    box && natural && natural.width > 0 ? containedRect(box, natural) : null
   return (
     <div className="canvas">
       <div
@@ -115,6 +160,7 @@ export function PhotoCanvas({ src, beforeSrc, alt, busy = false }: Props) {
         onDoubleClick={() => (view.zoom > 1 ? setView(FIT) : zoomBy(2))}
       >
         <div
+          ref={stage}
           className="stage"
           style={{
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
@@ -125,6 +171,12 @@ export function PhotoCanvas({ src, beforeSrc, alt, busy = false }: Props) {
             src={showBefore ? beforeSrc : src}
             alt={showBefore ? `${alt} (original)` : alt}
             draggable={false}
+            onLoad={(e) =>
+              setNatural({
+                width: e.currentTarget.naturalWidth,
+                height: e.currentTarget.naturalHeight,
+              })
+            }
           />
           {split !== null && !showBefore && (
             <>
@@ -137,6 +189,11 @@ export function PhotoCanvas({ src, beforeSrc, alt, busy = false }: Props) {
               />
               <div className="split-line" style={{ left: `${split}%` }} />
             </>
+          )}
+          {overlay && frame && !showBefore && (
+            <div className="photo-frame" style={frame}>
+              {overlay({ width: frame.width, height: frame.height })}
+            </div>
           )}
         </div>
         {showBefore && <span className="badge">Original</span>}

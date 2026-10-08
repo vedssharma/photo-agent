@@ -14,9 +14,12 @@ from photo_agent.agent import (
     Editor,
     TextDelta,
     ToolError,
+    describe_state,
     history_messages,
+    layer_name,
 )
 from photo_agent.graph import ChatEntry
+from photo_agent.layers import EditState
 from photo_agent.operations import OPERATIONS_BY_NAME, Exposure
 from photo_agent.render import RenderCache
 from photo_agent.routes import get_model, get_store
@@ -48,13 +51,46 @@ def test_every_operation_is_a_tool() -> None:
 
 
 def test_editor_adds_updates_and_removes() -> None:
-    editor = Editor([])
+    editor = Editor(EditState(), default_layer_name="Brighter")
     editor.call("exposure", {"stops": 0.5})
-    op_id = editor.operations[0].id
+    (layer,) = editor.state.layers
+    assert layer.name == "Brighter"
+    op_id = layer.operations[0].id
     editor.call("update_operation", {"id": op_id, "changes": {"stops": 0.3}})
-    assert editor.operations == [Exposure(id=op_id, stops=0.3)]
+    assert editor.state.layers[0].operations == [Exposure(id=op_id, stops=0.3)]
     editor.call("remove_operation", {"id": op_id})
-    assert editor.operations == []
+    assert editor.state.layers[0].operations == []
+
+
+def test_editor_groups_changes_into_layers_and_framing() -> None:
+    editor = Editor(EditState())
+    editor.call("add_layer", {"name": "Warmer", "opacity": 80})
+    editor.call("white_balance", {"temperature": 20})
+    editor.call("crop", {"aspect": "1:1"})
+    editor.call("add_layer", {"name": "Punch", "blend_mode": "luminosity"})
+    editor.call("contrast", {"amount": 20})
+    warmer, punch = editor.state.layers
+    assert (warmer.name, warmer.opacity, [op.op for op in warmer.operations]) == (
+        "Warmer",
+        80,
+        ["white_balance"],
+    )
+    assert (punch.blend_mode, [op.op for op in punch.operations]) == ("luminosity", ["contrast"])
+    assert [op.op for op in editor.state.framing] == ["crop"]
+
+    editor.call("update_layer", {"id": warmer.id, "changes": {"visible": False}})
+    assert editor.state.layers[0].visible is False
+    editor.call("remove_layer", {"id": punch.id})
+    assert [lay.name for lay in editor.state.layers] == ["Warmer"]
+    # Removing the target layer means the next operation starts a fresh one.
+    editor.call("vibrance", {"amount": 10})
+    assert len(editor.state.layers) == 2
+
+
+def test_layer_name_comes_from_the_request() -> None:
+    assert layer_name("warmer please") == "Warmer please"
+    long = layer_name("make this look warmer and less washed out, and crop it for Instagram")
+    assert long == "Make this look warmer and less washed…"
 
 
 @pytest.mark.parametrize(
@@ -64,12 +100,16 @@ def test_editor_adds_updates_and_removes() -> None:
         ("exposure", {}),
         ("teleport", {}),
         ("update_operation", {"id": "nope", "changes": {}}),
+        ("add_layer", {}),
+        ("add_layer", {"name": "x", "opacity": 150}),
+        ("update_layer", {"id": "nope", "changes": {}}),
+        ("remove_layer", {"id": "nope"}),
         ("exposure", "not an object"),
     ],
 )
 def test_editor_rejects_bad_calls(name: str, args: Any) -> None:
     with pytest.raises(ToolError):
-        Editor([]).call(name, args)
+        Editor(EditState()).call(name, args)
 
 
 def test_turn_records_operations_and_reply(upload: Upload, settings: Settings) -> None:
@@ -92,12 +132,13 @@ def test_turn_records_operations_and_reply(upload: Upload, settings: Settings) -
         "TextDelta",
         "TurnDone",
     ]
-    assert [op.op for op in result.operations] == ["white_balance", "crop"]
-    assert result.turns[0].reply == (
+    assert [op.op for op in result.state.all_operations()] == ["crop", "white_balance"]
+    assert [lay.name for lay in result.state.layers] == ["Warmer, and crop for instagram"]
+    assert result.steps[0].reply == (
         "Warming it up.\n\nI warmed the colors and cropped it for Instagram."
     )
     assert [c.role for c in result.chat] == ["user", "assistant"]
-    assert result.chat[1].turn_id == result.turns[0].id
+    assert result.chat[1].step_id == result.steps[0].id
 
     # Claude saw the photo and the (empty) operation list with the request.
     first_request = model.calls[0][-1]["content"]
@@ -121,7 +162,7 @@ def test_invalid_tool_input_goes_back_to_claude_as_an_error(
     error = model.calls[1][-1]["content"][0]
     assert error["is_error"] is True
     assert "stops" in error["content"]
-    assert [op.stops for op in result.operations] == [0.4]
+    assert [op.stops for op in result.state.layers[0].operations] == [0.4]
 
 
 def test_reply_without_edits_does_not_create_an_undo_step(
@@ -130,7 +171,7 @@ def test_reply_without_edits_does_not_create_an_undo_step(
     doc = upload("portrait.jpg")
     model = FakeModel([text("Do you want it square or 4:5?")])
     _, result = run_turn(settings, doc["id"], "crop it", model)
-    assert result.turns == []
+    assert result.steps == []
     assert [c.text for c in result.chat] == ["crop it", "Do you want it square or 4:5?"]
 
 
@@ -139,7 +180,7 @@ def test_refusal_is_reported_without_edits(upload: Upload, settings: Settings) -
     model = FakeModel([], stop_reason="refusal")
     model.responses = [[]]
     _, result = run_turn(settings, doc["id"], "something", model)
-    assert result.turns == []
+    assert result.steps == []
     assert "can't help" in result.chat[-1].text
 
 
@@ -184,7 +225,7 @@ def test_chat_websocket_streams_a_turn(client: TestClient, upload: Upload) -> No
                 break
     assert events[0]["type"] == "turn_started"
     assert events[1] == {"type": "operation", "action": "added", "summary": "Exposure (stops +0.3)"}
-    assert events[-1]["document"]["operations"][0]["stops"] == 0.3
+    assert events[-1]["document"]["state"]["layers"][0]["operations"][0]["stops"] == 0.3
     assert events[-1]["document"]["can_undo"] is True
 
 
@@ -215,7 +256,8 @@ def test_claude_sees_its_result_and_measurements_after_editing(
     assert [b["type"] for b in check] == ["text", "text", "text", "image"]
     assert "Possible overshoots" in check[1]["text"]
     assert "blown-out" in check[1]["text"]
-    assert result.operations == [Exposure(id=result.operations[0].id, stops=0.1)]
+    (op,) = result.state.layers[0].operations
+    assert op == Exposure(id=op.id, stops=0.1)
     # The correction round gets a fresh look too, now without the warning.
     recheck = model.calls[2][-1]["content"][0]["content"]
     assert "No overshoots detected" in recheck[1]["text"]
@@ -236,3 +278,17 @@ def test_silent_turn_still_gets_a_reply(upload: Upload, settings: Settings) -> N
     events, result = run_turn(settings, doc["id"], "brighter", model)
     assert result.chat[-1].text == "Done."
     assert not any(isinstance(e, TextDelta) and e.text.strip() == "" for e in events)
+
+
+def test_agent_can_mask_a_layer() -> None:
+    editor = Editor(EditState())
+    sky = {"kind": "linear", "start": [0.5, 0], "end": [0.5, 0.45]}
+    editor.call("add_layer", {"name": "Bluer sky", "mask": sky})
+    editor.call("hsl", {"band": "blue", "saturation": 20})
+    (layer,) = editor.state.layers
+    assert layer.mask is not None and layer.mask.kind == "linear"
+    assert "linear gradient mask" in describe_state(editor.state)
+    editor.call("update_layer", {"id": layer.id, "changes": {"mask": None}})
+    assert editor.state.layers[0].mask is None
+    with pytest.raises(ToolError):
+        editor.call("update_layer", {"id": layer.id, "changes": {"mask": {"kind": "blob"}}})

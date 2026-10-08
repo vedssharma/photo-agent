@@ -23,8 +23,16 @@ from anthropic.types.beta import (
 from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging
-from photo_agent.graph import ChatEntry, Document, DocumentView, Turn
-from photo_agent.operations import OPERATIONS_BY_NAME, OpBase, Operation, OperationAdapter
+from photo_agent.graph import ChatEntry, Document, DocumentView, Step
+from photo_agent.layers import BLEND_MODE_HELP, EditState, Layer, new_layer_id
+from photo_agent.masks import describe_mask
+from photo_agent.operations import (
+    GEOMETRY_TYPES,
+    OPERATIONS_BY_NAME,
+    OpBase,
+    Operation,
+    OperationAdapter,
+)
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentStore
 
@@ -37,14 +45,28 @@ You are the photo editor inside photo-agent. The people you help are not editing
 they describe what they want in everyday words and expect a professional-looking result.
 
 How editing works:
-- You never change pixels yourself. You edit by calling tools. Each tool call adds one \
-operation to the photo's ordered operation list, which is rendered in order on top of the \
-untouched original. update_operation and remove_operation change operations already in the \
-list; prefer adjusting an existing operation over stacking a second one of the same kind.
-- With each request you get the current rendered photo and the current operation list.
-- Crop boxes are fractions of the frame as it is at that point in the list, after any \
-earlier rotate, straighten, or crop. For Instagram, use 4:5 for portrait feed posts, 1:1 for \
-square, 1.91:1 is not available so use 16:9 for landscape, and 9:16 for stories.
+- You never change pixels yourself. You edit by calling tools, and every change stays \
+separate and reversible.
+- The photo has framing (crop, rotate, straighten, flip), which applies first, and then a \
+stack of adjustment layers, applied bottom to top. Each layer has a name, its own \
+operations, an opacity, a blend mode, and can be hidden.
+- Group each distinct change into its own layer, so the person can see, hide, or fade it on \
+its own: call add_layer with a short name in plain words (like "Warmer tones" or "Brighter \
+shadows") before the operations for that change. Operation tools add to the layer you added \
+most recently in this request; framing tools always go to the framing.
+- A layer can have a mask to limit it to part of the photo: a linear gradient for skies \
+or foregrounds, a radial gradient for a subject or a spotlight (invert it to work on the \
+surroundings), or a luminosity range to target highlights or shadows. Positions are \
+fractions of the framed photo. Brush masks are painted by the person; keep them unless \
+asked to change them.
+- update_operation and remove_operation change operations already present, in any layer; \
+update_layer and remove_layer change layers. Prefer adjusting what is already there over \
+stacking a second operation of the same kind for the same purpose.
+- With each request you get the current rendered photo and the current framing and layers. \
+The person may have tweaked, hidden, or removed things by hand; respect those choices.
+- Crop boxes are fractions of the frame as it is at that point in the framing list, after \
+any earlier rotate, straighten, or crop. For Instagram, use 4:5 for portrait feed posts, 1:1 \
+for square, 1.91:1 is not available so use 16:9 for landscape, and 9:16 for stories.
 
 How to edit well:
 - Look at the photo before deciding. Fix what the person asked for, plus anything that \
@@ -160,6 +182,43 @@ class ClaudeModel:
         raise AssertionError("unreachable")
 
 
+def _referenced_defs(node: object, defs: dict[str, Any]) -> dict[str, Any]:
+    """The subset of `defs` that `node` refers to, directly or through other defs."""
+    found: dict[str, Any] = {}
+
+    def walk(n: object) -> None:
+        if isinstance(n, dict):
+            ref = n.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                name = ref.removeprefix("#/$defs/")
+                if name not in found:
+                    found[name] = defs[name]
+                    walk(defs[name])
+            for v in n.values():
+                walk(v)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v)
+
+    walk(node)
+    return found
+
+
+def _plain_unions(node: Any) -> Any:
+    """Turn Pydantic's discriminated unions into plain anyOf lists for tool schemas."""
+    if isinstance(node, dict):
+        out = {k: _plain_unions(v) for k, v in node.items() if k != "discriminator"}
+        if "oneOf" in out:
+            out["anyOf"] = out.pop("oneOf")
+        if "anyOf" in out and len(out["anyOf"]) == 1 and isinstance(out["anyOf"][0], dict):
+            inner = out.pop("anyOf")[0]
+            out = {**inner, **out}
+        return out
+    if isinstance(node, list):
+        return [_plain_unions(v) for v in node]
+    return node
+
+
 def tool_definitions() -> list[BetaToolParam]:
     tools: list[BetaToolParam] = []
     for name, cls in OPERATIONS_BY_NAME.items():
@@ -181,11 +240,68 @@ def tool_definitions() -> list[BetaToolParam]:
                 "eager_input_streaming": True,
             }
         )
+    layer_schema = Layer.model_json_schema()
+    layer_props = {
+        k: v for k, v in layer_schema["properties"].items() if k not in ("id", "operations")
+    }
+    add_layer_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": layer_props,
+        "required": ["name"],
+        "additionalProperties": False,
+    }
+    if "$defs" in layer_schema:
+        add_layer_schema["$defs"] = _referenced_defs(layer_props, layer_schema["$defs"])
+        add_layer_schema = _plain_unions(add_layer_schema)
+    tools.append(
+        {
+            "name": "add_layer",
+            "description": "Start a new adjustment layer on top of the stack for one distinct "
+            "change. Operation tools called after this add to it. " + BLEND_MODE_HELP,
+            "input_schema": add_layer_schema,
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
+            "name": "update_layer",
+            "description": "Change a layer's name, visibility, opacity, blend mode, or mask, "
+            "by id. "
+            "Only the given properties change. Lowering opacity is a good way to tone down a "
+            "whole change at once.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "changes": {
+                        "type": "object",
+                        "description": "Layer properties to values: " + ", ".join(layer_props),
+                    },
+                },
+                "required": ["id", "changes"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
+            "name": "remove_layer",
+            "description": "Remove a layer and all its operations, by id.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
     tools.append(
         {
             "name": "update_operation",
-            "description": "Change parameters of an operation already in the list, by id. "
-            "Only the given parameters change.",
+            "description": "Change parameters of an operation already present (in the framing "
+            "or any layer), by id. Only the given parameters change.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -201,7 +317,7 @@ def tool_definitions() -> list[BetaToolParam]:
     tools.append(
         {
             "name": "remove_operation",
-            "description": "Remove an operation from the list, by id.",
+            "description": "Remove an operation (from the framing or any layer), by id.",
             "input_schema": {
                 "type": "object",
                 "properties": {"id": {"type": "string"}},
@@ -222,53 +338,117 @@ class ToolError(Exception):
 
 
 class Editor:
-    """Applies tool calls to a working copy of the operation list."""
+    """Applies tool calls to a working copy of the edit state."""
 
-    def __init__(self, operations: Sequence[Operation]) -> None:
-        self.operations: list[Operation] = list(operations)
+    def __init__(self, state: EditState, default_layer_name: str = "Edits") -> None:
+        self.state = state.model_copy(deep=True)
+        self.default_layer_name = default_layer_name
+        self.target: str | None = None
+        """The layer that operation tools add to: the one added most recently."""
 
     def call(self, name: str, args: object) -> tuple[str, OperationEvent]:
         if not isinstance(args, dict):
             raise ToolError("Tool input must be a JSON object.")
-        if name == "update_operation":
-            return self._update(args)
-        if name == "remove_operation":
-            return self._remove(args)
+        handler = {
+            "update_operation": self._update,
+            "remove_operation": self._remove,
+            "add_layer": self._add_layer,
+            "update_layer": self._update_layer,
+            "remove_layer": self._remove_layer,
+        }.get(name)
+        if handler is not None:
+            return handler(args)
         if name not in OPERATIONS_BY_NAME:
             raise ToolError(f"Unknown tool {name!r}.")
         op = self._validate({**args, "op": name})
-        self.operations.append(op)
+        if isinstance(op, GEOMETRY_TYPES):
+            self.state.framing.append(op)  # type: ignore[arg-type]
+            where = "the framing"
+        else:
+            layer = self._target_layer()
+            layer.operations.append(op)  # type: ignore[arg-type]
+            where = f"layer {layer.id} ({layer.name})"
         summary = op.summary()
-        return f"Added {summary} as operation {op.id}.", OperationEvent(
+        return f"Added {summary} as operation {op.id} in {where}.", OperationEvent(
             action="added", summary=summary
         )
 
-    def _find(self, op_id: object) -> int:
-        for i, op in enumerate(self.operations):
-            if op.id == op_id:
-                return i
+    def _target_layer(self) -> Layer:
+        if self.target is not None:
+            try:
+                return self.state.layer(self.target)
+            except KeyError:
+                pass
+        layer = Layer(id=new_layer_id(), name=self.default_layer_name)
+        self.state.layers.append(layer)
+        self.target = layer.id
+        return layer
+
+    def _containers(self) -> list[tuple[list[Any], Layer | None]]:
+        return [(self.state.framing, None)] + [(lay.operations, lay) for lay in self.state.layers]
+
+    def _find(self, op_id: object) -> tuple[list[Any], int]:
+        for ops, _ in self._containers():
+            for i, op in enumerate(ops):
+                if op.id == op_id:
+                    return ops, i
         raise ToolError(f"No operation with id {op_id!r}.")
 
+    def _find_layer(self, layer_id: object) -> Layer:
+        for layer in self.state.layers:
+            if layer.id == layer_id:
+                return layer
+        raise ToolError(f"No layer with id {layer_id!r}.")
+
     def _update(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
-        index = self._find(args.get("id"))
+        ops, index = self._find(args.get("id"))
         changes = args.get("changes")
         if not isinstance(changes, dict):
             raise ToolError("changes must be an object of parameter names to values.")
-        current = self.operations[index]
+        current = ops[index]
         changes = {k: v for k, v in changes.items() if k not in ("id", "op")}
         op = self._validate({**current.model_dump(), **changes})
-        self.operations[index] = op
+        ops[index] = op
         summary = op.summary()
         return f"Updated operation {op.id}: {summary}.", OperationEvent(
             action="updated", summary=summary
         )
 
     def _remove(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
-        index = self._find(args.get("id"))
-        op = self.operations.pop(index)
+        ops, index = self._find(args.get("id"))
+        op = ops.pop(index)
         summary = op.summary()
         return f"Removed operation {op.id} ({summary}).", OperationEvent(
             action="removed", summary=summary
+        )
+
+    def _add_layer(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        layer = self._validate_layer({**args, "id": new_layer_id()})
+        self.state.layers.append(layer)
+        self.target = layer.id
+        return (
+            f"Added layer {layer.id} ({layer.name}) on top. Operation tools now add to this layer.",
+            OperationEvent(action="added", summary=f"New layer: {layer.name}"),
+        )
+
+    def _update_layer(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        layer = self._find_layer(args.get("id"))
+        changes = args.get("changes")
+        if not isinstance(changes, dict):
+            raise ToolError("changes must be an object of layer properties to values.")
+        changes = {k: v for k, v in changes.items() if k not in ("id", "operations")}
+        updated = self._validate_layer({**layer.model_dump(), **changes})
+        index = self.state.layers.index(layer)
+        self.state.layers[index] = updated
+        return f"Updated layer {layer.id}.", OperationEvent(
+            action="updated", summary=f"Layer: {updated.name} ({describe_layer(updated)})"
+        )
+
+    def _remove_layer(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        layer = self._find_layer(args.get("id"))
+        self.state.layers.remove(layer)
+        return f"Removed layer {layer.id} ({layer.name}).", OperationEvent(
+            action="removed", summary=f"Layer: {layer.name}"
         )
 
     @staticmethod
@@ -276,17 +456,60 @@ class Editor:
         try:
             return OperationAdapter.validate_python(data)
         except ValidationError as exc:
-            problems = "; ".join(
-                f"{'.'.join(str(p) for p in e['loc']) or 'input'}: {e['msg']}" for e in exc.errors()
-            )
-            raise ToolError(f"Invalid parameters: {problems}") from None
+            raise ToolError(f"Invalid parameters: {_problems(exc)}") from None
+
+    @staticmethod
+    def _validate_layer(data: dict[str, Any]) -> Layer:
+        try:
+            return Layer.model_validate(data)
+        except ValidationError as exc:
+            raise ToolError(f"Invalid layer: {_problems(exc)}") from None
 
 
-def describe_operations(operations: Sequence[OpBase]) -> str:
-    if not operations:
+def layer_name(request: str) -> str:
+    """A layer name for edits made without add_layer: the start of the request."""
+    words = " ".join(request.split())
+    name = words if len(words) <= 40 else words[:39].rsplit(" ", 1)[0] + "…"
+    return (name[:1].upper() + name[1:]) or "Edits"
+
+
+def _problems(exc: ValidationError) -> str:
+    return "; ".join(
+        f"{'.'.join(str(p) for p in e['loc']) or 'input'}: {e['msg']}" for e in exc.errors()
+    )
+
+
+def describe_layer(layer: Layer) -> str:
+    parts = [] if layer.visible else ["hidden"]
+    parts.append(f"opacity {layer.opacity:g}%")
+    if layer.blend_mode != "normal":
+        parts.append(f"blend {layer.blend_mode}")
+    if layer.mask is not None:
+        parts.append(describe_mask(layer.mask))
+    return ", ".join(parts)
+
+
+def _op_json(op: OpBase) -> str:
+    return json.dumps(op.model_dump(), separators=(",", ":"))
+
+
+def describe_state(state: EditState) -> str:
+    if state.is_empty:
         return "No edits yet; this is the original photo."
-    lines = [json.dumps(op.model_dump(), separators=(",", ":")) for op in operations]
-    return "Current operation list, in render order:\n" + "\n".join(lines)
+    lines = ["Current edits."]
+    if state.framing:
+        lines.append("Framing, applied first:")
+        lines += [f"  {_op_json(op)}" for op in state.framing]
+    else:
+        lines.append("Framing: none.")
+    if state.layers:
+        lines.append("Layers, bottom to top:")
+        for layer in state.layers:
+            lines.append(f'- layer {layer.id} "{layer.name}" ({describe_layer(layer)})')
+            lines += [f"    {_op_json(op)}" for op in layer.operations] or ["    (empty)"]
+    else:
+        lines.append("Layers: none.")
+    return "\n".join(lines)
 
 
 def image_block(pixels: imaging.Array) -> BetaImageBlockParam:
@@ -304,7 +527,8 @@ def events_note(events: Sequence[str]) -> str:
 def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam], list[str]]:
     """Replay the conversation so far as alternating user and assistant text.
 
-    Also returns undo/redo events that happened after the last reply, for the next request.
+    Also returns history events (undo, redo, jumps) that happened after the last reply, for
+    the next request.
     """
     messages: list[BetaMessageParam] = []
     pending_events: list[str] = []
@@ -343,24 +567,30 @@ class AgentService:
         async with lock:
             doc = self.store.get(doc_id)
             await emit(TurnStarted())
-            editor = Editor(doc.operations)
+            editor = Editor(doc.state, default_layer_name=layer_name(request))
             reply = await self._converse(doc, request, editor, emit)
 
             doc.chat.append(ChatEntry(role="user", text=request))
-            turn_id = None
-            if editor.operations != doc.operations:
-                turn = Turn(request=request, reply=reply, operations=editor.operations)
-                doc.commit_turn(turn)
-                turn_id = turn.id
-            doc.chat.append(ChatEntry(role="assistant", text=reply, turn_id=turn_id))
+            step_id = None
+            if editor.state != doc.state:
+                step = Step(
+                    kind="agent",
+                    label=request,
+                    request=request,
+                    reply=reply,
+                    state=editor.state,
+                )
+                doc.commit(step)
+                step_id = step.id
+            doc.chat.append(ChatEntry(role="assistant", text=reply, step_id=step_id))
             self.store.save(doc)
             await emit(TurnDone(document=DocumentView.of(doc)))
             return doc
 
-    async def _render(self, doc: Document, operations: Sequence[Operation]) -> imaging.Array:
+    async def _render(self, doc: Document, state: EditState) -> imaging.Array:
         loaded = self.store.image(doc.id)
         return await asyncio.to_thread(
-            self.renders.get_or_render, doc.id, loaded.proxy, operations, loaded.proxy_context
+            self.renders.get_or_render, doc.id, loaded.proxy, state, loaded.proxy_context
         )
 
     async def _attach_self_check(
@@ -371,21 +601,21 @@ class AgentService:
         baseline: diagnostics.Measurements,
     ) -> None:
         """Show Claude what its edits did, so it can catch overshoots before replying."""
-        rendered = await self._render(doc, editor.operations)
+        rendered = await self._render(doc, editor.state)
         # Ops changed, so at least one call succeeded; annotate the last successful one.
         last = next(r for r in reversed(results) if not r.get("is_error"))
         last["content"] = [
             {"type": "text", "text": str(last["content"])},
             {"type": "text", "text": diagnostics.report(baseline, diagnostics.measure(rendered))},
-            {"type": "text", "text": describe_operations(editor.operations)},
+            {"type": "text", "text": describe_state(editor.state)},
             image_block(rendered),
         ]
 
     async def _converse(self, doc: Document, request: str, editor: Editor, emit: Emit) -> str:
         history, events = history_messages(doc.chat)
-        preview = await self._render(doc, editor.operations)
-        baseline = diagnostics.measure(await self._render(doc, []))
-        operations_seen = list(editor.operations)
+        preview = await self._render(doc, editor.state)
+        baseline = diagnostics.measure(await self._render(doc, EditState()))
+        state_seen = editor.state.model_copy(deep=True)
         intro = events_note(events)
         messages: list[BetaMessageParam] = [
             *history,
@@ -395,8 +625,7 @@ class AgentService:
                     image_block(preview),
                     {
                         "type": "text",
-                        "text": f"{describe_operations(editor.operations)}\n\n"
-                        f"{intro}Request: {request}",
+                        "text": f"{describe_state(editor.state)}\n\n{intro}Request: {request}",
                     },
                 ],
             },
@@ -445,8 +674,8 @@ class AgentService:
                     continue
                 await emit(event)
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": text})
-            if editor.operations != operations_seen:
-                operations_seen = list(editor.operations)
+            if editor.state != state_seen:
+                state_seen = editor.state.model_copy(deep=True)
                 await self._attach_self_check(doc, editor, results, baseline)
             messages.append({"role": "user", "content": results})  # type: ignore[typeddict-item]
         else:
@@ -454,5 +683,5 @@ class AgentService:
             await on_text("I stopped here to keep things quick; tell me if you want more changes.")
 
         if not "".join(reply_parts).strip():
-            await on_text("Done." if editor.operations != doc.operations else "OK.")
+            await on_text("Done." if editor.state != doc.state else "OK.")
         return "".join(reply_parts).strip()

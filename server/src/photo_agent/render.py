@@ -24,6 +24,8 @@ import numpy as np
 
 from photo_agent import operations as ops
 from photo_agent.imaging import Array
+from photo_agent.layers import BlendMode, EditState, Layer
+from photo_agent.masks import render_mask
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 
@@ -37,10 +39,65 @@ class RenderContext:
 
 
 def render(pixels: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
-    out = pixels.astype(np.float32, copy=True)
-    for op in operations:
-        out = _APPLY[type(op)](out, op, ctx)
+    """Apply a flat operation list in order."""
+    out = apply_operations(pixels.astype(np.float32, copy=True), operations, ctx)
     return np.clip(out, 0.0, 1.0, out=out)
+
+
+def render_state(pixels: Array, state: EditState, ctx: RenderContext) -> Array:
+    """Apply the framing, then blend in each visible layer from the bottom up."""
+    out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
+    for layer in state.layers:
+        out = _apply_layer(out, layer, ctx)
+    return np.clip(out, 0.0, 1.0, out=out)
+
+
+def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
+    if not layer.visible or layer.opacity <= 0 or not layer.operations:
+        return x
+    adjusted = blend(x, apply_operations(x, layer.operations, ctx), layer.blend_mode)
+    weight: Array | float = layer.opacity / 100
+    if layer.mask is not None:
+        weight = render_mask(layer.mask, x)[..., None] * weight
+    return cast(Array, x + (adjusted - x) * weight)
+
+
+def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
+    """Where a layer applies (0..1 per pixel), for showing its mask. Raises KeyError."""
+    target = state.layer(layer_id)
+    out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
+    if target.mask is None:
+        return np.ones(out.shape[:2], np.float32)
+    for layer in state.layers:
+        if layer.id == layer_id:
+            break
+        out = _apply_layer(out, layer, ctx)
+    return render_mask(target.mask, out)
+
+
+def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
+    for op in operations:
+        x = _APPLY[type(op)](x, op, ctx)
+    return x
+
+
+def blend(base: Array, top: Array, mode: BlendMode) -> Array:
+    """Combine a layer's adjusted pixels (`top`) with the pixels below it (`base`)."""
+    if mode == "normal":
+        return top
+    if mode == "luminosity":
+        return cast(Array, base + (luma(top) - luma(base))[..., None])
+    if mode == "color":
+        return cast(Array, top + (luma(base) - luma(top))[..., None])
+    a, b = np.clip(base, 0.0, 1.0), np.clip(top, 0.0, 1.0)
+    if mode == "multiply":
+        return cast(Array, a * b)
+    if mode == "screen":
+        return cast(Array, 1.0 - (1.0 - a) * (1.0 - b))
+    if mode == "overlay":
+        return cast(Array, np.where(a < 0.5, 2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b)))
+    # soft_light (the "pegtop" formula: smooth, no hard edge at mid-gray)
+    return cast(Array, (1.0 - 2.0 * b) * a * a + 2.0 * b * a)
 
 
 # Helpers
@@ -450,7 +507,7 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
 
 
 class RenderCache:
-    """Remembers recent renders by document and operation list, so flipping between undo
+    """Remembers recent renders by document and edit state, so flipping between history
     steps or asking for the same preview twice does not re-render."""
 
     def __init__(self, size: int = 16) -> None:
@@ -458,25 +515,20 @@ class RenderCache:
         self._size = size
         self._lock = threading.Lock()
 
-    @staticmethod
-    def key(doc_id: str, operations: Sequence[ops.OpBase]) -> tuple[str, str]:
-        payload = "[" + ",".join(op.model_dump_json() for op in operations) + "]"
-        return doc_id, hashlib.sha256(payload.encode()).hexdigest()
-
     def get_or_render(
         self,
         doc_id: str,
         pixels: Array,
-        operations: Sequence[ops.OpBase],
+        state: EditState,
         ctx: RenderContext,
     ) -> Array:
-        key = self.key(doc_id, operations)
+        key = (doc_id, state.fingerprint)
         with self._lock:
             hit = self._items.get(key)
             if hit is not None:
                 self._items.move_to_end(key)
                 return hit
-        result = render(pixels, operations, ctx)
+        result = render_state(pixels, state, ctx)
         with self._lock:
             self._items[key] = result
             while len(self._items) > self._size:

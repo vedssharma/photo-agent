@@ -2,13 +2,27 @@ import { api } from './client'
 import type { components } from './schema'
 
 export type DocumentView = components['schemas']['DocumentView']
-export type Operation = DocumentView['operations'][number]
+export type EditState = components['schemas']['EditState']
+export type Layer = components['schemas']['Layer']
+export type BlendMode = Layer['blend_mode']
+export type Mask = NonNullable<Layer['mask']>
+export type MaskKind = Mask['kind']
+export type FramingOperation = EditState['framing'][number]
+export type AdjustmentOperation = Layer['operations'][number]
+export type Operation = FramingOperation | AdjustmentOperation
+export type StepView = DocumentView['history'][number]
+export type ManualEdit = components['schemas']['ManualEdit']
 
 /** File types the backend can decode. HEIC often has no MIME type in browsers. */
 export const ACCEPTED_TYPES =
-  '.jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic'
+  '.jpg,.jpeg,.png,.heic,.heif,.photoagent,image/jpeg,image/png,image/heic'
 
-const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif)$/i
+const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif|photoagent)$/i
+
+/** Saved projects (original photo plus edits) use this extension. */
+export function isProjectFile(file: File): boolean {
+  return /\.photoagent$/i.test(file.name)
+}
 
 export function isSupportedFile(file: File): boolean {
   return (
@@ -40,6 +54,88 @@ export async function uploadDocument(file: File): Promise<DocumentView> {
   return data
 }
 
+/** Reopen a saved `.photoagent` project file. */
+export async function openProjectFile(file: File): Promise<DocumentView> {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  return postProject(form)
+}
+
+/** Recreate a document from the photo and edits the browser saved for it. */
+export async function restoreProject(
+  original: Blob,
+  filename: string,
+  graph: string,
+): Promise<DocumentView> {
+  const form = new FormData()
+  form.append('original', original, filename)
+  form.append('graph', graph)
+  return postProject(form)
+}
+
+async function postProject(form: FormData): Promise<DocumentView> {
+  const { data, error, response } = await api.POST('/api/projects', {
+    body: form as unknown as Record<string, never>,
+    bodySerializer: (body) => body as unknown as FormData,
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** The document if the server still has it, or null. */
+export async function fetchDocument(
+  docId: string,
+): Promise<DocumentView | null> {
+  const { data, error, response } = await api.GET('/api/documents/{doc_id}', {
+    params: { path: { doc_id: docId } },
+  })
+  if (response.status === 404) return null
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** The stored document (history, layers, chat) as JSON text, for autosave. */
+export async function fetchGraph(docId: string): Promise<string> {
+  const res = await fetch(
+    new Request(
+      new URL(`/api/documents/${docId}/graph`, window.location.origin),
+    ),
+  )
+  if (!res.ok) throw new ApiError(`The server answered ${res.status}.`)
+  return res.text()
+}
+
+/** The original file exactly as uploaded, for autosave. */
+export async function fetchSource(docId: string): Promise<Blob> {
+  const res = await fetch(
+    new Request(
+      new URL(`/api/documents/${docId}/source`, window.location.origin),
+    ),
+  )
+  if (!res.ok) throw new ApiError(`The server answered ${res.status}.`)
+  return res.blob()
+}
+
+/** The project (original plus edits) as a `.photoagent` file to download. */
+export async function downloadProject(
+  doc: DocumentView,
+): Promise<ExportedFile> {
+  const res = await fetch(
+    new Request(
+      new URL(`/api/documents/${doc.id}/project`, window.location.origin),
+    ),
+  )
+  if (!res.ok) throw new ApiError(`The server answered ${res.status}.`)
+  const stem = doc.filename.replace(/\.[^.]+$/, '') || 'photo'
+  return {
+    blob: await res.blob(),
+    filename: dispositionFilename(
+      res.headers.get('content-disposition'),
+      `${stem}.photoagent`,
+    ),
+  }
+}
+
 /** URL of the unedited photo at preview size. */
 export function originalUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/original`
@@ -48,6 +144,11 @@ export function originalUrl(doc: DocumentView): string {
 /** URL of the unedited look with the current crop and rotation, to compare against. */
 export function beforeUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/before?revision=${doc.revision}`
+}
+
+/** URL of a grayscale image of where a layer applies (white is full effect). */
+export function layerMaskUrl(doc: DocumentView, layerId: string): string {
+  return `/api/documents/${doc.id}/layers/${layerId}/mask?revision=${doc.revision}`
 }
 
 /** URL of the edited photo at preview size; changes whenever the edits do. */
@@ -71,6 +172,38 @@ export async function redo(docId: string): Promise<DocumentView> {
     '/api/documents/{doc_id}/redo',
     {
       params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Record a change made with the manual controls as a step in the history. */
+export async function editByHand(
+  docId: string,
+  edit: ManualEdit,
+): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/edits',
+    {
+      params: { path: { doc_id: docId } },
+      body: edit,
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Show any step in the history, or the original photo when `stepId` is null. */
+export async function checkout(
+  docId: string,
+  stepId: string | null,
+): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/checkout',
+    {
+      params: { path: { doc_id: docId } },
+      body: { step_id: stepId },
     },
   )
   if (!data) throw new ApiError(detail(error, response.status))

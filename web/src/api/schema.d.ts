@@ -41,6 +41,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Project
+         * @description The original photo and all its edits as one `.photoagent` file, to keep and reopen.
+         */
+        get: operations["downloadProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Graph
+         * @description The full stored document (history, layers, chat), as kept for browser autosave.
+         */
+        get: operations["getGraph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source
+         * @description The original file exactly as uploaded.
+         */
+        get: operations["getSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/undo": {
         parameters: {
             query?: never;
@@ -52,7 +112,7 @@ export interface paths {
         put?: never;
         /**
          * Undo
-         * @description Step back one agent turn.
+         * @description Step back one step in the history.
          */
         post: operations["undo"];
         delete?: never;
@@ -72,9 +132,70 @@ export interface paths {
         put?: never;
         /**
          * Redo
-         * @description Re-apply the most recently undone agent turn.
+         * @description Re-apply the most recently undone step.
          */
         post: operations["redo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit By Hand
+         * @description Record a change made with the manual controls as a named step in the history.
+         */
+        post: operations["editByHand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/recipes/{recipe_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Recipe
+         * @description Add a recipe's layers on top of the current edits, as one step in the history.
+         */
+        post: operations["applyRecipe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Checkout
+         * @description Jump to any step in the history. Editing from there starts a new branch; the steps
+         *     after it stay in the history.
+         */
+        post: operations["checkout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -165,6 +286,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/layers/{layer_id}/mask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Layer Mask
+         * @description Where a layer of the current state applies, at preview size, as a grayscale PNG
+         *     (white is full effect). Add `?revision=` to make the URL unique per edit state.
+         */
+        get: operations["getLayerMask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Project
+         * @description Reopen a saved project: either a `.photoagent` project `file`, or an `original`
+         *     photo plus its `graph` (the document JSON), as the browser keeps them for autosave.
+         *
+         *     The project keeps its id unless another document already has it.
+         */
+        post: operations["openProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recipes
+         * @description Saved recipes, newest first.
+         */
+        get: operations["listRecipes"];
+        put?: never;
+        /**
+         * Create Recipe
+         * @description Save a set of layers as a recipe to apply to other photos.
+         */
+        post: operations["createRecipe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recipes/{recipe_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Recipe */
+        delete: operations["deleteRecipe"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -177,6 +383,26 @@ export interface paths {
          * @description Report that the server is up and whether the Claude API key is set.
          */
         get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operations
+         * @description Every operation with its parameters' ranges, for building manual controls.
+         */
+        get: operations["listOperations"];
         put?: never;
         post?: never;
         delete?: never;
@@ -212,12 +438,65 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_openProject */
+        Body_openProject: {
+            /** File */
+            file?: string | null;
+            /** Original */
+            original?: string | null;
+            /** Graph */
+            graph?: string | null;
+        };
+        /**
+         * BrushMask
+         * @description Painted by hand: the layer applies where the strokes are.
+         */
+        BrushMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "brush";
+            /**
+             * Strokes
+             * @default []
+             */
+            strokes: components["schemas"]["BrushStroke"][];
+        };
+        /** BrushStroke */
+        BrushStroke: {
+            /** Points */
+            points: number[][];
+            /**
+             * Size
+             * @description Brush radius as a fraction of the photo's long edge.
+             */
+            size: number;
+            /**
+             * Hardness
+             * @description 0 is a soft edge, 100 a hard one.
+             * @default 50
+             */
+            hardness: number;
+            /**
+             * Erase
+             * @description Remove from the mask instead of adding to it.
+             * @default false
+             */
+            erase: boolean;
+        };
         /**
          * ChatEntry
          * @description One line of the conversation shown in the chat panel and replayed to the agent.
          *
-         *     The conversation is linear even when edits are undone: an undo or redo is recorded as an
-         *     `event` entry, so the agent knows its earlier change is no longer in effect.
+         *     The conversation is linear even when the history branches: undo, redo, and jumps are
+         *     recorded as `event` entries, so the agent knows its earlier change is no longer in effect.
          */
         ChatEntry: {
             /**
@@ -227,13 +506,21 @@ export interface components {
             role: "user" | "assistant" | "event";
             /** Text */
             text: string;
-            /** Turn Id */
-            turn_id?: string | null;
+            /** Step Id */
+            step_id?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at?: string;
+        };
+        /** Checkout */
+        Checkout: {
+            /**
+             * Step Id
+             * @description Step to show, or null for the original photo.
+             */
+            step_id: string | null;
         };
         /**
          * Clarity
@@ -340,6 +627,35 @@ export interface components {
             amount: number;
         };
         /**
+         * Document
+         * @description A photo being edited. Stored as JSON next to the original file.
+         */
+        Document: {
+            /** Id */
+            id?: string;
+            /** Filename */
+            filename: string;
+            /** Format */
+            format: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Steps */
+            steps?: components["schemas"]["Step"][];
+            /** Head */
+            head?: string | null;
+            /** Tip */
+            tip?: string | null;
+            /** Chat */
+            chat?: components["schemas"]["ChatEntry"][];
+        };
+        /**
          * DocumentView
          * @description What the web app sees of a document.
          */
@@ -354,20 +670,41 @@ export interface components {
             width: number;
             /** Height */
             height: number;
-            /** Step */
-            step: number;
             /** Revision */
             revision: string;
-            /** Operations */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            state: components["schemas"]["EditState"];
+            /** Head */
+            head: string | null;
+            /** Tip */
+            tip: string | null;
             /** Can Undo */
             can_undo: boolean;
             /** Can Redo */
             can_redo: boolean;
-            /** Turns */
-            turns: components["schemas"]["TurnView"][];
+            /** Undo Label */
+            undo_label: string | null;
+            /** Redo Label */
+            redo_label: string | null;
+            /** History */
+            history: components["schemas"]["StepView"][];
             /** Chat */
             chat: components["schemas"]["ChatEntry"][];
+        };
+        /**
+         * EditState
+         * @description Everything needed to render the photo from the original.
+         */
+        EditState: {
+            /**
+             * Framing
+             * @default []
+             */
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"])[];
+            /**
+             * Layers
+             * @default []
+             */
+            layers: components["schemas"]["Layer"][];
         };
         /** ExportOptions */
         ExportOptions: {
@@ -527,6 +864,134 @@ export interface components {
             amount: number;
         };
         /**
+         * Layer
+         * @description A named group of adjustments with its own visibility, opacity, and blend mode.
+         */
+        Layer: {
+            /**
+             * Id
+             * @description Stable id; new layers get one from `new_layer_id`.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Opacity
+             * @description 0 is no effect, 100 is full effect.
+             * @default 100
+             */
+            opacity: number;
+            /**
+             * Blend Mode
+             * @description How the layer's result combines with the layers below: normal replaces them; luminosity changes only brightness (contrast without color shifts); color changes only color; multiply darkens; screen lightens; overlay and soft_light add contrast.
+             * @default normal
+             * @enum {string}
+             */
+            blend_mode: "normal" | "multiply" | "screen" | "overlay" | "soft_light" | "color" | "luminosity";
+            /**
+             * Mask
+             * @description Limits the layer to part of the photo; null applies it everywhere.
+             */
+            mask?: (components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"]) | null;
+            /**
+             * Operations
+             * @default []
+             */
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+        };
+        /**
+         * LinearGradientMask
+         * @description Full effect on the `start` side, fading to none at `end`. For skies, use a start at
+         *     the top and an end a little below the horizon.
+         */
+        LinearGradientMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "linear";
+            /**
+             * Start
+             * @description [x, y] as fractions of the photo.
+             */
+            start: number[];
+            /**
+             * End
+             * @description [x, y] as fractions of the photo.
+             */
+            end: number[];
+        };
+        /**
+         * LuminosityMask
+         * @description Applies to tones between `low` and `high` brightness (0 black, 1 white). For example
+         *     0.65 to 1 targets highlights, 0 to 0.35 shadows.
+         */
+        LuminosityMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "luminosity";
+            /**
+             * Low
+             * @default 0
+             */
+            low: number;
+            /**
+             * High
+             * @default 1
+             */
+            high: number;
+            /**
+             * Feather
+             * @description Softness of the range edges.
+             * @default 0.1
+             */
+            feather: number;
+        };
+        /** ManualEdit */
+        ManualEdit: {
+            /**
+             * Label
+             * @description Name for the history.
+             */
+            label: string;
+            /** @description The complete edit state after the change. */
+            state: components["schemas"]["EditState"];
+            /**
+             * Coalesce
+             * @description What was tweaked, e.g. one slider. Repeated tweaks with the same key update the previous step instead of adding another.
+             */
+            coalesce?: string | null;
+        };
+        /** NewRecipe */
+        NewRecipe: {
+            /** Name */
+            name: string;
+            /**
+             * Layers
+             * @description The layers to keep. Brush masks are dropped, since they only fit the photo they were painted on.
+             */
+            layers: components["schemas"]["Layer"][];
+        };
+        /**
          * NoiseReduction
          * @description Smooth out grain and color speckles, typical of low-light photos.
          */
@@ -553,6 +1018,104 @@ export interface components {
              * @default 0
              */
             color: number;
+        };
+        /** OperationSpec */
+        OperationSpec: {
+            /** Op */
+            op: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "light" | "color" | "detail" | "framing" | "finishing";
+            /** Framing */
+            framing: boolean;
+            /** Params */
+            params: components["schemas"]["ParamSpec"][];
+        };
+        /** ParamSpec */
+        ParamSpec: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "choice" | "curve";
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Step */
+            step?: number | null;
+            /** Choices */
+            choices?: (string | number)[] | null;
+            /** Default */
+            default?: unknown;
+        };
+        /**
+         * RadialGradientMask
+         * @description Full effect inside an ellipse, fading out toward its edge. Invert it to affect
+         *     everything outside instead (for example, to darken around a subject).
+         */
+        RadialGradientMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "radial";
+            /**
+             * Center
+             * @description [x, y] as fractions of the photo.
+             */
+            center: number[];
+            /**
+             * Radius X
+             * @description Half-width as a fraction of photo width.
+             */
+            radius_x: number;
+            /**
+             * Radius Y
+             * @description Half-height as a fraction of photo height.
+             */
+            radius_y: number;
+            /**
+             * Feather
+             * @description How gradually the edge fades.
+             * @default 50
+             */
+            feather: number;
+        };
+        /** Recipe */
+        Recipe: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Layers */
+            layers: components["schemas"]["Layer"][];
         };
         /**
          * Rotate
@@ -639,6 +1202,63 @@ export interface components {
             radius: number;
         };
         /**
+         * Step
+         * @description One named change to the photo and the edit state it left behind.
+         */
+        Step: {
+            /** Id */
+            id?: string;
+            /** Parent */
+            parent?: string | null;
+            /**
+             * Kind
+             * @default agent
+             * @enum {string}
+             */
+            kind: "agent" | "manual";
+            /** Label */
+            label: string;
+            /**
+             * Request
+             * @default
+             */
+            request: string;
+            /**
+             * Reply
+             * @default
+             */
+            reply: string;
+            state?: components["schemas"]["EditState"];
+            /** Coalesce */
+            coalesce?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+        };
+        /** StepView */
+        StepView: {
+            /** Id */
+            id: string;
+            /** Parent */
+            parent: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "manual";
+            /** Label */
+            label: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Active */
+            active: boolean;
+        };
+        /**
          * Straighten
          * @description Rotate by a small angle to level a tilted horizon, cropping away the empty corners.
          */
@@ -688,19 +1308,6 @@ export interface components {
              * @enum {string}
              */
             channel: "rgb" | "red" | "green" | "blue";
-        };
-        /** TurnView */
-        TurnView: {
-            /** Id */
-            id: string;
-            /** Request */
-            request: string;
-            /** Reply */
-            reply: string;
-            /** Operations */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
-            /** Applied */
-            applied: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -957,6 +1564,101 @@ export interface operations {
             };
         };
     };
+    downloadProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.photo-agent.project+zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getGraph: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
+                    "image/heic": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     undo: {
         parameters: {
             query?: never;
@@ -1007,6 +1709,122 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editByHand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    applyRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or recipe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    checkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Checkout"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or step */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1148,6 +1966,181 @@ export interface operations {
             };
         };
     };
+    getLayerMask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                layer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description No such layer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    openProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_openProject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description File too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a project or photo */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listRecipes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipe"][];
+                };
+            };
+        };
+    };
+    createRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewRecipe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipe"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such recipe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -1164,6 +2157,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    listOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationSpec"][];
                 };
             };
         };

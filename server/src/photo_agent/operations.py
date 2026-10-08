@@ -295,6 +295,31 @@ OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
 GEOMETRY_TYPES: tuple[type[OpBase], ...] = (Crop, Rotate, Straighten, Flip)
 """Operations that change framing rather than look."""
 
+FramingOperation = Annotated[Crop | Rotate | Straighten | Flip, Field(discriminator="op")]
+"""Crop, rotation, and flips. They apply to the whole photo, before any layer."""
+
+AdjustmentOperation = Annotated[
+    Exposure
+    | Contrast
+    | Highlights
+    | Shadows
+    | Whites
+    | Blacks
+    | WhiteBalance
+    | Vibrance
+    | Saturation
+    | HSL
+    | Sharpen
+    | NoiseReduction
+    | Clarity
+    | Dehaze
+    | Vignette
+    | Grain
+    | ToneCurve,
+    Field(discriminator="op"),
+]
+"""Everything that changes the look rather than the framing; these live in layers."""
+
 
 def op_name(cls: type[OpBase]) -> str:
     default = cls.model_fields["op"].default

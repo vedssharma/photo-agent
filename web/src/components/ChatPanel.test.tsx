@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { DocumentView } from '../api/documents'
 import { useChat } from '../hooks/useChat'
 import { FakeSocket } from '../test/fakeSocket'
-import { makeDoc } from '../test/fixtures'
+import { makeDoc, makeStep } from '../test/fixtures'
 import { ChatPanel } from './ChatPanel'
 
 function Harness({ initial }: { initial: DocumentView }) {
@@ -65,21 +65,13 @@ describe('ChatPanel', () => {
 
     const done = makeDoc({
       revision: 't1',
-      turns: [
-        {
-          id: 't1',
-          request: 'warmer please',
-          reply: 'Warmed it up.',
-          operations: [],
-          applied: true,
-        },
-      ],
+      history: [makeStep('t1', { label: 'warmer please' })],
       chat: [
-        { role: 'user', text: 'warmer please', turn_id: null, created_at: '' },
+        { role: 'user', text: 'warmer please', step_id: null, created_at: '' },
         {
           role: 'assistant',
           text: 'Warmed it up.',
-          turn_id: 't1',
+          step_id: 't1',
           created_at: '',
         },
       ],
@@ -90,25 +82,17 @@ describe('ChatPanel', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled() // empty draft
   })
 
-  it('marks replies whose edits were undone, and shows undo events', () => {
+  it('marks replies whose edits are not in effect, and shows undo events', () => {
     const doc = makeDoc({
-      turns: [
-        {
-          id: 't1',
-          request: 'warmer',
-          reply: 'Done.',
-          operations: [],
-          applied: false,
-        },
-      ],
+      history: [makeStep('t1', { label: 'warmer', active: false })],
       chat: [
-        { role: 'user', text: 'warmer', turn_id: null, created_at: '' },
-        { role: 'assistant', text: 'Done.', turn_id: 't1', created_at: '' },
-        { role: 'event', text: 'Undid: warmer', turn_id: null, created_at: '' },
+        { role: 'user', text: 'warmer', step_id: null, created_at: '' },
+        { role: 'assistant', text: 'Done.', step_id: 't1', created_at: '' },
+        { role: 'event', text: 'Undid: warmer', step_id: null, created_at: '' },
       ],
     })
     render(<Harness initial={doc} />)
-    expect(screen.getByText('undone')).toBeInTheDocument()
+    expect(screen.getByText('not in effect')).toBeInTheDocument()
     expect(screen.getByText('Undid: warmer')).toHaveClass('chat-event')
   })
 

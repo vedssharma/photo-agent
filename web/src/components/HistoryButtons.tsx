@@ -20,7 +20,7 @@ function isTyping(target: EventTarget | null) {
   )
 }
 
-/** Undo and redo of agent turns, with the usual keyboard shortcuts. */
+/** Undo and redo along the current history branch, with the usual keyboard shortcuts. */
 export function HistoryButtons({ doc, onDocument, disabled = false }: Props) {
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,8 +61,6 @@ export function HistoryButtons({ doc, onDocument, disabled = false }: Props) {
   }, [])
 
   const mod = isMac ? '⌘' : 'Ctrl+'
-  const lastApplied = doc.turns.filter((t) => t.applied).at(-1)
-  const nextRedo = doc.turns.find((t) => !t.applied)
   return (
     <div className="history">
       <button
@@ -70,8 +68,8 @@ export function HistoryButtons({ doc, onDocument, disabled = false }: Props) {
         onClick={() => run(undo)}
         disabled={!canUndo}
         title={
-          lastApplied
-            ? `Undo “${lastApplied.request}” (${mod}Z)`
+          doc.undo_label
+            ? `Undo “${doc.undo_label}” (${mod}Z)`
             : 'Nothing to undo'
         }
       >
@@ -82,8 +80,8 @@ export function HistoryButtons({ doc, onDocument, disabled = false }: Props) {
         onClick={() => run(redo)}
         disabled={!canRedo}
         title={
-          nextRedo
-            ? `Redo “${nextRedo.request}” (${mod}Shift+Z)`
+          doc.redo_label
+            ? `Redo “${doc.redo_label}” (${mod}Shift+Z)`
             : 'Nothing to redo'
         }
       >
