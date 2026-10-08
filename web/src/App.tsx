@@ -7,7 +7,9 @@ import {
   previewUrl,
   uploadDocument,
 } from './api/documents'
+import { ChatPanel } from './components/ChatPanel'
 import { PhotoCanvas } from './components/PhotoCanvas'
+import { type SocketFactory, useChat } from './hooks/useChat'
 import { PhotoPicker } from './components/PhotoPicker'
 
 type Health =
@@ -37,7 +39,30 @@ function useHealth(): Health {
   return health
 }
 
-function App() {
+function Editor({
+  doc,
+  onDocument,
+  createSocket,
+}: {
+  doc: DocumentView
+  onDocument: (doc: DocumentView) => void
+  createSocket?: SocketFactory
+}) {
+  const chat = useChat(doc.id, onDocument, createSocket)
+  return (
+    <main className="workspace">
+      <PhotoCanvas
+        src={previewUrl(doc)}
+        beforeSrc={originalUrl(doc)}
+        alt={doc.filename}
+        busy={chat.busy}
+      />
+      <ChatPanel doc={doc} chat={chat} />
+    </main>
+  )
+}
+
+function App({ createSocket }: { createSocket?: SocketFactory } = {}) {
   const health = useHealth()
   const [doc, setDoc] = useState<DocumentView | null>(null)
   const [opening, setOpening] = useState(false)
@@ -71,13 +96,12 @@ function App() {
       </header>
 
       {doc ? (
-        <main className="workspace">
-          <PhotoCanvas
-            src={previewUrl(doc)}
-            beforeSrc={originalUrl(doc)}
-            alt={doc.filename}
-          />
-        </main>
+        <Editor
+          key={doc.id}
+          doc={doc}
+          onDocument={setDoc}
+          createSocket={createSocket}
+        />
       ) : (
         <main className="landing">
           <p>Describe the edit you want, and the agent does the rest.</p>
