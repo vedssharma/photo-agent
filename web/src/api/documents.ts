@@ -13,9 +13,12 @@ export type Operation = FramingOperation | AdjustmentOperation
 export type StepView = DocumentView['history'][number]
 export type ManualEdit = components['schemas']['ManualEdit']
 
-/** File types the backend can decode. HEIC often has no MIME type in browsers. */
-export const ACCEPTED_TYPES =
-  '.jpg,.jpeg,.png,.heic,.heif,.photoagent,image/jpeg,image/png,image/heic'
+/** Photo types the backend can decode. HEIC often has no MIME type in browsers. */
+export const PHOTO_TYPES =
+  '.jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic'
+
+/** Saved projects, for the file dialog. */
+export const PROJECT_TYPES = '.photoagent'
 
 const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif|photoagent)$/i
 

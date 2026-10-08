@@ -23,6 +23,26 @@ describe('PhotoPicker', () => {
     )
   })
 
+  it('opens a saved project from its own option', async () => {
+    const onPick = vi.fn()
+    render(<PhotoPicker onPick={onPick} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Choose a photo' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Open a project' }),
+    ).toBeInTheDocument()
+    await userEvent.upload(
+      screen.getByLabelText('Project file'),
+      new File(['zip'], 'trip.photoagent'),
+    )
+
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'trip.photoagent' }),
+    )
+  })
+
   it('accepts HEIC files that have no MIME type', () => {
     const onPick = vi.fn()
     render(<PhotoPicker onPick={onPick} />)

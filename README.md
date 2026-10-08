@@ -29,7 +29,7 @@ Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it f
 6. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
 7. **Download** renders the edits at full resolution as JPEG or PNG. Camera EXIF is kept; GPS location is removed unless you ask to keep it.
 
-Your work is autosaved in the browser: close the tab and the project reopens where you left off, and the start page lists recent projects. **Save project** downloads a `.photoagent` file (the original plus every layer and the full history) that you can open again later, here or on another computer.
+Your work is autosaved in the browser: close the tab and the project reopens where you left off, and the start page lists recent projects. The start page has two options: **Choose a photo** to start fresh, or **Open a project** to reopen a saved `.photoagent` file. **Save project** downloads a `.photoagent` file (the original plus every layer and the full history) that you can open again later, here or on another computer.
 
 Photos and their edit histories are kept in `.data/` at the repo root. A downsized preview of the photo is sent to Claude with each request so the agent can see it; the original never leaves your computer. Set `ANTHROPIC_MODEL` in `.env` to use a different Claude model.
 
