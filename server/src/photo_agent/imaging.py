@@ -28,6 +28,7 @@ PREVIEW_LONG_EDGE = 1600
 
 EXIF_ORIENTATION = 0x0112
 SRGB_PROFILE = ImageCms.createProfile("sRGB")
+SRGB_ICC = ImageCms.ImageCmsProfile(SRGB_PROFILE).tobytes()
 
 
 class UnsupportedImageError(ValueError):
@@ -138,7 +139,7 @@ def to_uint8(pixels: Array) -> npt.NDArray[np.uint8]:
 def encode_jpeg(pixels: Array, quality: int = 90, exif: bytes | None = None) -> bytes:
     img = Image.fromarray(to_uint8(pixels), mode="RGB")
     buf = io.BytesIO()
-    kwargs: dict[str, object] = {"quality": quality, "optimize": True}
+    kwargs: dict[str, object] = {"quality": quality, "optimize": True, "icc_profile": SRGB_ICC}
     if exif:
         kwargs["exif"] = exif
     img.save(buf, format="JPEG", **kwargs)
@@ -148,7 +149,7 @@ def encode_jpeg(pixels: Array, quality: int = 90, exif: bytes | None = None) -> 
 def encode_png(pixels: Array, exif: bytes | None = None) -> bytes:
     img = Image.fromarray(to_uint8(pixels), mode="RGB")
     buf = io.BytesIO()
-    kwargs: dict[str, object] = {}
+    kwargs: dict[str, object] = {"icc_profile": SRGB_ICC}
     if exif:
         kwargs["exif"] = exif
     img.save(buf, format="PNG", **kwargs)

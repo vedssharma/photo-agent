@@ -124,6 +124,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export
+         * @description Render the edits at full resolution and return the file to download.
+         */
+        post: operations["exportDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -327,6 +347,27 @@ export interface components {
             turns: components["schemas"]["TurnView"][];
             /** Chat */
             chat: components["schemas"]["ChatEntry"][];
+        };
+        /** ExportOptions */
+        ExportOptions: {
+            /**
+             * Format
+             * @default jpeg
+             * @enum {string}
+             */
+            format: "jpeg" | "png";
+            /**
+             * Quality
+             * @description JPEG quality; ignored for PNG.
+             * @default 92
+             */
+            quality: number;
+            /**
+             * Keep Location
+             * @description Keep GPS location from the original. Off by default for privacy.
+             * @default false
+             */
+            keep_location: boolean;
         };
         /**
          * Exposure
@@ -1006,6 +1047,42 @@ export interface operations {
                 };
                 content: {
                     "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportOptions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
                 };
             };
             /** @description Validation Error */

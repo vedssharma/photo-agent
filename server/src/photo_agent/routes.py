@@ -1,10 +1,12 @@
-"""HTTP routes for documents: upload, inspect, undo/redo, and preview images."""
+"""HTTP routes for documents: upload, inspect, undo/redo, previews, chat, and export."""
 
 from __future__ import annotations
 
+import asyncio
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
@@ -19,6 +21,7 @@ from fastapi.responses import Response
 
 from photo_agent import imaging
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
+from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.render import RenderCache
 from photo_agent.settings import Settings, get_settings
@@ -126,6 +129,25 @@ def preview(doc_id: str, store: Store) -> Response:
         imaging.encode_jpeg(render_preview(store, doc), PREVIEW_QUALITY),
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.post(
+    "/{doc_id}/export",
+    operation_id="exportDocument",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}, "image/png": {}}}},
+)
+async def export(doc_id: str, options: ExportOptions, store: Store) -> Response:
+    """Render the edits at full resolution and return the file to download."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    data = await asyncio.to_thread(export_bytes, doc, loaded, options)
+    filename = export_filename(doc, options)
+    return Response(
+        data,
+        media_type="image/png" if options.format == "png" else "image/jpeg",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
 

@@ -259,6 +259,56 @@
         }
       }
     },
+    "/api/documents/{doc_id}/export": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Export",
+        "description": "Render the edits at full resolution and return the file to download.",
+        "operationId": "exportDocument",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -684,6 +734,35 @@
         ],
         "title": "DocumentView",
         "description": "What the web app sees of a document."
+      },
+      "ExportOptions": {
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "jpeg",
+              "png"
+            ],
+            "title": "Format",
+            "default": "jpeg"
+          },
+          "quality": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Quality",
+            "description": "JPEG quality; ignored for PNG.",
+            "default": 92
+          },
+          "keep_location": {
+            "type": "boolean",
+            "title": "Keep Location",
+            "description": "Keep GPS location from the original. Off by default for privacy.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ExportOptions"
       },
       "Exposure": {
         "properties": {
