@@ -22,7 +22,7 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import imaging
+from photo_agent import diagnostics, imaging
 from photo_agent.graph import ChatEntry, Document, DocumentView, Turn
 from photo_agent.operations import OPERATIONS_BY_NAME, OpBase, Operation, OperationAdapter
 from photo_agent.render import RenderCache
@@ -55,6 +55,12 @@ plainly undermines it (for example, warming a photo that is also underexposed).
 - If a request needs something the tools cannot do (removing objects, changing the sky, \
 generating content), say so plainly and offer what you can do instead.
 - If the request is ambiguous in a way that matters, make a reasonable choice and say which.
+
+Checking your work: after each round of edits you get the newly rendered photo and \
+measurements comparing it with the unedited original. Look at both before replying. If \
+something overshot (blown-out highlights, crushed blacks, garish color, an odd cast, a crop \
+that cuts off the subject), correct it with another tool call. One or two correction rounds \
+are plenty; do not fiddle.
 
 When you are done, reply in one to three short, friendly sentences in plain language: what \
 you changed and why. Avoid jargon and slider numbers unless they help."""
@@ -359,9 +365,29 @@ class AgentService:
             self.renders.get_or_render, doc.id, loaded.proxy, operations, loaded.proxy_context
         )
 
+    async def _attach_self_check(
+        self,
+        doc: Document,
+        editor: Editor,
+        results: list[dict[str, Any]],
+        baseline: diagnostics.Measurements,
+    ) -> None:
+        """Show Claude what its edits did, so it can catch overshoots before replying."""
+        rendered = await self._render(doc, editor.operations)
+        # Ops changed, so at least one call succeeded; annotate the last successful one.
+        last = next(r for r in reversed(results) if not r.get("is_error"))
+        last["content"] = [
+            {"type": "text", "text": str(last["content"])},
+            {"type": "text", "text": diagnostics.report(baseline, diagnostics.measure(rendered))},
+            {"type": "text", "text": describe_operations(editor.operations)},
+            image_block(rendered),
+        ]
+
     async def _converse(self, doc: Document, request: str, editor: Editor, emit: Emit) -> str:
         history, events = history_messages(doc.chat)
         preview = await self._render(doc, editor.operations)
+        baseline = diagnostics.measure(await self._render(doc, []))
+        operations_seen = list(editor.operations)
         intro = events_note(events)
         messages: list[BetaMessageParam] = [
             *history,
@@ -416,6 +442,9 @@ class AgentService:
                     continue
                 await emit(event)
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": text})
+            if editor.operations != operations_seen:
+                operations_seen = list(editor.operations)
+                await self._attach_self_check(doc, editor, results, baseline)
             messages.append({"role": "user", "content": results})  # type: ignore[typeddict-item]
         else:
             await on_text("I stopped here to keep things quick; tell me if you want more changes.")

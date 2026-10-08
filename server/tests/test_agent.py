@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -194,3 +195,36 @@ def test_chat_websocket_explains_missing_api_key(client: TestClient, upload: Upl
         event = ws.receive_json()
     assert event["type"] == "error"
     assert "ANTHROPIC_API_KEY" in event["message"]
+
+
+def test_claude_sees_its_result_and_measurements_after_editing(
+    upload: Upload, settings: Settings
+) -> None:
+    doc = upload("portrait.jpg")
+
+    def correct_overshoot(messages: list[dict[str, Any]]) -> list[Any]:
+        added = messages[-1]["content"][0]["content"][0]["text"]
+        op_id = re.search(r"as operation (\w+)", added)
+        assert op_id
+        return [tool("update_operation", {"id": op_id[1], "changes": {"stops": 0.1}})]
+
+    model = FakeModel([tool("exposure", {"stops": 4})], correct_overshoot, [text("Brightened it.")])
+    _, result = run_turn(settings, doc["id"], "brighter", model)
+
+    check = model.calls[1][-1]["content"][0]["content"]
+    assert [b["type"] for b in check] == ["text", "text", "text", "image"]
+    assert "Possible overshoots" in check[1]["text"]
+    assert "blown-out" in check[1]["text"]
+    assert result.operations == [Exposure(id=result.operations[0].id, stops=0.1)]
+    # The correction round gets a fresh look too, now without the warning.
+    recheck = model.calls[2][-1]["content"][0]["content"]
+    assert "No overshoots detected" in recheck[1]["text"]
+
+
+def test_no_self_check_when_nothing_changed(upload: Upload, settings: Settings) -> None:
+    doc = upload("portrait.jpg")
+    model = FakeModel([tool("exposure", {"stops": 99})], [text("Sorry.")])
+    run_turn(settings, doc["id"], "brighter", model)
+    result = model.calls[1][-1]["content"][0]
+    assert result["is_error"] is True
+    assert isinstance(result["content"], str)

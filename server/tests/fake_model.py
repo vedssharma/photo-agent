@@ -25,11 +25,16 @@ def tool(name: str, args: dict[str, Any], id: str | None = None) -> BetaToolUseB
 class FakeModel:
     """Replies with the scripted responses in order and records every request it saw."""
 
-    def __init__(self, *responses: list[Any], stop_reason: str | None = None) -> None:
+    def __init__(
+        self,
+        *responses: list[Any] | Callable[[list[dict[str, Any]]], list[Any]],
+        stop_reason: str | None = None,
+    ) -> None:
         self.responses = list(responses)
         self.stop_reason = stop_reason
         self.calls: list[list[dict[str, Any]]] = []
-        """Each request's messages, loosely typed so tests can poke at them."""
+        """Each request's messages, loosely typed so tests can poke at them. A scripted
+        response may be a function of the request's messages."""
 
     async def create(
         self,
@@ -40,7 +45,8 @@ class FakeModel:
         on_text: Callable[[str], Awaitable[None]],
     ) -> BetaMessage:
         self.calls.append([dict(m) for m in messages])
-        blocks = self.responses.pop(0)
+        scripted = self.responses.pop(0)
+        blocks = scripted(self.calls[-1]) if callable(scripted) else scripted
         for block in blocks:
             if block.type == "text":
                 await on_text(block.text)
