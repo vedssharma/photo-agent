@@ -36,4 +36,5 @@ web/      Vite + React + TypeScript frontend
 server/   Python (FastAPI) backend, managed with uv
 api/      OpenAPI contract shared by web and server (generated)
 docs/     Design notes
+fixtures/ Test photos (JPEG, PNG, HEIC; portrait, landscape, low light)
 ```
