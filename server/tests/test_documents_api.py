@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from photo_agent.graph import Turn
-from photo_agent.operations import Exposure
+from photo_agent.operations import Crop, Exposure
 from photo_agent.routes import get_store
 from photo_agent.settings import Settings
 
@@ -90,3 +90,18 @@ def test_preview_renders_current_operations(
         io.BytesIO(client.get(f"/api/documents/{doc['id']}/original").content)
     ).convert("L")
     assert np.asarray(edited).mean() > np.asarray(original).mean()
+
+
+def test_before_view_shares_the_current_framing(
+    client: TestClient, upload: Upload, settings: Settings
+) -> None:
+    doc = upload("landscape.png")
+    store = get_store(settings)
+    stored = store.get(doc["id"])
+    stored.commit_turn(Turn(request="square", operations=[Exposure(stops=1), Crop(aspect="1:1")]))
+    store.save(stored)
+
+    before = Image.open(io.BytesIO(client.get(f"/api/documents/{doc['id']}/before").content))
+    after = Image.open(io.BytesIO(client.get(f"/api/documents/{doc['id']}/preview").content))
+    assert before.size == after.size == (427, 427)
+    assert np.asarray(before.convert("L")).mean() < np.asarray(after.convert("L")).mean()

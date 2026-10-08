@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { FakeSocket } from './test/fakeSocket'
 import { healthy, makeDoc, stubApi } from './test/fixtures'
 
 function stubFetch(response: Response) {
@@ -98,5 +99,52 @@ describe('App with a photo', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not open bad.jpg: Could not read this file as an image.',
     )
+  })
+})
+
+describe('Editor', () => {
+  async function openPhoto() {
+    stubApi({
+      'GET /api/health': healthy,
+      'POST /api/documents': () => Response.json(makeDoc(), { status: 201 }),
+    })
+    render(<App createSocket={FakeSocket.factory} />)
+    await userEvent.upload(
+      screen.getByLabelText('Photo file'),
+      new File(['x'], 'cat.heic'),
+    )
+    await screen.findByRole('img', { name: 'cat.heic' })
+  }
+
+  it('opens the download dialog from the toolbar', async () => {
+    await openPhoto()
+    await userEvent.click(screen.getByRole('button', { name: 'Download' }))
+    expect(
+      screen.getByRole('dialog', { name: 'Download photo' }),
+    ).toBeInTheDocument()
+  })
+
+  it('refreshes the photo when the agent finishes a turn', async () => {
+    await openPhoto()
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Message' }),
+      'warmer{Enter}',
+    )
+    const socket = FakeSocket.last!
+    act(() => socket.open())
+    expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled()
+
+    act(() =>
+      socket.emit({
+        type: 'done',
+        document: makeDoc({ revision: 'turn1', can_undo: true }),
+      }),
+    )
+
+    expect(screen.getByRole('img', { name: 'cat.heic' })).toHaveAttribute(
+      'src',
+      '/api/documents/abc123abc123/preview?revision=turn1',
+    )
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
   })
 })

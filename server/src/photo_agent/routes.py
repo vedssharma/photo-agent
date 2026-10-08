@@ -23,6 +23,7 @@ from photo_agent import imaging
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
+from photo_agent.operations import GEOMETRY_TYPES
 from photo_agent.render import RenderCache
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore
@@ -148,6 +149,26 @@ async def export(doc_id: str, options: ExportOptions, store: Store) -> Response:
         data,
         media_type="image/png" if options.format == "png" else "image/jpeg",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.get(
+    "/{doc_id}/before",
+    operation_id="getBefore",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+def before(doc_id: str, store: Store) -> Response:
+    """The unedited look with the current framing (crop, rotation, flips) applied, so it lines
+    up with the preview for before/after comparison."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    framing = [op for op in doc.operations if isinstance(op, GEOMETRY_TYPES)]
+    pixels = previews.get_or_render(doc.id, loaded.proxy, framing, loaded.proxy_context)
+    return Response(
+        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache"},
     )
 
 

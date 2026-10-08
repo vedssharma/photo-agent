@@ -45,6 +45,11 @@ export function originalUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/original`
 }
 
+/** URL of the unedited look with the current crop and rotation, to compare against. */
+export function beforeUrl(doc: DocumentView): string {
+  return `/api/documents/${doc.id}/before?revision=${doc.revision}`
+}
+
 /** URL of the edited photo at preview size; changes whenever the edits do. */
 export function previewUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/preview?revision=${doc.revision}`

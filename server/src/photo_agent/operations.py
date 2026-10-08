@@ -292,6 +292,9 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
 
+GEOMETRY_TYPES: tuple[type[OpBase], ...] = (Crop, Rotate, Straighten, Flip)
+"""Operations that change framing rather than look."""
+
 
 def op_name(cls: type[OpBase]) -> str:
     default = cls.model_fields["op"].default

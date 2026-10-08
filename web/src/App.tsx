@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import {
   type DocumentView,
-  originalUrl,
+  beforeUrl,
   previewUrl,
   uploadDocument,
 } from './api/documents'
@@ -61,10 +61,19 @@ function Editor({
             onDocument={onDocument}
             disabled={chat.busy}
           />
+          <span className="spacer" />
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setExporting(true)}
+            disabled={chat.busy}
+          >
+            Download
+          </button>
         </div>
         <PhotoCanvas
           src={previewUrl(doc)}
-          beforeSrc={originalUrl(doc)}
+          beforeSrc={beforeUrl(doc)}
           alt={doc.filename}
           busy={chat.busy}
         />
