@@ -1,22 +1,22 @@
 """Edit graph: a document is the original image plus a tree of edit steps.
 
 The graph never stores pixels. Each step (an agent turn or a manual tweak) records the full
-operation list as it stood after that step, and points at the step it was made from. Undo
-and redo move `head` along a branch; jumping to an older step and editing from there starts
-a new branch without losing the old one. Any step can be re-rendered at preview or full
-resolution from the original.
+edit state (framing plus layers, see `photo_agent.layers`) as it stood after that step, and
+points at the step it was made from. Undo and redo move `head` along a branch; jumping to an
+older step and editing from there starts a new branch without losing the old one. Any step
+can be re-rendered at preview or full resolution from the original.
 """
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from photo_agent.operations import Operation
+from photo_agent.layers import EditState
+from photo_agent.operations import Operation, OperationAdapter
 
 
 def new_id() -> str:
@@ -43,9 +43,27 @@ class Step(BaseModel):
     """For agent steps, what the user asked for."""
     reply: str = ""
     """For agent steps, the agent's plain-language explanation of what it changed."""
-    operations: list[Operation] = Field(default_factory=list)
-    """The complete operation list after this step."""
+    state: EditState = Field(default_factory=EditState)
+    """The complete edit state after this step."""
+    coalesce: str | None = None
+    """For manual steps, what was tweaked (e.g. one slider). Repeated tweaks of the same
+    thing fold into one step instead of flooding the history."""
     created_at: datetime = Field(default_factory=now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_v1(cls, data: Any) -> Any:
+        """Phase 1 steps held a flat operation list; it becomes framing plus one layer."""
+        if isinstance(data, dict) and "operations" in data:
+            data = {**data}
+            ops = data.pop("operations")
+            name = str(data.get("label") or data.get("request") or "Edits")
+            data.setdefault("state", EditState.from_operations(_validate_ops(ops), name))
+        return data
+
+
+def _validate_ops(raw: Any) -> list[Operation]:
+    return [OperationAdapter.validate_python(op) for op in raw]
 
 
 class ChatEntry(BaseModel):
@@ -127,18 +145,15 @@ class Document(BaseModel):
         return self.step(self.head) if self.head else None
 
     @property
-    def operations(self) -> list[Operation]:
-        """The operations currently in effect."""
+    def state(self) -> EditState:
+        """The edits currently in effect (a copy; commit a step to change them)."""
         current = self.current
-        return list(current.operations) if current else []
+        return current.state.model_copy(deep=True) if current else EditState()
 
     @property
     def revision(self) -> str:
         """Identifies what the current edits render to; changes whenever the result would."""
-        if self.head is None:
-            return "original"
-        payload = "[" + ",".join(op.model_dump_json() for op in self.operations) + "]"
-        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+        return "original" if self.head is None else self.state.fingerprint
 
     @property
     def can_undo(self) -> bool:
@@ -167,6 +182,32 @@ class Document(BaseModel):
         index = next(i for i, s in enumerate(self.steps) if s.id == self.head)
         step.id, step.parent = self.steps[index].id, self.steps[index].parent
         self.steps[index] = step
+
+    def edit_by_hand(self, label: str, state: EditState, coalesce: str | None = None) -> bool:
+        """Record a manual change as a named step. Returns False if nothing changed.
+
+        Successive tweaks with the same `coalesce` key (dragging one slider several times)
+        update the step they started instead of adding one step per tweak.
+        """
+        if state == self.state:
+            return False
+        step = Step(kind="manual", label=label, state=state, coalesce=coalesce)
+        current = self.current
+        text = f"Edited by hand: {label}"
+        if (
+            coalesce
+            and current is not None
+            and current.kind == "manual"
+            and current.coalesce == coalesce
+            and not self.has_children(current.id)
+        ):
+            self.replace_head(step)
+            if self.chat and self.chat[-1].step_id == step.id:
+                self.chat[-1].text = text
+            return True
+        self.commit(step)
+        self.chat.append(ChatEntry(role="event", text=text, step_id=step.id))
+        return True
 
     def has_children(self, step_id: str) -> bool:
         return any(s.parent == step_id for s in self.steps)
@@ -227,7 +268,7 @@ class DocumentView(BaseModel):
     height: int
     revision: str
     """Identifies the current edit state; changes whenever the rendered result would."""
-    operations: list[Operation]
+    state: EditState
     head: str | None
     tip: str | None
     can_undo: bool
@@ -250,7 +291,7 @@ class DocumentView(BaseModel):
             width=doc.width,
             height=doc.height,
             revision=doc.revision,
-            operations=doc.operations,
+            state=doc.state,
             head=doc.head,
             tip=doc.tip,
             can_undo=doc.can_undo,

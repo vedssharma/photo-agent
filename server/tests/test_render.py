@@ -15,6 +15,7 @@ from PIL import Image
 
 from photo_agent import imaging
 from photo_agent import operations as ops
+from photo_agent.layers import EditState
 from photo_agent.render import (
     RenderCache,
     RenderContext,
@@ -214,10 +215,11 @@ def test_preview_and_full_resolution_renders_agree(landscape: imaging.Array) -> 
 
 def test_render_cache_reuses_results(landscape: imaging.Array) -> None:
     cache = RenderCache(size=2)
-    graph = [ops.Exposure(stops=1, id="a")]
-    first = cache.get_or_render("doc", landscape, graph, CTX)
-    assert cache.get_or_render("doc", landscape, graph, CTX) is first
-    other = cache.get_or_render("doc", landscape, [ops.Exposure(stops=2, id="a")], CTX)
+    state = EditState.from_operations([ops.Exposure(stops=1, id="a")], "x")
+    first = cache.get_or_render("doc", landscape, state, CTX)
+    assert cache.get_or_render("doc", landscape, state, CTX) is first
+    state.layers[0].operations[0] = ops.Exposure(stops=2, id="a")
+    other = cache.get_or_render("doc", landscape, state, CTX)
     assert other is not first
 
 

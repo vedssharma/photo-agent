@@ -181,6 +181,59 @@
         }
       }
     },
+    "/api/documents/{doc_id}/edits": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Edit By Hand",
+        "description": "Record a change made with the manual controls as a named step in the history.",
+        "operationId": "editByHand",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/checkout": {
       "post": {
         "tags": [
@@ -709,102 +762,8 @@
             "type": "string",
             "title": "Revision"
           },
-          "operations": {
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Exposure"
-                },
-                {
-                  "$ref": "#/components/schemas/Contrast"
-                },
-                {
-                  "$ref": "#/components/schemas/Highlights"
-                },
-                {
-                  "$ref": "#/components/schemas/Shadows"
-                },
-                {
-                  "$ref": "#/components/schemas/Whites"
-                },
-                {
-                  "$ref": "#/components/schemas/Blacks"
-                },
-                {
-                  "$ref": "#/components/schemas/WhiteBalance"
-                },
-                {
-                  "$ref": "#/components/schemas/Vibrance"
-                },
-                {
-                  "$ref": "#/components/schemas/Saturation"
-                },
-                {
-                  "$ref": "#/components/schemas/HSL"
-                },
-                {
-                  "$ref": "#/components/schemas/Sharpen"
-                },
-                {
-                  "$ref": "#/components/schemas/NoiseReduction"
-                },
-                {
-                  "$ref": "#/components/schemas/Clarity"
-                },
-                {
-                  "$ref": "#/components/schemas/Dehaze"
-                },
-                {
-                  "$ref": "#/components/schemas/Crop"
-                },
-                {
-                  "$ref": "#/components/schemas/Rotate"
-                },
-                {
-                  "$ref": "#/components/schemas/Straighten"
-                },
-                {
-                  "$ref": "#/components/schemas/Flip"
-                },
-                {
-                  "$ref": "#/components/schemas/Vignette"
-                },
-                {
-                  "$ref": "#/components/schemas/Grain"
-                },
-                {
-                  "$ref": "#/components/schemas/ToneCurve"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "op",
-                "mapping": {
-                  "blacks": "#/components/schemas/Blacks",
-                  "clarity": "#/components/schemas/Clarity",
-                  "contrast": "#/components/schemas/Contrast",
-                  "crop": "#/components/schemas/Crop",
-                  "dehaze": "#/components/schemas/Dehaze",
-                  "exposure": "#/components/schemas/Exposure",
-                  "flip": "#/components/schemas/Flip",
-                  "grain": "#/components/schemas/Grain",
-                  "highlights": "#/components/schemas/Highlights",
-                  "hsl": "#/components/schemas/HSL",
-                  "noise_reduction": "#/components/schemas/NoiseReduction",
-                  "rotate": "#/components/schemas/Rotate",
-                  "saturation": "#/components/schemas/Saturation",
-                  "shadows": "#/components/schemas/Shadows",
-                  "sharpen": "#/components/schemas/Sharpen",
-                  "straighten": "#/components/schemas/Straighten",
-                  "tone_curve": "#/components/schemas/ToneCurve",
-                  "vibrance": "#/components/schemas/Vibrance",
-                  "vignette": "#/components/schemas/Vignette",
-                  "white_balance": "#/components/schemas/WhiteBalance",
-                  "whites": "#/components/schemas/Whites"
-                }
-              }
-            },
-            "type": "array",
-            "title": "Operations"
+          "state": {
+            "$ref": "#/components/schemas/EditState"
           },
           "head": {
             "anyOf": [
@@ -881,7 +840,7 @@
           "width",
           "height",
           "revision",
-          "operations",
+          "state",
           "head",
           "tip",
           "can_undo",
@@ -893,6 +852,52 @@
         ],
         "title": "DocumentView",
         "description": "What the web app sees of a document."
+      },
+      "EditState": {
+        "properties": {
+          "framing": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Crop"
+                },
+                {
+                  "$ref": "#/components/schemas/Rotate"
+                },
+                {
+                  "$ref": "#/components/schemas/Straighten"
+                },
+                {
+                  "$ref": "#/components/schemas/Flip"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "crop": "#/components/schemas/Crop",
+                  "flip": "#/components/schemas/Flip",
+                  "rotate": "#/components/schemas/Rotate",
+                  "straighten": "#/components/schemas/Straighten"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Framing",
+            "default": []
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "title": "Layers",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EditState",
+        "description": "Everything needed to render the photo from the original."
       },
       "ExportOptions": {
         "properties": {
@@ -1137,6 +1142,173 @@
         ],
         "title": "Highlights",
         "description": "Recover (negative) or boost (positive) the brightest areas without touching shadows."
+      },
+      "Layer": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id; new layers get one from `new_layer_id`."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "opacity": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Opacity",
+            "description": "0 is no effect, 100 is full effect.",
+            "default": 100
+          },
+          "blend_mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "multiply",
+              "screen",
+              "overlay",
+              "soft_light",
+              "color",
+              "luminosity"
+            ],
+            "title": "Blend Mode",
+            "description": "How the layer's result combines with the layers below: normal replaces them; luminosity changes only brightness (contrast without color shifts); color changes only color; multiply darkens; screen lightens; overlay and soft_light add contrast.",
+            "default": "normal"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Exposure"
+                },
+                {
+                  "$ref": "#/components/schemas/Contrast"
+                },
+                {
+                  "$ref": "#/components/schemas/Highlights"
+                },
+                {
+                  "$ref": "#/components/schemas/Shadows"
+                },
+                {
+                  "$ref": "#/components/schemas/Whites"
+                },
+                {
+                  "$ref": "#/components/schemas/Blacks"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalance"
+                },
+                {
+                  "$ref": "#/components/schemas/Vibrance"
+                },
+                {
+                  "$ref": "#/components/schemas/Saturation"
+                },
+                {
+                  "$ref": "#/components/schemas/HSL"
+                },
+                {
+                  "$ref": "#/components/schemas/Sharpen"
+                },
+                {
+                  "$ref": "#/components/schemas/NoiseReduction"
+                },
+                {
+                  "$ref": "#/components/schemas/Clarity"
+                },
+                {
+                  "$ref": "#/components/schemas/Dehaze"
+                },
+                {
+                  "$ref": "#/components/schemas/Vignette"
+                },
+                {
+                  "$ref": "#/components/schemas/Grain"
+                },
+                {
+                  "$ref": "#/components/schemas/ToneCurve"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "blacks": "#/components/schemas/Blacks",
+                  "clarity": "#/components/schemas/Clarity",
+                  "contrast": "#/components/schemas/Contrast",
+                  "dehaze": "#/components/schemas/Dehaze",
+                  "exposure": "#/components/schemas/Exposure",
+                  "grain": "#/components/schemas/Grain",
+                  "highlights": "#/components/schemas/Highlights",
+                  "hsl": "#/components/schemas/HSL",
+                  "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "saturation": "#/components/schemas/Saturation",
+                  "shadows": "#/components/schemas/Shadows",
+                  "sharpen": "#/components/schemas/Sharpen",
+                  "tone_curve": "#/components/schemas/ToneCurve",
+                  "vibrance": "#/components/schemas/Vibrance",
+                  "vignette": "#/components/schemas/Vignette",
+                  "white_balance": "#/components/schemas/WhiteBalance",
+                  "whites": "#/components/schemas/Whites"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Operations",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Layer",
+        "description": "A named group of adjustments with its own visibility, opacity, and blend mode."
+      },
+      "ManualEdit": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "description": "Name for the history."
+          },
+          "state": {
+            "$ref": "#/components/schemas/EditState",
+            "description": "The complete edit state after the change."
+          },
+          "coalesce": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coalesce",
+            "description": "What was tweaked, e.g. one slider. Repeated tweaks with the same key update the previous step instead of adding another."
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "state"
+        ],
+        "title": "ManualEdit"
       },
       "NoiseReduction": {
         "properties": {

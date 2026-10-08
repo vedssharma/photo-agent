@@ -10,7 +10,7 @@ export function makeDoc(overrides: Partial<DocumentView> = {}): DocumentView {
     width: 4032,
     height: 3024,
     revision: 'original',
-    operations: [],
+    state: { framing: [], layers: [] },
     head: null,
     tip: null,
     can_undo: false,

@@ -24,7 +24,7 @@ from photo_agent import imaging
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
-from photo_agent.operations import GEOMETRY_TYPES
+from photo_agent.layers import EditState
 from photo_agent.render import RenderCache
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore
@@ -93,6 +93,26 @@ def redo(doc_id: str, store: Store) -> DocumentView:
     """Re-apply the most recently undone step."""
     doc = load(store, doc_id)
     if doc.redo():
+        store.save(doc)
+    return DocumentView.of(doc)
+
+
+class ManualEdit(BaseModel):
+    label: str = Field(min_length=1, max_length=120, description="Name for the history.")
+    state: EditState = Field(description="The complete edit state after the change.")
+    coalesce: str | None = Field(
+        None,
+        max_length=200,
+        description="What was tweaked, e.g. one slider. Repeated tweaks with the same key "
+        "update the previous step instead of adding another.",
+    )
+
+
+@router.post("/{doc_id}/edits", operation_id="editByHand")
+def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
+    """Record a change made with the manual controls as a named step in the history."""
+    doc = load(store, doc_id)
+    if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
         store.save(doc)
     return DocumentView.of(doc)
 
@@ -186,7 +206,7 @@ def before(doc_id: str, store: Store) -> Response:
     up with the preview for before/after comparison."""
     doc = load(store, doc_id)
     loaded = store.image(doc_id)
-    framing = [op for op in doc.operations if isinstance(op, GEOMETRY_TYPES)]
+    framing = EditState(framing=doc.state.framing)
     pixels = previews.get_or_render(doc.id, loaded.proxy, framing, loaded.proxy_context)
     return Response(
         imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
@@ -197,7 +217,7 @@ def before(doc_id: str, store: Store) -> Response:
 
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
     loaded = store.image(doc.id)
-    return previews.get_or_render(doc.id, loaded.proxy, doc.operations, loaded.proxy_context)
+    return previews.get_or_render(doc.id, loaded.proxy, doc.state, loaded.proxy_context)
 
 
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:

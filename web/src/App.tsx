@@ -11,6 +11,7 @@ import { ChatPanel } from './components/ChatPanel'
 import { ExportDialog } from './components/ExportDialog'
 import { HistoryButtons } from './components/HistoryButtons'
 import { HistoryPanel } from './components/HistoryPanel'
+import { LayersPanel } from './components/LayersPanel'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
 import { PhotoPicker } from './components/PhotoPicker'
@@ -53,9 +54,17 @@ function Editor({
 }) {
   const chat = useChat(doc.id, onDocument, createSocket)
   const [exporting, setExporting] = useState(false)
+  const [selectedLayer, setSelectedLayer] = useState<string | null>(null)
   return (
     <main className="workspace">
       <aside className="side" aria-label="Edits">
+        <LayersPanel
+          doc={doc}
+          onDocument={onDocument}
+          disabled={chat.busy}
+          selected={selectedLayer}
+          onSelect={setSelectedLayer}
+        />
         <HistoryPanel doc={doc} onDocument={onDocument} disabled={chat.busy} />
       </aside>
       <div className="editor">

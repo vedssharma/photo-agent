@@ -2,8 +2,14 @@ import { api } from './client'
 import type { components } from './schema'
 
 export type DocumentView = components['schemas']['DocumentView']
-export type Operation = DocumentView['operations'][number]
+export type EditState = components['schemas']['EditState']
+export type Layer = components['schemas']['Layer']
+export type BlendMode = Layer['blend_mode']
+export type FramingOperation = EditState['framing'][number]
+export type AdjustmentOperation = Layer['operations'][number]
+export type Operation = FramingOperation | AdjustmentOperation
 export type StepView = DocumentView['history'][number]
+export type ManualEdit = components['schemas']['ManualEdit']
 
 /** File types the backend can decode. HEIC often has no MIME type in browsers. */
 export const ACCEPTED_TYPES =
@@ -72,6 +78,22 @@ export async function redo(docId: string): Promise<DocumentView> {
     '/api/documents/{doc_id}/redo',
     {
       params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Record a change made with the manual controls as a step in the history. */
+export async function editByHand(
+  docId: string,
+  edit: ManualEdit,
+): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/edits',
+    {
+      params: { path: { doc_id: docId } },
+      body: edit,
     },
   )
   if (!data) throw new ApiError(detail(error, response.status))

@@ -81,6 +81,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit By Hand
+         * @description Record a change made with the manual controls as a named step in the history.
+         */
+        post: operations["editByHand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/checkout": {
         parameters: {
             query?: never;
@@ -385,8 +405,7 @@ export interface components {
             height: number;
             /** Revision */
             revision: string;
-            /** Operations */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            state: components["schemas"]["EditState"];
             /** Head */
             head: string | null;
             /** Tip */
@@ -403,6 +422,22 @@ export interface components {
             history: components["schemas"]["StepView"][];
             /** Chat */
             chat: components["schemas"]["ChatEntry"][];
+        };
+        /**
+         * EditState
+         * @description Everything needed to render the photo from the original.
+         */
+        EditState: {
+            /**
+             * Framing
+             * @default []
+             */
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"])[];
+            /**
+             * Layers
+             * @default []
+             */
+            layers: components["schemas"]["Layer"][];
         };
         /** ExportOptions */
         ExportOptions: {
@@ -560,6 +595,57 @@ export interface components {
             op: "highlights";
             /** Amount */
             amount: number;
+        };
+        /**
+         * Layer
+         * @description A named group of adjustments with its own visibility, opacity, and blend mode.
+         */
+        Layer: {
+            /**
+             * Id
+             * @description Stable id; new layers get one from `new_layer_id`.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Opacity
+             * @description 0 is no effect, 100 is full effect.
+             * @default 100
+             */
+            opacity: number;
+            /**
+             * Blend Mode
+             * @description How the layer's result combines with the layers below: normal replaces them; luminosity changes only brightness (contrast without color shifts); color changes only color; multiply darkens; screen lightens; overlay and soft_light add contrast.
+             * @default normal
+             * @enum {string}
+             */
+            blend_mode: "normal" | "multiply" | "screen" | "overlay" | "soft_light" | "color" | "luminosity";
+            /**
+             * Operations
+             * @default []
+             */
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+        };
+        /** ManualEdit */
+        ManualEdit: {
+            /**
+             * Label
+             * @description Name for the history.
+             */
+            label: string;
+            /** @description The complete edit state after the change. */
+            state: components["schemas"]["EditState"];
+            /**
+             * Coalesce
+             * @description What was tweaked, e.g. one slider. Repeated tweaks with the same key update the previous step instead of adding another.
+             */
+            coalesce?: string | null;
         };
         /**
          * NoiseReduction
@@ -1041,6 +1127,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editByHand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEdit"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
