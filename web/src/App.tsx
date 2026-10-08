@@ -8,6 +8,7 @@ import {
   uploadDocument,
 } from './api/documents'
 import { ChatPanel } from './components/ChatPanel'
+import { ExportDialog } from './components/ExportDialog'
 import { HistoryButtons } from './components/HistoryButtons'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
@@ -50,6 +51,7 @@ function Editor({
   createSocket?: SocketFactory
 }) {
   const chat = useChat(doc.id, onDocument, createSocket)
+  const [exporting, setExporting] = useState(false)
   return (
     <main className="workspace">
       <div className="editor">
@@ -68,6 +70,9 @@ function Editor({
         />
       </div>
       <ChatPanel doc={doc} chat={chat} />
+      {exporting && (
+        <ExportDialog doc={doc} onClose={() => setExporting(false)} />
+      )}
     </main>
   )
 }

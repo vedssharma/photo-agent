@@ -71,3 +71,55 @@ export async function redo(docId: string): Promise<DocumentView> {
   if (!data) throw new ApiError(detail(error, response.status))
   return data
 }
+
+export type ExportOptions = components['schemas']['ExportOptions']
+
+export interface ExportedFile {
+  blob: Blob
+  filename: string
+}
+
+/** Parse the download name from a Content-Disposition header. */
+export function dispositionFilename(
+  header: string | null,
+  fallback: string,
+): string {
+  const encoded = header?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) return decodeURIComponent(encoded)
+  return header?.match(/filename="?([^";]+)"?/i)?.[1] ?? fallback
+}
+
+export async function exportDocument(
+  doc: DocumentView,
+  options: ExportOptions,
+): Promise<ExportedFile> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/export',
+    {
+      params: { path: { doc_id: doc.id } },
+      body: options,
+      parseAs: 'blob',
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  const ext = options.format === 'png' ? 'png' : 'jpg'
+  return {
+    blob: data as Blob,
+    filename: dispositionFilename(
+      response.headers.get('content-disposition'),
+      `photo.${ext}`,
+    ),
+  }
+}
+
+/** Hand a file to the browser's download manager. */
+export function saveFile({ blob, filename }: ExportedFile) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.append(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
