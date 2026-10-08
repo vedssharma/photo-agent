@@ -22,10 +22,14 @@ Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it f
 ## Using it
 
 1. Open a JPEG, PNG, or HEIC photo (choose one or drop it on the page).
-2. Tell the agent what you want, e.g. "make this look warmer and less washed out, and crop it for Instagram". It streams its reply and lists the edits as it makes them.
-3. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
-4. **Undo** / **Redo** (Ctrl/⌘+Z, Shift+Ctrl/⌘+Z) step through the agent's turns.
-5. **Download** renders the edits at full resolution as JPEG or PNG. Camera EXIF is kept; GPS location is removed unless you ask to keep it.
+2. Tell the agent what you want, e.g. "make this look warmer and less washed out, and crop it for Instagram". It streams its reply and lists the edits as it makes them. Each request becomes its own layer.
+3. Fine-tune in **Layers**: hide a layer, change its opacity or blend mode, drag any adjustment's slider (light and color sliders preview instantly), add adjustments by hand, or limit a layer to part of the photo with a mask (paint with a brush, or use a linear gradient, radial gradient, or brightness range).
+4. **History** lists every agent turn and manual change as a named step. Click one to go back to it; editing from there starts a new branch and keeps the old one. **Undo** / **Redo** (Ctrl/⌘+Z, Shift+Ctrl/⌘+Z) step along the current branch.
+5. **Recipes** saves a photo's layers as a named look, to apply to other photos in one click. Crops and painted masks stay with the photo they were made for.
+6. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
+7. **Download** renders the edits at full resolution as JPEG or PNG. Camera EXIF is kept; GPS location is removed unless you ask to keep it.
+
+Your work is autosaved in the browser: close the tab and the project reopens where you left off, and the start page lists recent projects. **Save project** downloads a `.photoagent` file (the original plus every layer and the full history) that you can open again later, here or on another computer.
 
 Photos and their edit histories are kept in `.data/` at the repo root. A downsized preview of the photo is sent to Claude with each request so the agent can see it; the original never leaves your computer. Set `ANTHROPIC_MODEL` in `.env` to use a different Claude model.
 
