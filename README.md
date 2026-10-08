@@ -9,5 +9,6 @@ See [ROADMAP.md](ROADMAP.md) for the plan and [docs/](docs/) for design notes.
 ```
 web/      Vite + React + TypeScript frontend
 server/   Python (FastAPI) backend, managed with uv
+api/      OpenAPI contract shared by web and server (generated)
 docs/     Design notes
 ```

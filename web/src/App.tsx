@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { api } from './api/client'
+
 type Health =
   | { state: 'loading' }
   | { state: 'ok'; version: string }
@@ -9,11 +11,11 @@ function App() {
   const [health, setHealth] = useState<Health>({ state: 'loading' })
 
   useEffect(() => {
-    fetch('/api/health')
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const body = (await res.json()) as { version: string }
-        setHealth({ state: 'ok', version: body.version })
+    api
+      .GET('/api/health')
+      .then(({ data, error, response }) => {
+        if (error || !data) throw new Error(`HTTP ${response.status}`)
+        setHealth({ state: 'ok', version: data.version })
       })
       .catch((err: unknown) => {
         setHealth({ state: 'error', message: String(err) })
