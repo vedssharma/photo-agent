@@ -29,8 +29,7 @@ function App() {
       <p className="status">
         {health.state === 'loading' && 'Connecting to the backend…'}
         {health.state === 'ok' && `Backend is up (v${health.version}).`}
-        {health.state === 'error' &&
-          `Backend unreachable: ${health.message}`}
+        {health.state === 'error' && `Backend unreachable: ${health.message}`}
       </p>
     </main>
   )
