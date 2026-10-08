@@ -1,6 +1,27 @@
-.PHONY: install api lint format typecheck test check
+SERVER_PORT ?= 8000
+WEB_PORT ?= 5173
 
-## Install dependencies for both halves
+.PHONY: dev deps install api lint format typecheck test check
+
+## Start the backend and the web app together (Ctrl-C stops both)
+dev: deps .env
+	@echo "web:    http://localhost:$(WEB_PORT)"
+	@echo "server: http://localhost:$(SERVER_PORT)/docs"
+	@trap 'kill 0' INT TERM; \
+	(cd server && uv run uvicorn photo_agent.main:app --reload --port $(SERVER_PORT)) & \
+	(cd web && API_URL=http://127.0.0.1:$(SERVER_PORT) npm run dev -- --port $(WEB_PORT) --strictPort) & \
+	wait
+
+## Install or update dependencies only if needed (fast when already installed)
+deps:
+	cd server && uv sync --quiet
+	cd web && npm install --no-audit --no-fund --silent
+
+.env:
+	cp .env.example .env
+	@echo "Created .env from .env.example; add your ANTHROPIC_API_KEY there."
+
+## Clean install of dependencies for both halves, exactly as locked
 install:
 	cd server && uv sync
 	cd web && npm ci

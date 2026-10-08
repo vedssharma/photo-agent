@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 
 from photo_agent.main import app
+from photo_agent.settings import REPO_ROOT
 
-DEFAULT_PATH = Path(__file__).resolve().parents[3] / "api" / "openapi.json"
+DEFAULT_PATH = REPO_ROOT / "api" / "openapi.json"
 
 
 def main() -> None:

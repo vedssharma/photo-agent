@@ -11,7 +11,7 @@
           "meta"
         ],
         "summary": "Health",
-        "description": "Report that the server is up.",
+        "description": "Report that the server is up and whether the Claude API key is set.",
         "operationId": "getHealth",
         "responses": {
           "200": {
@@ -39,12 +39,17 @@
           "version": {
             "type": "string",
             "title": "Version"
+          },
+          "anthropic_configured": {
+            "type": "boolean",
+            "title": "Anthropic Configured"
           }
         },
         "type": "object",
         "required": [
           "status",
-          "version"
+          "version",
+          "anthropic_configured"
         ],
         "title": "HealthResponse"
       }

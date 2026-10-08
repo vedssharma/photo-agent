@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Health
-         * @description Report that the server is up.
+         * @description Report that the server is up and whether the Claude API key is set.
          */
         get: operations["getHealth"];
         put?: never;
@@ -34,6 +34,8 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+            /** Anthropic Configured */
+            anthropic_configured: boolean;
         };
     };
     responses: never;

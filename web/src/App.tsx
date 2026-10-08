@@ -4,7 +4,7 @@ import { api } from './api/client'
 
 type Health =
   | { state: 'loading' }
-  | { state: 'ok'; version: string }
+  | { state: 'ok'; version: string; anthropicConfigured: boolean }
   | { state: 'error'; message: string }
 
 function App() {
@@ -15,7 +15,11 @@ function App() {
       .GET('/api/health')
       .then(({ data, error, response }) => {
         if (error || !data) throw new Error(`HTTP ${response.status}`)
-        setHealth({ state: 'ok', version: data.version })
+        setHealth({
+          state: 'ok',
+          version: data.version,
+          anthropicConfigured: data.anthropic_configured,
+        })
       })
       .catch((err: unknown) => {
         setHealth({ state: 'error', message: String(err) })
@@ -31,6 +35,12 @@ function App() {
         {health.state === 'ok' && `Backend is up (v${health.version}).`}
         {health.state === 'error' && `Backend unreachable: ${health.message}`}
       </p>
+      {health.state === 'ok' && !health.anthropicConfigured && (
+        <p className="status">
+          No Anthropic API key found. Set <code>ANTHROPIC_API_KEY</code> in{' '}
+          <code>.env</code> at the repo root.
+        </p>
+      )}
     </main>
   )
 }
