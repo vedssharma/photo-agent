@@ -49,3 +49,25 @@ export function originalUrl(doc: DocumentView): string {
 export function previewUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/preview?revision=${doc.revision}`
 }
+
+export async function undo(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/undo',
+    {
+      params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function redo(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/redo',
+    {
+      params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}

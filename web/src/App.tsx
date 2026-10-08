@@ -8,6 +8,7 @@ import {
   uploadDocument,
 } from './api/documents'
 import { ChatPanel } from './components/ChatPanel'
+import { HistoryButtons } from './components/HistoryButtons'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
 import { PhotoPicker } from './components/PhotoPicker'
@@ -51,12 +52,21 @@ function Editor({
   const chat = useChat(doc.id, onDocument, createSocket)
   return (
     <main className="workspace">
-      <PhotoCanvas
-        src={previewUrl(doc)}
-        beforeSrc={originalUrl(doc)}
-        alt={doc.filename}
-        busy={chat.busy}
-      />
+      <div className="editor">
+        <div className="toolbar">
+          <HistoryButtons
+            doc={doc}
+            onDocument={onDocument}
+            disabled={chat.busy}
+          />
+        </div>
+        <PhotoCanvas
+          src={previewUrl(doc)}
+          beforeSrc={originalUrl(doc)}
+          alt={doc.filename}
+          busy={chat.busy}
+        />
+      </div>
       <ChatPanel doc={doc} chat={chat} />
     </main>
   )
