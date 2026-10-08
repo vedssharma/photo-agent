@@ -407,3 +407,7 @@ button.primary {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+.fine-print {
+  font-size: 0.8rem;
+}

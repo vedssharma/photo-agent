@@ -44,6 +44,10 @@ export function ChatPanel({ doc, chat }: Props) {
         {empty && (
           <li className="chat-hint">
             <p>Tell me how you would like this photo to look.</p>
+            <p className="fine-print">
+              A downsized copy of the photo is sent to Claude so it can see what
+              to change. The original stays on this computer.
+            </p>
             <div className="suggestions">
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" onClick={() => chat.send(s)}>
