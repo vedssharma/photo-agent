@@ -220,6 +220,45 @@
         }
       }
     },
+    "/api/documents/{doc_id}/preview": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Preview",
+        "description": "The photo with the current edits applied, at preview size, as JPEG.\n\nAdd `?revision=<document revision>` to make the URL unique per edit state; the response\nis the current state either way.",
+        "operationId": "getPreview",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [

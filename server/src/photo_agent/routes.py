@@ -11,11 +11,14 @@ from fastapi.responses import Response
 
 from photo_agent import imaging
 from photo_agent.graph import Document, DocumentView
+from photo_agent.render import RenderCache
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 PREVIEW_QUALITY = 88
+
+previews = RenderCache()
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -95,3 +98,28 @@ def original(doc_id: str, store: Store) -> Response:
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=31536000, immutable"},
     )
+
+
+@router.get(
+    "/{doc_id}/preview",
+    operation_id="getPreview",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+def preview(doc_id: str, store: Store) -> Response:
+    """The photo with the current edits applied, at preview size, as JPEG.
+
+    Add `?revision=<document revision>` to make the URL unique per edit state; the response
+    is the current state either way.
+    """
+    doc = load(store, doc_id)
+    return Response(
+        imaging.encode_jpeg(render_preview(store, doc), PREVIEW_QUALITY),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
+    loaded = store.image(doc.id)
+    return previews.get_or_render(doc.id, loaded.proxy, doc.operations, loaded.proxy_context)

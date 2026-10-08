@@ -17,6 +17,7 @@ from pathlib import Path
 
 from photo_agent import imaging
 from photo_agent.graph import Document
+from photo_agent.render import RenderContext
 
 EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "HEIF": ".heic"}
 _ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -30,6 +31,19 @@ class DocumentNotFoundError(KeyError):
 class LoadedImage:
     source: imaging.DecodedImage
     proxy: imaging.Array
+
+    @property
+    def proxy_context(self) -> RenderContext:
+        """How to render the proxy so it matches a full-resolution render."""
+        src_h, src_w = self.source.pixels.shape[:2]
+        return RenderContext(
+            scale=max(self.proxy.shape[:2]) / max(src_h, src_w),
+            source_aspect=src_w / src_h,
+        )
+
+    @property
+    def full_context(self) -> RenderContext:
+        return RenderContext(scale=1.0, source_aspect=self.source.width / self.source.height)
 
 
 class DocumentStore:

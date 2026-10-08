@@ -2,6 +2,7 @@ import io
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -70,3 +71,22 @@ def test_undo_and_redo(client: TestClient, upload: Upload, settings: Settings) -
     res = client.post(f"/api/documents/{doc['id']}/redo")
     assert res.json()["operations"][0]["stops"] == 1
     assert res.json()["can_undo"] is True
+
+
+def test_preview_renders_current_operations(
+    client: TestClient, upload: Upload, settings: Settings
+) -> None:
+    doc = upload("portrait.jpg")
+    store = get_store(settings)
+    stored = store.get(doc["id"])
+    stored.commit_turn(Turn(request="square", operations=[Exposure(stops=1)]))
+    store.save(stored)
+
+    res = client.get(f"/api/documents/{doc['id']}/preview")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "image/jpeg"
+    edited = Image.open(io.BytesIO(res.content)).convert("L")
+    original = Image.open(
+        io.BytesIO(client.get(f"/api/documents/{doc['id']}/original").content)
+    ).convert("L")
+    assert np.asarray(edited).mean() > np.asarray(original).mean()
