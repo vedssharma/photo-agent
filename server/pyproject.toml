@@ -18,7 +18,9 @@ packages = ["src/photo_agent"]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "mypy>=2.4.0",
+    "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
 
@@ -33,5 +35,8 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 strict = true
 python_version = "3.12"
 mypy_path = "src"
-packages = ["photo_agent"]
+files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

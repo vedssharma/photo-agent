@@ -1,4 +1,4 @@
-.PHONY: install api lint format typecheck check
+.PHONY: install api lint format typecheck test check
 
 ## Install dependencies for both halves
 install:
@@ -25,5 +25,10 @@ typecheck:
 	cd server && uv run mypy
 	cd web && npm run typecheck
 
+## Run both test suites
+test:
+	cd server && uv run pytest
+	cd web && npm test
+
 ## Everything CI runs
-check: lint typecheck
+check: lint typecheck test
