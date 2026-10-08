@@ -206,6 +206,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/layers/{layer_id}/mask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Layer Mask
+         * @description Where a layer of the current state applies, at preview size, as a grayscale PNG
+         *     (white is full effect). Add `?revision=` to make the URL unique per edit state.
+         */
+        get: operations["getLayerMask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -252,6 +273,50 @@ export interface components {
         Body_createDocument: {
             /** File */
             file: string;
+        };
+        /**
+         * BrushMask
+         * @description Painted by hand: the layer applies where the strokes are.
+         */
+        BrushMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "brush";
+            /**
+             * Strokes
+             * @default []
+             */
+            strokes: components["schemas"]["BrushStroke"][];
+        };
+        /** BrushStroke */
+        BrushStroke: {
+            /** Points */
+            points: number[][];
+            /**
+             * Size
+             * @description Brush radius as a fraction of the photo's long edge.
+             */
+            size: number;
+            /**
+             * Hardness
+             * @description 0 is a soft edge, 100 a hard one.
+             * @default 50
+             */
+            hardness: number;
+            /**
+             * Erase
+             * @description Remove from the mask instead of adding to it.
+             * @default false
+             */
+            erase: boolean;
         };
         /**
          * ChatEntry
@@ -627,10 +692,77 @@ export interface components {
              */
             blend_mode: "normal" | "multiply" | "screen" | "overlay" | "soft_light" | "color" | "luminosity";
             /**
+             * Mask
+             * @description Limits the layer to part of the photo; null applies it everywhere.
+             */
+            mask?: (components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"]) | null;
+            /**
              * Operations
              * @default []
              */
             operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+        };
+        /**
+         * LinearGradientMask
+         * @description Full effect on the `start` side, fading to none at `end`. For skies, use a start at
+         *     the top and an end a little below the horizon.
+         */
+        LinearGradientMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "linear";
+            /**
+             * Start
+             * @description [x, y] as fractions of the photo.
+             */
+            start: number[];
+            /**
+             * End
+             * @description [x, y] as fractions of the photo.
+             */
+            end: number[];
+        };
+        /**
+         * LuminosityMask
+         * @description Applies to tones between `low` and `high` brightness (0 black, 1 white). For example
+         *     0.65 to 1 targets highlights, 0 to 0.35 shadows.
+         */
+        LuminosityMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "luminosity";
+            /**
+             * Low
+             * @default 0
+             */
+            low: number;
+            /**
+             * High
+             * @default 1
+             */
+            high: number;
+            /**
+             * Feather
+             * @description Softness of the range edges.
+             * @default 0.1
+             */
+            feather: number;
         };
         /** ManualEdit */
         ManualEdit: {
@@ -674,6 +806,45 @@ export interface components {
              * @default 0
              */
             color: number;
+        };
+        /**
+         * RadialGradientMask
+         * @description Full effect inside an ellipse, fading out toward its edge. Invert it to affect
+         *     everything outside instead (for example, to darken around a subject).
+         */
+        RadialGradientMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "radial";
+            /**
+             * Center
+             * @description [x, y] as fractions of the photo.
+             */
+            center: number[];
+            /**
+             * Radius X
+             * @description Half-width as a fraction of photo width.
+             */
+            radius_x: number;
+            /**
+             * Radius Y
+             * @description Half-height as a fraction of photo height.
+             */
+            radius_y: number;
+            /**
+             * Feather
+             * @description How gradually the edge fades.
+             * @default 50
+             */
+            feather: number;
         };
         /**
          * Rotate
@@ -1342,6 +1513,45 @@ export interface operations {
                 content: {
                     "image/jpeg": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLayerMask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                layer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description No such layer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

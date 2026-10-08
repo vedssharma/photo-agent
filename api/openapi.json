@@ -457,6 +457,57 @@
         }
       }
     },
+    "/api/documents/{doc_id}/layers/{layer_id}/mask": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Layer Mask",
+        "description": "Where a layer of the current state applies, at preview size, as a grayscale PNG\n(white is full effect). Add `?revision=` to make the URL unique per edit state.",
+        "operationId": "getLayerMask",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "layer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Layer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "404": {
+            "description": "No such layer"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -523,6 +574,84 @@
           "file"
         ],
         "title": "Body_createDocument"
+      },
+      "BrushMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "brush",
+            "title": "Kind",
+            "default": "brush"
+          },
+          "strokes": {
+            "items": {
+              "$ref": "#/components/schemas/BrushStroke"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Strokes",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BrushMask",
+        "description": "Painted by hand: the layer applies where the strokes are."
+      },
+      "BrushStroke": {
+        "properties": {
+          "points": {
+            "items": {
+              "items": {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": -1.0
+              },
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2,
+              "description": "[x, y] as fractions of the photo."
+            },
+            "type": "array",
+            "maxItems": 4000,
+            "minItems": 1,
+            "title": "Points"
+          },
+          "size": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.002,
+            "title": "Size",
+            "description": "Brush radius as a fraction of the photo's long edge."
+          },
+          "hardness": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Hardness",
+            "description": "0 is a soft edge, 100 a hard one.",
+            "default": 50
+          },
+          "erase": {
+            "type": "boolean",
+            "title": "Erase",
+            "description": "Remove from the mask instead of adding to it.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "points",
+          "size"
+        ],
+        "title": "BrushStroke"
       },
       "ChatEntry": {
         "properties": {
@@ -1184,6 +1313,40 @@
             "description": "How the layer's result combines with the layers below: normal replaces them; luminosity changes only brightness (contrast without color shifts); color changes only color; multiply darkens; screen lightens; overlay and soft_light add contrast.",
             "default": "normal"
           },
+          "mask": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BrushMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinearGradientMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RadialGradientMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LuminosityMask"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "brush": "#/components/schemas/BrushMask",
+                    "linear": "#/components/schemas/LinearGradientMask",
+                    "luminosity": "#/components/schemas/LuminosityMask",
+                    "radial": "#/components/schemas/RadialGradientMask"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask",
+            "description": "Limits the layer to part of the photo; null applies it everywhere."
+          },
           "operations": {
             "items": {
               "oneOf": [
@@ -1276,6 +1439,96 @@
         "title": "Layer",
         "description": "A named group of adjustments with its own visibility, opacity, and blend mode."
       },
+      "LinearGradientMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "linear",
+            "title": "Kind",
+            "default": "linear"
+          },
+          "start": {
+            "items": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": -1.0
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Start",
+            "description": "[x, y] as fractions of the photo."
+          },
+          "end": {
+            "items": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": -1.0
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "End",
+            "description": "[x, y] as fractions of the photo."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "LinearGradientMask",
+        "description": "Full effect on the `start` side, fading to none at `end`. For skies, use a start at\nthe top and an end a little below the horizon."
+      },
+      "LuminosityMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "luminosity",
+            "title": "Kind",
+            "default": "luminosity"
+          },
+          "low": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Low",
+            "default": 0
+          },
+          "high": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "High",
+            "default": 1
+          },
+          "feather": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Feather",
+            "description": "Softness of the range edges.",
+            "default": 0.1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LuminosityMask",
+        "description": "Applies to tones between `low` and `high` brightness (0 black, 1 white). For example\n0.65 to 1 targets highlights, 0 to 0.35 shadows."
+      },
       "ManualEdit": {
         "properties": {
           "label": {
@@ -1344,6 +1597,65 @@
         "type": "object",
         "title": "NoiseReduction",
         "description": "Smooth out grain and color speckles, typical of low-light photos."
+      },
+      "RadialGradientMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "radial",
+            "title": "Kind",
+            "default": "radial"
+          },
+          "center": {
+            "items": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": -1.0
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Center",
+            "description": "[x, y] as fractions of the photo."
+          },
+          "radius_x": {
+            "type": "number",
+            "maximum": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Radius X",
+            "description": "Half-width as a fraction of photo width."
+          },
+          "radius_y": {
+            "type": "number",
+            "maximum": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Radius Y",
+            "description": "Half-height as a fraction of photo height."
+          },
+          "feather": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Feather",
+            "description": "How gradually the edge fades.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "center",
+          "radius_x",
+          "radius_y"
+        ],
+        "title": "RadialGradientMask",
+        "description": "Full effect inside an ellipse, fading out toward its edge. Invert it to affect\neverything outside instead (for example, to darken around a subject)."
       },
       "Rotate": {
         "properties": {

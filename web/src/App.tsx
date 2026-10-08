@@ -4,6 +4,7 @@ import { api } from './api/client'
 import {
   type DocumentView,
   beforeUrl,
+  layerMaskUrl,
   previewUrl,
   uploadDocument,
 } from './api/documents'
@@ -12,8 +13,12 @@ import { ExportDialog } from './components/ExportDialog'
 import { HistoryButtons } from './components/HistoryButtons'
 import { HistoryPanel } from './components/HistoryPanel'
 import { LayersPanel } from './components/LayersPanel'
+import { MaskOverlay } from './components/MaskOverlay'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
+import { useManualEdit } from './hooks/useManualEdit'
+import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
+import { updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
 
 type Health =
@@ -55,15 +60,23 @@ function Editor({
   const chat = useChat(doc.id, onDocument, createSocket)
   const [exporting, setExporting] = useState(false)
   const [selectedLayer, setSelectedLayer] = useState<string | null>(null)
+  const [maskTool, setMaskTool] = useState<MaskTool>(DEFAULT_MASK_TOOL)
+  const manual = useManualEdit(doc, onDocument)
+  const locked = chat.busy || manual.working
+  const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
+  const mask = layer?.mask ?? null
+  const showOverlay = layer && mask && (isDrawn(mask.kind) || maskTool.show)
   return (
     <main className="workspace">
       <aside className="side" aria-label="Edits">
         <LayersPanel
           doc={doc}
-          onDocument={onDocument}
-          disabled={chat.busy}
+          onEdit={manual.edit}
+          disabled={locked}
           selected={selectedLayer}
           onSelect={setSelectedLayer}
+          maskTool={maskTool}
+          onMaskTool={setMaskTool}
         />
         <HistoryPanel doc={doc} onDocument={onDocument} disabled={chat.busy} />
       </aside>
@@ -74,6 +87,11 @@ function Editor({
             onDocument={onDocument}
             disabled={chat.busy}
           />
+          {manual.error && (
+            <span className="error" role="alert">
+              {manual.error}
+            </span>
+          )}
           <span className="spacer" />
           <button
             type="button"
@@ -89,6 +107,29 @@ function Editor({
           beforeSrc={beforeUrl(doc)}
           alt={doc.filename}
           busy={chat.busy}
+          overlay={
+            showOverlay
+              ? (frame) => (
+                  <MaskOverlay
+                    key={`${layer.id}:${doc.revision}`}
+                    mask={mask}
+                    width={frame.width}
+                    height={frame.height}
+                    tool={maskTool}
+                    maskSrc={
+                      maskTool.show ? layerMaskUrl(doc, layer.id) : undefined
+                    }
+                    onChange={(next, label) =>
+                      manual.edit(
+                        `${label} on “${layer.name}”`,
+                        updateLayer(doc.state, layer.id, { mask: next }),
+                        `layer:${layer.id}:mask:draw`,
+                      )
+                    }
+                  />
+                )
+              : undefined
+          }
         />
       </div>
       <ChatPanel doc={doc} chat={chat} />

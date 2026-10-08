@@ -5,6 +5,8 @@ export type DocumentView = components['schemas']['DocumentView']
 export type EditState = components['schemas']['EditState']
 export type Layer = components['schemas']['Layer']
 export type BlendMode = Layer['blend_mode']
+export type Mask = NonNullable<Layer['mask']>
+export type MaskKind = Mask['kind']
 export type FramingOperation = EditState['framing'][number]
 export type AdjustmentOperation = Layer['operations'][number]
 export type Operation = FramingOperation | AdjustmentOperation
@@ -55,6 +57,11 @@ export function originalUrl(doc: DocumentView): string {
 /** URL of the unedited look with the current crop and rotation, to compare against. */
 export function beforeUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/before?revision=${doc.revision}`
+}
+
+/** URL of a grayscale image of where a layer applies (white is full effect). */
+export function layerMaskUrl(doc: DocumentView, layerId: string): string {
+  return `/api/documents/${doc.id}/layers/${layerId}/mask?revision=${doc.revision}`
 }
 
 /** URL of the edited photo at preview size; changes whenever the edits do. */

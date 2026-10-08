@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 from photo_agent import diagnostics, imaging
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import BLEND_MODE_HELP, EditState, Layer, new_layer_id
+from photo_agent.masks import describe_mask
 from photo_agent.operations import (
     GEOMETRY_TYPES,
     OPERATIONS_BY_NAME,
@@ -53,6 +54,11 @@ operations, an opacity, a blend mode, and can be hidden.
 its own: call add_layer with a short name in plain words (like "Warmer tones" or "Brighter \
 shadows") before the operations for that change. Operation tools add to the layer you added \
 most recently in this request; framing tools always go to the framing.
+- A layer can have a mask to limit it to part of the photo: a linear gradient for skies \
+or foregrounds, a radial gradient for a subject or a spotlight (invert it to work on the \
+surroundings), or a luminosity range to target highlights or shadows. Positions are \
+fractions of the framed photo. Brush masks are painted by the person; keep them unless \
+asked to change them.
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -176,6 +182,43 @@ class ClaudeModel:
         raise AssertionError("unreachable")
 
 
+def _referenced_defs(node: object, defs: dict[str, Any]) -> dict[str, Any]:
+    """The subset of `defs` that `node` refers to, directly or through other defs."""
+    found: dict[str, Any] = {}
+
+    def walk(n: object) -> None:
+        if isinstance(n, dict):
+            ref = n.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                name = ref.removeprefix("#/$defs/")
+                if name not in found:
+                    found[name] = defs[name]
+                    walk(defs[name])
+            for v in n.values():
+                walk(v)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v)
+
+    walk(node)
+    return found
+
+
+def _plain_unions(node: Any) -> Any:
+    """Turn Pydantic's discriminated unions into plain anyOf lists for tool schemas."""
+    if isinstance(node, dict):
+        out = {k: _plain_unions(v) for k, v in node.items() if k != "discriminator"}
+        if "oneOf" in out:
+            out["anyOf"] = out.pop("oneOf")
+        if "anyOf" in out and len(out["anyOf"]) == 1 and isinstance(out["anyOf"][0], dict):
+            inner = out.pop("anyOf")[0]
+            out = {**inner, **out}
+        return out
+    if isinstance(node, list):
+        return [_plain_unions(v) for v in node]
+    return node
+
+
 def tool_definitions() -> list[BetaToolParam]:
     tools: list[BetaToolParam] = []
     for name, cls in OPERATIONS_BY_NAME.items():
@@ -208,7 +251,8 @@ def tool_definitions() -> list[BetaToolParam]:
         "additionalProperties": False,
     }
     if "$defs" in layer_schema:
-        add_layer_schema["$defs"] = layer_schema["$defs"]
+        add_layer_schema["$defs"] = _referenced_defs(layer_props, layer_schema["$defs"])
+        add_layer_schema = _plain_unions(add_layer_schema)
     tools.append(
         {
             "name": "add_layer",
@@ -221,7 +265,8 @@ def tool_definitions() -> list[BetaToolParam]:
     tools.append(
         {
             "name": "update_layer",
-            "description": "Change a layer's name, visibility, opacity, or blend mode, by id. "
+            "description": "Change a layer's name, visibility, opacity, blend mode, or mask, "
+            "by id. "
             "Only the given properties change. Lowering opacity is a good way to tone down a "
             "whole change at once.",
             "input_schema": {
@@ -439,6 +484,8 @@ def describe_layer(layer: Layer) -> str:
     parts.append(f"opacity {layer.opacity:g}%")
     if layer.blend_mode != "normal":
         parts.append(f"blend {layer.blend_mode}")
+    if layer.mask is not None:
+        parts.append(describe_mask(layer.mask))
     return ", ".join(parts)
 
 

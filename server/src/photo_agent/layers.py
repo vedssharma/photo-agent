@@ -2,7 +2,7 @@
 
 Framing (crop, rotation, flips) applies first, to the whole photo. Then each visible layer,
 bottom to top, applies its operations to the result so far and is blended back in by its
-blend mode and opacity. That lets each change stay separate: it can be hidden, faded, or
+blend mode, opacity, and mask. That lets each change stay separate: it can be hidden, faded, or
 removed without touching the others.
 """
 
@@ -15,6 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from photo_agent.masks import Mask
 from photo_agent.operations import (
     GEOMETRY_TYPES,
     AdjustmentOperation,
@@ -46,6 +47,9 @@ class Layer(BaseModel):
     visible: bool = True
     opacity: float = Field(100, ge=0, le=100, description="0 is no effect, 100 is full effect.")
     blend_mode: BlendMode = Field("normal", description=BLEND_MODE_HELP)
+    mask: Mask | None = Field(
+        None, description="Limits the layer to part of the photo; null applies it everywhere."
+    )
     operations: list[AdjustmentOperation] = Field([])
 
 

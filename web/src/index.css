@@ -601,3 +601,99 @@ select {
   background: rgb(79 140 255 / 18%);
   border-color: var(--accent);
 }
+
+.mask-controls {
+  border: none;
+  margin: 0;
+  padding: 0.4rem 0 0;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.checks {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.82rem;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.segmented {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.segmented button {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.segmented button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.photo-frame {
+  position: absolute;
+}
+
+.mask-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mask-overlay svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.mask-tint {
+  position: absolute;
+  inset: 0;
+  background: rgb(255 70 70 / 55%);
+  mask-size: 100% 100%;
+  mask-mode: luminance;
+  -webkit-mask-size: 100% 100%;
+  pointer-events: none;
+}
+
+.guide line,
+.guide ellipse {
+  fill: none;
+  stroke: white;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 80%));
+}
+
+.guide .dashed {
+  stroke-dasharray: 5 4;
+}
+
+.guide .handle {
+  fill: var(--accent);
+  stroke: white;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.stroke-preview {
+  fill: none;
+  stroke: rgb(255 70 70 / 45%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.stroke-preview.erase {
+  stroke: rgb(255 255 255 / 40%);
+}

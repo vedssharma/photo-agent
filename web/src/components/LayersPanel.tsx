@@ -1,23 +1,21 @@
-import { useState } from 'react'
-
-import {
-  type BlendMode,
-  type DocumentView,
-  type EditState,
-  type Layer,
-  editByHand,
-} from '../api/documents'
+import type { BlendMode, DocumentView, Layer } from '../api/documents'
+import type { EditFn } from '../hooks/useManualEdit'
+import type { MaskTool } from '../lib/masks'
 import { opSummary } from '../lib/operations'
 import { moveLayer, removeLayer, updateLayer } from '../lib/state'
+import { MaskControls } from './MaskControls'
 import { Slider } from './Slider'
 
 interface Props {
   doc: DocumentView
-  onDocument: (doc: DocumentView) => void
-  /** True while the agent is editing; manual changes wait until it finishes. */
+  /** Records a manual change as a history step. */
+  onEdit: EditFn
+  /** True while the agent or a previous change is working; changes wait until then. */
   disabled?: boolean
   selected: string | null
   onSelect: (layerId: string | null) => void
+  maskTool: MaskTool
+  onMaskTool: (tool: MaskTool) => void
 }
 
 const BLEND_MODES: { value: BlendMode; label: string }[] = [
@@ -39,27 +37,16 @@ const blendLabel = (mode: BlendMode) =>
  */
 export function LayersPanel({
   doc,
-  onDocument,
+  onEdit,
   disabled = false,
   selected,
   onSelect,
+  maskTool,
+  onMaskTool,
 }: Props) {
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const state = doc.state
-  const locked = disabled || working
-
-  async function apply(label: string, next: EditState, coalesce?: string) {
-    setWorking(true)
-    setError(null)
-    try {
-      onDocument(await editByHand(doc.id, { label, state: next, coalesce }))
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setWorking(false)
-    }
-  }
+  const locked = disabled
+  const apply = onEdit
 
   const change = (layer: Layer, label: string, changes: Partial<Layer>) =>
     apply(
@@ -189,6 +176,19 @@ export function LayersPanel({
                       ))}
                     </select>
                   </label>
+                  <MaskControls
+                    layer={layer}
+                    disabled={locked}
+                    tool={maskTool}
+                    onTool={onMaskTool}
+                    onMask={(mask, label, key) =>
+                      apply(
+                        label,
+                        updateLayer(state, layer.id, { mask }),
+                        key ? `layer:${layer.id}:mask:${key}` : undefined,
+                      )
+                    }
+                  />
                   <ul className="ops">
                     {layer.operations.map((op, j) => (
                       <li key={op.id ?? j}>{opSummary(op)}</li>
@@ -212,11 +212,6 @@ export function LayersPanel({
           </li>
         )}
       </ol>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
     </section>
   )
 }

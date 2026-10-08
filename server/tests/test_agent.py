@@ -14,6 +14,7 @@ from photo_agent.agent import (
     Editor,
     TextDelta,
     ToolError,
+    describe_state,
     history_messages,
     layer_name,
 )
@@ -277,3 +278,17 @@ def test_silent_turn_still_gets_a_reply(upload: Upload, settings: Settings) -> N
     events, result = run_turn(settings, doc["id"], "brighter", model)
     assert result.chat[-1].text == "Done."
     assert not any(isinstance(e, TextDelta) and e.text.strip() == "" for e in events)
+
+
+def test_agent_can_mask_a_layer() -> None:
+    editor = Editor(EditState())
+    sky = {"kind": "linear", "start": [0.5, 0], "end": [0.5, 0.45]}
+    editor.call("add_layer", {"name": "Bluer sky", "mask": sky})
+    editor.call("hsl", {"band": "blue", "saturation": 20})
+    (layer,) = editor.state.layers
+    assert layer.mask is not None and layer.mask.kind == "linear"
+    assert "linear gradient mask" in describe_state(editor.state)
+    editor.call("update_layer", {"id": layer.id, "changes": {"mask": None}})
+    assert editor.state.layers[0].mask is None
+    with pytest.raises(ToolError):
+        editor.call("update_layer", {"id": layer.id, "changes": {"mask": {"kind": "blob"}}})

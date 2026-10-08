@@ -24,7 +24,8 @@ import numpy as np
 
 from photo_agent import operations as ops
 from photo_agent.imaging import Array
-from photo_agent.layers import BlendMode, EditState
+from photo_agent.layers import BlendMode, EditState, Layer
+from photo_agent.masks import render_mask
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 
@@ -47,11 +48,31 @@ def render_state(pixels: Array, state: EditState, ctx: RenderContext) -> Array:
     """Apply the framing, then blend in each visible layer from the bottom up."""
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
     for layer in state.layers:
-        if not layer.visible or layer.opacity <= 0 or not layer.operations:
-            continue
-        adjusted = blend(out, apply_operations(out, layer.operations, ctx), layer.blend_mode)
-        out = out + (adjusted - out) * (layer.opacity / 100)
+        out = _apply_layer(out, layer, ctx)
     return np.clip(out, 0.0, 1.0, out=out)
+
+
+def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
+    if not layer.visible or layer.opacity <= 0 or not layer.operations:
+        return x
+    adjusted = blend(x, apply_operations(x, layer.operations, ctx), layer.blend_mode)
+    weight: Array | float = layer.opacity / 100
+    if layer.mask is not None:
+        weight = render_mask(layer.mask, x)[..., None] * weight
+    return cast(Array, x + (adjusted - x) * weight)
+
+
+def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
+    """Where a layer applies (0..1 per pixel), for showing its mask. Raises KeyError."""
+    target = state.layer(layer_id)
+    out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
+    if target.mask is None:
+        return np.ones(out.shape[:2], np.float32)
+    for layer in state.layers:
+        if layer.id == layer_id:
+            break
+        out = _apply_layer(out, layer, ctx)
+    return render_mask(target.mask, out)
 
 
 def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:

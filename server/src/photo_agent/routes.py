@@ -25,7 +25,7 @@ from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel,
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.layers import EditState
-from photo_agent.render import RenderCache
+from photo_agent.render import RenderCache, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore
 
@@ -211,6 +211,28 @@ def before(doc_id: str, store: Store) -> Response:
     return Response(
         imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
         media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.get(
+    "/{doc_id}/layers/{layer_id}/mask",
+    operation_id="getLayerMask",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}}, 404: {"description": "No such layer"}},
+)
+def layer_mask(doc_id: str, layer_id: str, store: Store) -> Response:
+    """Where a layer of the current state applies, at preview size, as a grayscale PNG
+    (white is full effect). Add `?revision=` to make the URL unique per edit state."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    try:
+        alpha = render_layer_mask(loaded.proxy, doc.state, layer_id, loaded.proxy_context)
+    except KeyError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such layer.") from None
+    return Response(
+        imaging.encode_gray_png(alpha),
+        media_type="image/png",
         headers={"Cache-Control": "no-cache"},
     )
 
