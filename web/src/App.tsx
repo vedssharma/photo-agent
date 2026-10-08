@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { api } from './api/client'
 import {
   type DocumentView,
   beforeUrl,
+  downloadProject,
+  fetchDocument,
+  isProjectFile,
   layerMaskUrl,
+  openProjectFile,
   previewUrl,
+  restoreProject,
+  saveFile,
   uploadDocument,
 } from './api/documents'
 import { ChatPanel } from './components/ChatPanel'
@@ -23,6 +29,15 @@ import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
 import { liveTarget } from './lib/livePreview'
 import { type Preview, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
+import { RecentProjects } from './components/RecentProjects'
+import { useAutosave } from './hooks/useAutosave'
+import {
+  type ProjectStore,
+  type ProjectSummary,
+  indexedDbProjectStore,
+  lastOpenProject,
+  rememberOpenProject,
+} from './lib/projectStore'
 
 type Health =
   | { state: 'loading' }
@@ -55,13 +70,27 @@ function Editor({
   doc,
   onDocument,
   createSocket,
+  projectStore,
 }: {
   doc: DocumentView
   onDocument: (doc: DocumentView) => void
   createSocket?: SocketFactory
+  projectStore: ProjectStore
 }) {
   const chat = useChat(doc.id, onDocument, createSocket)
   const [exporting, setExporting] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  useAutosave(doc, projectStore, setSaveError)
+
+  async function saveProject() {
+    setSaveError(null)
+    try {
+      saveFile(await downloadProject(doc))
+    } catch (err) {
+      setSaveError(`Could not save the project: ${(err as Error).message}`)
+    }
+  }
+
   const [selectedLayer, setSelectedLayer] = useState<string | null>(null)
   const [maskTool, setMaskTool] = useState<MaskTool>(DEFAULT_MASK_TOOL)
   const manual = useManualEdit(doc, onDocument)
@@ -105,12 +134,20 @@ function Editor({
             onDocument={onDocument}
             disabled={chat.busy || manual.working}
           />
-          {manual.error && (
+          {(manual.error ?? saveError) && (
             <span className="error" role="alert">
-              {manual.error}
+              {manual.error ?? saveError}
             </span>
           )}
           <span className="spacer" />
+          <button
+            type="button"
+            onClick={saveProject}
+            disabled={chat.busy}
+            title="Download the original and all edits as one file you can reopen later"
+          >
+            Save project
+          </button>
           <button
             type="button"
             className="primary"
@@ -176,23 +213,89 @@ function Editor({
   )
 }
 
-function App({ createSocket }: { createSocket?: SocketFactory } = {}) {
+/** A project from the server if it still has it, else from the browser's copy. */
+async function findProject(
+  id: string,
+  store: ProjectStore,
+): Promise<DocumentView> {
+  const found = await fetchDocument(id)
+  if (found) return found
+  const saved = await store.get(id)
+  if (!saved) throw new Error('it is no longer saved anywhere')
+  return restoreProject(saved.original, saved.filename, saved.graph)
+}
+
+interface AppProps {
+  createSocket?: SocketFactory
+  /** Where projects are kept in the browser; IndexedDB by default. */
+  projectStore?: ProjectStore
+}
+
+function App({ createSocket, projectStore }: AppProps = {}) {
   const health = useHealth()
+  const [store] = useState(() => projectStore ?? indexedDbProjectStore())
   const [doc, setDoc] = useState<DocumentView | null>(null)
-  const [opening, setOpening] = useState(false)
+  const [opening, setOpening] = useState(() => lastOpenProject() !== null)
   const [openError, setOpenError] = useState<string | null>(null)
+  const [recent, setRecent] = useState<ProjectSummary[]>([])
+
+  const show = useCallback((next: DocumentView | null) => {
+    setDoc(next)
+    rememberOpenProject(next?.id ?? null)
+  }, [])
 
   async function open(file: File) {
     setOpening(true)
     setOpenError(null)
     try {
-      setDoc(await uploadDocument(file))
+      show(
+        await (isProjectFile(file)
+          ? openProjectFile(file)
+          : uploadDocument(file)),
+      )
     } catch (err) {
       setOpenError(`Could not open ${file.name}: ${(err as Error).message}`)
     } finally {
       setOpening(false)
     }
   }
+
+  const reopen = useCallback(
+    (id: string) =>
+      findProject(id, store)
+        .then(show, (err: Error) => {
+          rememberOpenProject(null)
+          setOpenError(`Could not reopen the project: ${err.message}`)
+        })
+        .finally(() => setOpening(false)),
+    [store, show],
+  )
+
+  function resume(id: string) {
+    setOpening(true)
+    setOpenError(null)
+    void reopen(id)
+  }
+
+  // Pick up where the last visit left off.
+  useEffect(() => {
+    const last = lastOpenProject()
+    if (last) void reopen(last)
+  }, [reopen])
+
+  useEffect(() => {
+    if (doc) return
+    let live = true
+    store
+      .list()
+      .then((projects) => {
+        if (live) setRecent(projects)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [doc, store])
 
   return (
     <div className="app">
@@ -202,7 +305,7 @@ function App({ createSocket }: { createSocket?: SocketFactory } = {}) {
           <>
             <span className="filename">{doc.filename}</span>
             <div className="spacer" />
-            <button type="button" onClick={() => setDoc(null)}>
+            <button type="button" onClick={() => show(null)}>
               Open another
             </button>
           </>
@@ -215,11 +318,13 @@ function App({ createSocket }: { createSocket?: SocketFactory } = {}) {
           doc={doc}
           onDocument={setDoc}
           createSocket={createSocket}
+          projectStore={store}
         />
       ) : (
         <main className="landing">
           <p>Describe the edit you want, and the agent does the rest.</p>
           <PhotoPicker onPick={open} busy={opening} error={openError} />
+          <RecentProjects projects={recent} busy={opening} onOpen={resume} />
           <p className="status">
             {health.state === 'loading' && 'Connecting to the backend…'}
             {health.state === 'ok' && `Backend is up (v${health.version}).`}

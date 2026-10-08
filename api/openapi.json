@@ -95,6 +95,129 @@
         }
       }
     },
+    "/api/documents/{doc_id}/project": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Download Project",
+        "description": "The original photo and all its edits as one `.photoagent` file, to keep and reopen.",
+        "operationId": "downloadProject",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/vnd.photo-agent.project+zip": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/graph": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Graph",
+        "description": "The full stored document (history, layers, chat), as kept for browser autosave.",
+        "operationId": "getGraph",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/source": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Source",
+        "description": "The original file exactly as uploaded.",
+        "operationId": "getSource",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/heic": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/undo": {
       "post": {
         "tags": [
@@ -508,6 +631,53 @@
         }
       }
     },
+    "/api/projects": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Open Project",
+        "description": "Reopen a saved project: either a `.photoagent` project `file`, or an `original`\nphoto plus its `graph` (the document JSON), as the browser keeps them for autosave.\n\nThe project keeps its id unless another document already has it.",
+        "operationId": "openProject",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_openProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large"
+          },
+          "415": {
+            "description": "Not a project or photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -600,6 +770,47 @@
           "file"
         ],
         "title": "Body_createDocument"
+      },
+      "Body_openProject": {
+        "properties": {
+          "file": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph"
+          }
+        },
+        "type": "object",
+        "title": "Body_openProject"
       },
       "BrushMask": {
         "properties": {
@@ -890,6 +1101,80 @@
         ],
         "title": "Dehaze",
         "description": "Cut through haze or fog (positive), or add atmosphere (negative)."
+      },
+      "Document": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          },
+          "chat": {
+            "items": {
+              "$ref": "#/components/schemas/ChatEntry"
+            },
+            "type": "array",
+            "title": "Chat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "format",
+          "width",
+          "height"
+        ],
+        "title": "Document",
+        "description": "A photo being edited. Stored as JSON next to the original file."
       },
       "DocumentView": {
         "properties": {
@@ -1944,6 +2229,73 @@
         ],
         "title": "Sharpen",
         "description": "Sharpen edges and fine detail."
+      },
+      "Step": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "manual"
+            ],
+            "title": "Kind",
+            "default": "agent"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "request": {
+            "type": "string",
+            "title": "Request",
+            "default": ""
+          },
+          "reply": {
+            "type": "string",
+            "title": "Reply",
+            "default": ""
+          },
+          "state": {
+            "$ref": "#/components/schemas/EditState"
+          },
+          "coalesce": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coalesce"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "Step",
+        "description": "One named change to the photo and the edit state it left behind."
       },
       "StepView": {
         "properties": {

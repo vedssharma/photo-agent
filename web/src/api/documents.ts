@@ -15,9 +15,14 @@ export type ManualEdit = components['schemas']['ManualEdit']
 
 /** File types the backend can decode. HEIC often has no MIME type in browsers. */
 export const ACCEPTED_TYPES =
-  '.jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic'
+  '.jpg,.jpeg,.png,.heic,.heif,.photoagent,image/jpeg,image/png,image/heic'
 
-const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif)$/i
+const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif|photoagent)$/i
+
+/** Saved projects (original photo plus edits) use this extension. */
+export function isProjectFile(file: File): boolean {
+  return /\.photoagent$/i.test(file.name)
+}
 
 export function isSupportedFile(file: File): boolean {
   return (
@@ -47,6 +52,88 @@ export async function uploadDocument(file: File): Promise<DocumentView> {
   })
   if (!data) throw new ApiError(detail(error, response.status))
   return data
+}
+
+/** Reopen a saved `.photoagent` project file. */
+export async function openProjectFile(file: File): Promise<DocumentView> {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  return postProject(form)
+}
+
+/** Recreate a document from the photo and edits the browser saved for it. */
+export async function restoreProject(
+  original: Blob,
+  filename: string,
+  graph: string,
+): Promise<DocumentView> {
+  const form = new FormData()
+  form.append('original', original, filename)
+  form.append('graph', graph)
+  return postProject(form)
+}
+
+async function postProject(form: FormData): Promise<DocumentView> {
+  const { data, error, response } = await api.POST('/api/projects', {
+    body: form as unknown as Record<string, never>,
+    bodySerializer: (body) => body as unknown as FormData,
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** The document if the server still has it, or null. */
+export async function fetchDocument(
+  docId: string,
+): Promise<DocumentView | null> {
+  const { data, error, response } = await api.GET('/api/documents/{doc_id}', {
+    params: { path: { doc_id: docId } },
+  })
+  if (response.status === 404) return null
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** The stored document (history, layers, chat) as JSON text, for autosave. */
+export async function fetchGraph(docId: string): Promise<string> {
+  const res = await fetch(
+    new Request(
+      new URL(`/api/documents/${docId}/graph`, window.location.origin),
+    ),
+  )
+  if (!res.ok) throw new ApiError(`The server answered ${res.status}.`)
+  return res.text()
+}
+
+/** The original file exactly as uploaded, for autosave. */
+export async function fetchSource(docId: string): Promise<Blob> {
+  const res = await fetch(
+    new Request(
+      new URL(`/api/documents/${docId}/source`, window.location.origin),
+    ),
+  )
+  if (!res.ok) throw new ApiError(`The server answered ${res.status}.`)
+  return res.blob()
+}
+
+/** The project (original plus edits) as a `.photoagent` file to download. */
+export async function downloadProject(
+  doc: DocumentView,
+): Promise<ExportedFile> {
+  const res = await fetch(
+    new Request(
+      new URL(`/api/documents/${doc.id}/project`, window.location.origin),
+    ),
+  )
+  if (!res.ok) throw new ApiError(`The server answered ${res.status}.`)
+  const stem = doc.filename.replace(/\.[^.]+$/, '') || 'photo'
+  return {
+    blob: await res.blob(),
+    filename: dispositionFilename(
+      res.headers.get('content-disposition'),
+      `${stem}.photoagent`,
+    ),
+  }
 }
 
 /** URL of the unedited photo at preview size. */

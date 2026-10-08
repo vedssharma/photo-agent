@@ -21,7 +21,9 @@ export function PhotoPicker({ onPick, busy = false, error = null }: Props) {
     const file = files?.[0]
     if (!file) return
     if (!isSupportedFile(file)) {
-      setRejected(`${file.name} is not a JPEG, PNG, or HEIC photo.`)
+      setRejected(
+        `${file.name} is not a JPEG, PNG, or HEIC photo or a saved project.`,
+      )
       return
     }
     setRejected(null)
@@ -36,6 +38,7 @@ export function PhotoPicker({ onPick, busy = false, error = null }: Props) {
       <h2>Open a photo</h2>
       <p>
         Drop a JPEG, PNG, or HEIC photo anywhere on the page, or choose one.
+        Saved <code>.photoagent</code> projects open the same way.
       </p>
       <button
         type="button"

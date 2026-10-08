@@ -41,6 +41,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Project
+         * @description The original photo and all its edits as one `.photoagent` file, to keep and reopen.
+         */
+        get: operations["downloadProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Graph
+         * @description The full stored document (history, layers, chat), as kept for browser autosave.
+         */
+        get: operations["getGraph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source
+         * @description The original file exactly as uploaded.
+         */
+        get: operations["getSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/undo": {
         parameters: {
             query?: never;
@@ -227,6 +287,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Project
+         * @description Reopen a saved project: either a `.photoagent` project `file`, or an `original`
+         *     photo plus its `graph` (the document JSON), as the browser keeps them for autosave.
+         *
+         *     The project keeps its id unless another document already has it.
+         */
+        post: operations["openProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -293,6 +376,15 @@ export interface components {
         Body_createDocument: {
             /** File */
             file: string;
+        };
+        /** Body_openProject */
+        Body_openProject: {
+            /** File */
+            file?: string | null;
+            /** Original */
+            original?: string | null;
+            /** Graph */
+            graph?: string | null;
         };
         /**
          * BrushMask
@@ -472,6 +564,35 @@ export interface components {
             op: "dehaze";
             /** Amount */
             amount: number;
+        };
+        /**
+         * Document
+         * @description A photo being edited. Stored as JSON next to the original file.
+         */
+        Document: {
+            /** Id */
+            id?: string;
+            /** Filename */
+            filename: string;
+            /** Format */
+            format: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Steps */
+            steps?: components["schemas"]["Step"][];
+            /** Head */
+            head?: string | null;
+            /** Tip */
+            tip?: string | null;
+            /** Chat */
+            chat?: components["schemas"]["ChatEntry"][];
         };
         /**
          * DocumentView
@@ -995,6 +1116,42 @@ export interface components {
              */
             radius: number;
         };
+        /**
+         * Step
+         * @description One named change to the photo and the edit state it left behind.
+         */
+        Step: {
+            /** Id */
+            id?: string;
+            /** Parent */
+            parent?: string | null;
+            /**
+             * Kind
+             * @default agent
+             * @enum {string}
+             */
+            kind: "agent" | "manual";
+            /** Label */
+            label: string;
+            /**
+             * Request
+             * @default
+             */
+            request: string;
+            /**
+             * Reply
+             * @default
+             */
+            reply: string;
+            state?: components["schemas"]["EditState"];
+            /** Coalesce */
+            coalesce?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+        };
         /** StepView */
         StepView: {
             /** Id */
@@ -1322,6 +1479,101 @@ export interface operations {
             };
         };
     };
+    downloadProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.photo-agent.project+zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getGraph: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
+                    "image/heic": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     undo: {
         parameters: {
             query?: never;
@@ -1613,6 +1865,53 @@ export interface operations {
             };
             /** @description No such layer */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    openProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_openProject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description File too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a project or photo */
+            415: {
                 headers: {
                     [name: string]: unknown;
                 };

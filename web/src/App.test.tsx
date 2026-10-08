@@ -1,8 +1,13 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import {
+  lastOpenProject,
+  memoryProjectStore,
+  rememberOpenProject,
+} from './lib/projectStore'
 import { FakeSocket } from './test/fakeSocket'
 import { healthy, makeDoc, stubApi } from './test/fixtures'
 
@@ -146,5 +151,98 @@ describe('Editor', () => {
       '/api/documents/abc123abc123/preview?revision=turn1',
     )
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+  })
+})
+
+describe('Projects', () => {
+  it('reopens the project that was open when the page closed', async () => {
+    rememberOpenProject('abc123abc123')
+    stubApi({
+      'GET /api/health': healthy,
+      'GET /api/documents/abc123abc123': () =>
+        Response.json(makeDoc({ filename: 'trip.jpg' })),
+    })
+    render(<App projectStore={memoryProjectStore()} />)
+    expect(
+      await screen.findByRole('img', { name: 'trip.jpg' }),
+    ).toBeInTheDocument()
+  })
+
+  it('restores from the browser copy when the server no longer has it', async () => {
+    const store = memoryProjectStore()
+    await store.put({
+      id: 'abc123abc123',
+      filename: 'trip.jpg',
+      savedAt: 1,
+      graph: '{"id":"abc123abc123"}',
+      original: new Blob(['jpeg bytes']),
+    })
+    const fetchMock = stubApi({
+      'GET /api/health': healthy,
+      'GET /api/documents/abc123abc123': () =>
+        Response.json({ detail: 'No such document.' }, { status: 404 }),
+      'POST /api/projects': () =>
+        Response.json(makeDoc({ filename: 'trip.jpg' }), { status: 201 }),
+    })
+    render(<App projectStore={store} />)
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /trip\.jpg/ }),
+    )
+
+    expect(
+      await screen.findByRole('img', { name: 'trip.jpg' }),
+    ).toBeInTheDocument()
+    const post = fetchMock.mock.calls.find(([r]) => r.method === 'POST')![0]
+    const form = await post.formData()
+    expect(form.get('graph')).toBe('{"id":"abc123abc123"}')
+    expect(form.get('original')).toBeTruthy()
+  })
+
+  it('opens a saved project file', async () => {
+    const fetchMock = stubApi({
+      'GET /api/health': healthy,
+      'POST /api/projects': () =>
+        Response.json(makeDoc({ filename: 'trip.jpg' }), { status: 201 }),
+    })
+    render(<App projectStore={memoryProjectStore()} />)
+    await userEvent.upload(
+      screen.getByLabelText('Photo file'),
+      new File(['zip'], 'trip.photoagent'),
+    )
+    expect(
+      await screen.findByRole('img', { name: 'trip.jpg' }),
+    ).toBeInTheDocument()
+    const post = fetchMock.mock.calls.find(([r]) => r.method === 'POST')![0]
+    expect((await post.formData()).get('file')).toBeTruthy()
+  })
+
+  it('keeps a copy of the open project in the browser', async () => {
+    const store = memoryProjectStore()
+    stubApi({
+      'GET /api/health': healthy,
+      'POST /api/documents': () => Response.json(makeDoc(), { status: 201 }),
+      'GET /api/documents/abc123abc123/graph': () =>
+        new Response('{"saved":true}'),
+      'GET /api/documents/abc123abc123/source': () => new Response('bytes'),
+    })
+    render(<App projectStore={store} />)
+    await userEvent.upload(
+      screen.getByLabelText('Photo file'),
+      new File(['x'], 'cat.heic'),
+    )
+    await screen.findByRole('img', { name: 'cat.heic' })
+    await waitFor(
+      async () =>
+        expect((await store.get('abc123abc123'))?.graph).toBe('{"saved":true}'),
+      { timeout: 3000 },
+    )
+    expect(lastOpenProject()).toBe('abc123abc123')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open another' }))
+    expect(lastOpenProject()).toBeNull()
+    expect(
+      await screen.findByRole('button', { name: /cat\.heic/ }),
+    ).toBeInTheDocument()
   })
 })

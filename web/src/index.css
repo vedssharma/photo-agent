@@ -739,3 +739,36 @@ select {
   height: 100%;
   pointer-events: none;
 }
+
+.recent {
+  width: min(32rem, 100%);
+  text-align: left;
+}
+
+.recent h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.recent ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.recent button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.recent-when {
+  color: var(--muted);
+  font-size: 0.85rem;
+}

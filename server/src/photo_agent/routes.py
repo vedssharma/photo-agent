@@ -11,6 +11,7 @@ from urllib.parse import quote
 from fastapi import (
     APIRouter,
     Depends,
+    Form,
     HTTPException,
     UploadFile,
     WebSocket,
@@ -20,14 +21,14 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from photo_agent import imaging
+from photo_agent import imaging, projects
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.layers import EditState
 from photo_agent.render import RenderCache, render_layer_mask
 from photo_agent.settings import Settings, get_settings
-from photo_agent.store import DocumentNotFoundError, DocumentStore
+from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 PREVIEW_QUALITY = 88
@@ -35,6 +36,7 @@ PREVIEW_QUALITY = 88
 previews = RenderCache()
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 @lru_cache
@@ -74,9 +76,96 @@ async def create_document(file: UploadFile, store: Store) -> DocumentView:
     return DocumentView.of(doc)
 
 
+@projects_router.post(
+    "",
+    operation_id="openProject",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        413: {"description": "File too large"},
+        415: {"description": "Not a project or photo"},
+    },
+)
+async def open_project(
+    store: Store,
+    file: UploadFile | None = None,
+    original: UploadFile | None = None,
+    graph: Annotated[str | None, Form()] = None,
+) -> DocumentView:
+    """Reopen a saved project: either a `.photoagent` project `file`, or an `original`
+    photo plus its `graph` (the document JSON), as the browser keeps them for autosave.
+
+    The project keeps its id unless another document already has it."""
+    try:
+        if file is not None:
+            data = await _read_limited(
+                file, projects.MAX_ORIGINAL_BYTES + projects.MAX_DOCUMENT_BYTES
+            )
+            source, edits = projects.unpack(data)
+        elif original is not None and graph is not None:
+            source = await _read_limited(original, MAX_UPLOAD_BYTES)
+            edits = projects.parse_document(graph)
+        else:
+            raise projects.ProjectError("Send a project file, or a photo and its edits.")
+        doc = store.create(edits.filename, source, edits)
+    except (projects.ProjectError, MismatchError, imaging.UnsupportedImageError) as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from None
+    return DocumentView.of(doc)
+
+
+async def _read_limited(file: UploadFile, limit: int) -> bytes:
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That file is too large.")
+    return data
+
+
 @router.get("/{doc_id}", operation_id="getDocument")
 def get_document(doc_id: str, store: Store) -> DocumentView:
     return DocumentView.of(load(store, doc_id))
+
+
+@router.get(
+    "/{doc_id}/project",
+    operation_id="downloadProject",
+    response_class=Response,
+    responses={200: {"content": {projects.MEDIA_TYPE: {}}}},
+)
+def download_project(doc_id: str, store: Store) -> Response:
+    """The original photo and all its edits as one `.photoagent` file, to keep and reopen."""
+    doc = load(store, doc_id)
+    original = store.original_file(doc_id)
+    data = projects.pack(doc, original.read_bytes(), original.suffix)
+    stem = doc.filename.rsplit(".", 1)[0] or "photo"
+    filename = f"{stem}{projects.EXTENSION}"
+    return Response(
+        data,
+        media_type=projects.MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.get("/{doc_id}/graph", operation_id="getGraph")
+def get_graph(doc_id: str, store: Store) -> Document:
+    """The full stored document (history, layers, chat), as kept for browser autosave."""
+    return load(store, doc_id)
+
+
+@router.get(
+    "/{doc_id}/source",
+    operation_id="getSource",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}, "image/png": {}, "image/heic": {}}}},
+)
+def get_source(doc_id: str, store: Store) -> Response:
+    """The original file exactly as uploaded."""
+    load(store, doc_id)
+    path = store.original_file(doc_id)
+    media = {".jpg": "image/jpeg", ".png": "image/png", ".heic": "image/heic"}
+    return Response(
+        path.read_bytes(),
+        media_type=media.get(path.suffix, "application/octet-stream"),
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/{doc_id}/undo", operation_id="undo")

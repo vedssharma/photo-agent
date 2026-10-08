@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from photo_agent import imaging
-from photo_agent.graph import Document
+from photo_agent.graph import Document, new_id
 from photo_agent.render import RenderContext
 
 EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "HEIF": ".heic"}
@@ -24,6 +24,10 @@ _ID_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
 class DocumentNotFoundError(KeyError):
+    pass
+
+
+class MismatchError(ValueError):
     pass
 
 
@@ -53,21 +57,47 @@ class DocumentStore:
         self._cache_size = cache_size
         self._lock = threading.Lock()
 
-    def create(self, filename: str, data: bytes) -> Document:
-        """Decode an upload and store it as a new document. Raises UnsupportedImageError."""
+    def create(self, filename: str, data: bytes, edits: Document | None = None) -> Document:
+        """Decode an upload and store it as a new document, optionally with existing edits
+        (when reopening a project). Raises UnsupportedImageError, or MismatchError when the
+        edits were made on a photo of a different size."""
         decoded = imaging.decode(data)
-        doc = Document(
-            filename=_safe_filename(filename),
-            format=decoded.format,
-            width=decoded.width,
-            height=decoded.height,
-        )
+        if edits is None:
+            doc = Document(
+                filename=_safe_filename(filename),
+                format=decoded.format,
+                width=decoded.width,
+                height=decoded.height,
+            )
+        else:
+            if (edits.width, edits.height) != (decoded.width, decoded.height):
+                raise MismatchError("The photo does not match the edits saved with it.")
+            doc = edits.model_copy(
+                update={"filename": _safe_filename(edits.filename), "format": decoded.format}
+            )
+            # Keep the id so links and browser autosaves still find it, unless it is taken.
+            if not _ID_RE.match(doc.id) or self.exists(doc.id):
+                doc.id = new_id()
         folder = self._folder(doc.id)
         folder.mkdir(parents=True)
         (folder / f"original{EXTENSIONS[decoded.format]}").write_bytes(data)
         self.save(doc)
         self._remember(doc.id, LoadedImage(decoded, imaging.make_proxy(decoded.pixels)))
         return doc
+
+    def exists(self, doc_id: str) -> bool:
+        try:
+            return (self._folder(doc_id) / "document.json").is_file()
+        except DocumentNotFoundError:
+            return False
+
+    def original_file(self, doc_id: str) -> Path:
+        """The uploaded file, untouched."""
+        folder = self._folder(doc_id)
+        originals = sorted(folder.glob("original.*")) if folder.is_dir() else []
+        if not originals:
+            raise DocumentNotFoundError(doc_id)
+        return originals[0]
 
     def get(self, doc_id: str) -> Document:
         path = self._folder(doc_id) / "document.json"
@@ -88,11 +118,7 @@ class DocumentStore:
             if cached is not None:
                 self._cache.move_to_end(doc_id)
                 return cached
-        folder = self._folder(doc_id)
-        originals = sorted(folder.glob("original.*")) if folder.is_dir() else []
-        if not originals:
-            raise DocumentNotFoundError(doc_id)
-        decoded = imaging.decode(originals[0].read_bytes())
+        decoded = imaging.decode(self.original_file(doc_id).read_bytes())
         loaded = LoadedImage(decoded, imaging.make_proxy(decoded.pixels))
         self._remember(doc_id, loaded)
         return loaded

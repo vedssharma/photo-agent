@@ -13,6 +13,7 @@ from photo_agent.settings import Settings, get_settings
 
 app = FastAPI(title="photo-agent", version=__version__)
 app.include_router(routes.router)
+app.include_router(routes.projects_router)
 
 
 class HealthResponse(BaseModel):
