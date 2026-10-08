@@ -6,7 +6,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from photo_agent.graph import Turn
+from photo_agent.graph import Step
 from photo_agent.operations import Crop, Exposure
 from photo_agent.routes import get_store
 from photo_agent.settings import Settings
@@ -61,7 +61,7 @@ def test_undo_and_redo(client: TestClient, upload: Upload, settings: Settings) -
     doc = upload("portrait.jpg")
     store = get_store(settings)
     stored = store.get(doc["id"])
-    stored.commit_turn(Turn(request="brighter", operations=[Exposure(stops=1)]))
+    stored.commit(Step(label="brighter", operations=[Exposure(stops=1)]))
     store.save(stored)
 
     res = client.post(f"/api/documents/{doc['id']}/undo")
@@ -79,7 +79,7 @@ def test_preview_renders_current_operations(
     doc = upload("portrait.jpg")
     store = get_store(settings)
     stored = store.get(doc["id"])
-    stored.commit_turn(Turn(request="square", operations=[Exposure(stops=1)]))
+    stored.commit(Step(label="square", operations=[Exposure(stops=1)]))
     store.save(stored)
 
     res = client.get(f"/api/documents/{doc['id']}/preview")
@@ -98,10 +98,32 @@ def test_before_view_shares_the_current_framing(
     doc = upload("landscape.png")
     store = get_store(settings)
     stored = store.get(doc["id"])
-    stored.commit_turn(Turn(request="square", operations=[Exposure(stops=1), Crop(aspect="1:1")]))
+    stored.commit(Step(label="square", operations=[Exposure(stops=1), Crop(aspect="1:1")]))
     store.save(stored)
 
     before = Image.open(io.BytesIO(client.get(f"/api/documents/{doc['id']}/before").content))
     after = Image.open(io.BytesIO(client.get(f"/api/documents/{doc['id']}/preview").content))
     assert before.size == after.size == (427, 427)
     assert np.asarray(before.convert("L")).mean() < np.asarray(after.convert("L")).mean()
+
+
+def test_checkout_jumps_to_any_step(client: TestClient, upload: Upload, settings: Settings) -> None:
+    doc = upload("portrait.jpg")
+    store = get_store(settings)
+    stored = store.get(doc["id"])
+    stored.commit(Step(label="brighter", operations=[Exposure(stops=1)]))
+    stored.commit(Step(label="much brighter", operations=[Exposure(stops=2)]))
+    store.save(stored)
+    first = stored.steps[0].id
+
+    res = client.post(f"/api/documents/{doc['id']}/checkout", json={"step_id": first})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["head"] == first
+    assert [s["active"] for s in body["history"]] == [True, False]
+    assert body["redo_label"] == "much brighter"
+
+    res = client.post(f"/api/documents/{doc['id']}/checkout", json={"step_id": None})
+    assert res.json()["revision"] == "original"
+    res = client.post(f"/api/documents/{doc['id']}/checkout", json={"step_id": "nope"})
+    assert res.status_code == 404

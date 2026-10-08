@@ -3,6 +3,7 @@ import type { components } from './schema'
 
 export type DocumentView = components['schemas']['DocumentView']
 export type Operation = DocumentView['operations'][number]
+export type StepView = DocumentView['history'][number]
 
 /** File types the backend can decode. HEIC often has no MIME type in browsers. */
 export const ACCEPTED_TYPES =
@@ -71,6 +72,22 @@ export async function redo(docId: string): Promise<DocumentView> {
     '/api/documents/{doc_id}/redo',
     {
       params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Show any step in the history, or the original photo when `stepId` is null. */
+export async function checkout(
+  docId: string,
+  stepId: string | null,
+): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/checkout',
+    {
+      params: { path: { doc_id: docId } },
+      body: { step_id: stepId },
     },
   )
   if (!data) throw new ApiError(detail(error, response.status))

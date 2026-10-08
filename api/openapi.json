@@ -101,7 +101,7 @@
           "documents"
         ],
         "summary": "Undo",
-        "description": "Step back one agent turn.",
+        "description": "Step back one step in the history.",
         "operationId": "undo",
         "parameters": [
           {
@@ -144,7 +144,7 @@
           "documents"
         ],
         "summary": "Redo",
-        "description": "Re-apply the most recently undone agent turn.",
+        "description": "Re-apply the most recently undone step.",
         "operationId": "redo",
         "parameters": [
           {
@@ -167,6 +167,62 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/checkout": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Checkout",
+        "description": "Jump to any step in the history. Editing from there starts a new branch; the steps\nafter it stay in the history.",
+        "operationId": "checkout",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Checkout"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or step"
           },
           "422": {
             "description": "Validation Error",
@@ -430,7 +486,7 @@
             "type": "string",
             "title": "Text"
           },
-          "turn_id": {
+          "step_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -439,7 +495,7 @@
                 "type": "null"
               }
             ],
-            "title": "Turn Id"
+            "title": "Step Id"
           },
           "created_at": {
             "type": "string",
@@ -453,7 +509,28 @@
           "text"
         ],
         "title": "ChatEntry",
-        "description": "One line of the conversation shown in the chat panel and replayed to the agent.\n\nThe conversation is linear even when edits are undone: an undo or redo is recorded as an\n`event` entry, so the agent knows its earlier change is no longer in effect."
+        "description": "One line of the conversation shown in the chat panel and replayed to the agent.\n\nThe conversation is linear even when the history branches: undo, redo, and jumps are\nrecorded as `event` entries, so the agent knows its earlier change is no longer in effect."
+      },
+      "Checkout": {
+        "properties": {
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id",
+            "description": "Step to show, or null for the original photo."
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id"
+        ],
+        "title": "Checkout"
       },
       "Clarity": {
         "properties": {
@@ -628,10 +705,6 @@
             "type": "integer",
             "title": "Height"
           },
-          "step": {
-            "type": "integer",
-            "title": "Step"
-          },
           "revision": {
             "type": "string",
             "title": "Revision"
@@ -733,6 +806,28 @@
             "type": "array",
             "title": "Operations"
           },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          },
           "can_undo": {
             "type": "boolean",
             "title": "Can Undo"
@@ -741,12 +836,34 @@
             "type": "boolean",
             "title": "Can Redo"
           },
-          "turns": {
+          "undo_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undo Label"
+          },
+          "redo_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redo Label"
+          },
+          "history": {
             "items": {
-              "$ref": "#/components/schemas/TurnView"
+              "$ref": "#/components/schemas/StepView"
             },
             "type": "array",
-            "title": "Turns"
+            "title": "History"
           },
           "chat": {
             "items": {
@@ -763,12 +880,15 @@
           "format",
           "width",
           "height",
-          "step",
           "revision",
           "operations",
+          "head",
+          "tip",
           "can_undo",
           "can_redo",
-          "turns",
+          "undo_label",
+          "redo_label",
+          "history",
           "chat"
         ],
         "title": "DocumentView",
@@ -1177,6 +1297,56 @@
         "title": "Sharpen",
         "description": "Sharpen edges and fine detail."
       },
+      "StepView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "manual"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "parent",
+          "kind",
+          "label",
+          "created_at",
+          "active"
+        ],
+        "title": "StepView"
+      },
       "Straighten": {
         "properties": {
           "id": {
@@ -1255,132 +1425,6 @@
         ],
         "title": "ToneCurve",
         "description": "Remap tones with a curve through control points (input, output), both 0..1.\n\nThe curve always passes through its points in order of input. An S-shape adds contrast;\nlifting the (0, y) point gives faded blacks."
-      },
-      "TurnView": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "request": {
-            "type": "string",
-            "title": "Request"
-          },
-          "reply": {
-            "type": "string",
-            "title": "Reply"
-          },
-          "operations": {
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Exposure"
-                },
-                {
-                  "$ref": "#/components/schemas/Contrast"
-                },
-                {
-                  "$ref": "#/components/schemas/Highlights"
-                },
-                {
-                  "$ref": "#/components/schemas/Shadows"
-                },
-                {
-                  "$ref": "#/components/schemas/Whites"
-                },
-                {
-                  "$ref": "#/components/schemas/Blacks"
-                },
-                {
-                  "$ref": "#/components/schemas/WhiteBalance"
-                },
-                {
-                  "$ref": "#/components/schemas/Vibrance"
-                },
-                {
-                  "$ref": "#/components/schemas/Saturation"
-                },
-                {
-                  "$ref": "#/components/schemas/HSL"
-                },
-                {
-                  "$ref": "#/components/schemas/Sharpen"
-                },
-                {
-                  "$ref": "#/components/schemas/NoiseReduction"
-                },
-                {
-                  "$ref": "#/components/schemas/Clarity"
-                },
-                {
-                  "$ref": "#/components/schemas/Dehaze"
-                },
-                {
-                  "$ref": "#/components/schemas/Crop"
-                },
-                {
-                  "$ref": "#/components/schemas/Rotate"
-                },
-                {
-                  "$ref": "#/components/schemas/Straighten"
-                },
-                {
-                  "$ref": "#/components/schemas/Flip"
-                },
-                {
-                  "$ref": "#/components/schemas/Vignette"
-                },
-                {
-                  "$ref": "#/components/schemas/Grain"
-                },
-                {
-                  "$ref": "#/components/schemas/ToneCurve"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "op",
-                "mapping": {
-                  "blacks": "#/components/schemas/Blacks",
-                  "clarity": "#/components/schemas/Clarity",
-                  "contrast": "#/components/schemas/Contrast",
-                  "crop": "#/components/schemas/Crop",
-                  "dehaze": "#/components/schemas/Dehaze",
-                  "exposure": "#/components/schemas/Exposure",
-                  "flip": "#/components/schemas/Flip",
-                  "grain": "#/components/schemas/Grain",
-                  "highlights": "#/components/schemas/Highlights",
-                  "hsl": "#/components/schemas/HSL",
-                  "noise_reduction": "#/components/schemas/NoiseReduction",
-                  "rotate": "#/components/schemas/Rotate",
-                  "saturation": "#/components/schemas/Saturation",
-                  "shadows": "#/components/schemas/Shadows",
-                  "sharpen": "#/components/schemas/Sharpen",
-                  "straighten": "#/components/schemas/Straighten",
-                  "tone_curve": "#/components/schemas/ToneCurve",
-                  "vibrance": "#/components/schemas/Vibrance",
-                  "vignette": "#/components/schemas/Vignette",
-                  "white_balance": "#/components/schemas/WhiteBalance",
-                  "whites": "#/components/schemas/Whites"
-                }
-              }
-            },
-            "type": "array",
-            "title": "Operations"
-          },
-          "applied": {
-            "type": "boolean",
-            "title": "Applied"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "request",
-          "reply",
-          "operations",
-          "applied"
-        ],
-        "title": "TurnView"
       },
       "ValidationError": {
         "properties": {

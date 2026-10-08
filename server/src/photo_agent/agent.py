@@ -23,7 +23,7 @@ from anthropic.types.beta import (
 from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging
-from photo_agent.graph import ChatEntry, Document, DocumentView, Turn
+from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.operations import OPERATIONS_BY_NAME, OpBase, Operation, OperationAdapter
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentStore
@@ -304,7 +304,8 @@ def events_note(events: Sequence[str]) -> str:
 def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam], list[str]]:
     """Replay the conversation so far as alternating user and assistant text.
 
-    Also returns undo/redo events that happened after the last reply, for the next request.
+    Also returns history events (undo, redo, jumps) that happened after the last reply, for
+    the next request.
     """
     messages: list[BetaMessageParam] = []
     pending_events: list[str] = []
@@ -347,12 +348,18 @@ class AgentService:
             reply = await self._converse(doc, request, editor, emit)
 
             doc.chat.append(ChatEntry(role="user", text=request))
-            turn_id = None
+            step_id = None
             if editor.operations != doc.operations:
-                turn = Turn(request=request, reply=reply, operations=editor.operations)
-                doc.commit_turn(turn)
-                turn_id = turn.id
-            doc.chat.append(ChatEntry(role="assistant", text=reply, turn_id=turn_id))
+                step = Step(
+                    kind="agent",
+                    label=request,
+                    request=request,
+                    reply=reply,
+                    operations=editor.operations,
+                )
+                doc.commit(step)
+                step_id = step.id
+            doc.chat.append(ChatEntry(role="assistant", text=reply, step_id=step_id))
             self.store.save(doc)
             await emit(TurnDone(document=DocumentView.of(doc)))
             return doc

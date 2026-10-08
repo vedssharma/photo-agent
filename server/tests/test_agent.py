@@ -93,11 +93,11 @@ def test_turn_records_operations_and_reply(upload: Upload, settings: Settings) -
         "TurnDone",
     ]
     assert [op.op for op in result.operations] == ["white_balance", "crop"]
-    assert result.turns[0].reply == (
+    assert result.steps[0].reply == (
         "Warming it up.\n\nI warmed the colors and cropped it for Instagram."
     )
     assert [c.role for c in result.chat] == ["user", "assistant"]
-    assert result.chat[1].turn_id == result.turns[0].id
+    assert result.chat[1].step_id == result.steps[0].id
 
     # Claude saw the photo and the (empty) operation list with the request.
     first_request = model.calls[0][-1]["content"]
@@ -130,7 +130,7 @@ def test_reply_without_edits_does_not_create_an_undo_step(
     doc = upload("portrait.jpg")
     model = FakeModel([text("Do you want it square or 4:5?")])
     _, result = run_turn(settings, doc["id"], "crop it", model)
-    assert result.turns == []
+    assert result.steps == []
     assert [c.text for c in result.chat] == ["crop it", "Do you want it square or 4:5?"]
 
 
@@ -139,7 +139,7 @@ def test_refusal_is_reported_without_edits(upload: Upload, settings: Settings) -
     model = FakeModel([], stop_reason="refusal")
     model.responses = [[]]
     _, result = run_turn(settings, doc["id"], "something", model)
-    assert result.turns == []
+    assert result.steps == []
     assert "can't help" in result.chat[-1].text
 
 

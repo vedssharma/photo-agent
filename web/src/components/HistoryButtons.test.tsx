@@ -5,14 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { makeDoc, stubApi } from '../test/fixtures'
 import { HistoryButtons } from './HistoryButtons'
 
-const turn = (id: string, applied: boolean) => ({
-  id,
-  request: `request ${id}`,
-  reply: '',
-  operations: [],
-  applied,
-})
-
 describe('HistoryButtons', () => {
   it('disables what is not possible', () => {
     render(<HistoryButtons doc={makeDoc()} onDocument={vi.fn()} />)
@@ -21,12 +13,12 @@ describe('HistoryButtons', () => {
   })
 
   it('undoes the last agent turn', async () => {
-    const undone = makeDoc({ can_redo: true, turns: [turn('t1', false)] })
+    const undone = makeDoc({ can_redo: true, redo_label: 'request t1' })
     const fetchMock = stubApi({
       'POST /api/documents/abc123abc123/undo': () => Response.json(undone),
     })
     const onDocument = vi.fn()
-    const doc = makeDoc({ can_undo: true, turns: [turn('t1', true)] })
+    const doc = makeDoc({ can_undo: true, undo_label: 'request t1' })
     render(<HistoryButtons doc={doc} onDocument={onDocument} />)
 
     const button = screen.getByRole('button', { name: 'Undo' })
@@ -47,7 +39,7 @@ describe('HistoryButtons', () => {
     const onDocument = vi.fn()
     render(
       <HistoryButtons
-        doc={makeDoc({ can_redo: true, turns: [turn('t1', false)] })}
+        doc={makeDoc({ can_redo: true, redo_label: 'request t1' })}
         onDocument={onDocument}
       />,
     )

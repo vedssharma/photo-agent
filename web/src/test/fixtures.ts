@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 
-import type { DocumentView } from '../api/documents'
+import type { DocumentView, StepView } from '../api/documents'
 
 export function makeDoc(overrides: Partial<DocumentView> = {}): DocumentView {
   return {
@@ -9,13 +9,31 @@ export function makeDoc(overrides: Partial<DocumentView> = {}): DocumentView {
     format: 'HEIF',
     width: 4032,
     height: 3024,
-    step: 0,
     revision: 'original',
     operations: [],
+    head: null,
+    tip: null,
     can_undo: false,
     can_redo: false,
-    turns: [],
+    undo_label: null,
+    redo_label: null,
+    history: [],
     chat: [],
+    ...overrides,
+  }
+}
+
+export function makeStep(
+  id: string,
+  overrides: Partial<StepView> = {},
+): StepView {
+  return {
+    id,
+    parent: null,
+    kind: 'agent',
+    label: `step ${id}`,
+    created_at: '2026-10-08T12:00:00Z',
+    active: true,
     ...overrides,
   }
 }

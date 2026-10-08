@@ -19,7 +19,7 @@ interface Props {
 export function ChatPanel({ doc, chat }: Props) {
   const [draft, setDraft] = useState('')
   const log = useRef<HTMLOListElement>(null)
-  const applied = new Set(doc.turns.filter((t) => t.applied).map((t) => t.id))
+  const active = new Set(doc.history.filter((s) => s.active).map((s) => s.id))
 
   useEffect(() => {
     log.current?.lastElementChild?.scrollIntoView?.({ block: 'end' })
@@ -65,8 +65,8 @@ export function ChatPanel({ doc, chat }: Props) {
           ) : (
             <li key={i} className={`bubble ${entry.role}`}>
               {entry.text}
-              {entry.turn_id && !applied.has(entry.turn_id) && (
-                <span className="tag">undone</span>
+              {entry.step_id && !active.has(entry.step_id) && (
+                <span className="tag">not in effect</span>
               )}
             </li>
           ),

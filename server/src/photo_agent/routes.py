@@ -1,4 +1,4 @@
-"""HTTP routes for documents: upload, inspect, undo/redo, previews, chat, and export."""
+"""HTTP routes for documents: upload, inspect, history, previews, chat, and export."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from photo_agent import imaging
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
@@ -80,7 +81,7 @@ def get_document(doc_id: str, store: Store) -> DocumentView:
 
 @router.post("/{doc_id}/undo", operation_id="undo")
 def undo(doc_id: str, store: Store) -> DocumentView:
-    """Step back one agent turn."""
+    """Step back one step in the history."""
     doc = load(store, doc_id)
     if doc.undo():
         store.save(doc)
@@ -89,9 +90,31 @@ def undo(doc_id: str, store: Store) -> DocumentView:
 
 @router.post("/{doc_id}/redo", operation_id="redo")
 def redo(doc_id: str, store: Store) -> DocumentView:
-    """Re-apply the most recently undone agent turn."""
+    """Re-apply the most recently undone step."""
     doc = load(store, doc_id)
     if doc.redo():
+        store.save(doc)
+    return DocumentView.of(doc)
+
+
+class Checkout(BaseModel):
+    step_id: str | None = Field(description="Step to show, or null for the original photo.")
+
+
+@router.post(
+    "/{doc_id}/checkout",
+    operation_id="checkout",
+    responses={404: {"description": "No such document or step"}},
+)
+def checkout(doc_id: str, body: Checkout, store: Store) -> DocumentView:
+    """Jump to any step in the history. Editing from there starts a new branch; the steps
+    after it stay in the history."""
+    doc = load(store, doc_id)
+    try:
+        changed = doc.checkout(body.step_id)
+    except KeyError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such step.") from None
+    if changed:
         store.save(doc)
     return DocumentView.of(doc)
 

@@ -52,7 +52,7 @@ export interface paths {
         put?: never;
         /**
          * Undo
-         * @description Step back one agent turn.
+         * @description Step back one step in the history.
          */
         post: operations["undo"];
         delete?: never;
@@ -72,9 +72,30 @@ export interface paths {
         put?: never;
         /**
          * Redo
-         * @description Re-apply the most recently undone agent turn.
+         * @description Re-apply the most recently undone step.
          */
         post: operations["redo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Checkout
+         * @description Jump to any step in the history. Editing from there starts a new branch; the steps
+         *     after it stay in the history.
+         */
+        post: operations["checkout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -216,8 +237,8 @@ export interface components {
          * ChatEntry
          * @description One line of the conversation shown in the chat panel and replayed to the agent.
          *
-         *     The conversation is linear even when edits are undone: an undo or redo is recorded as an
-         *     `event` entry, so the agent knows its earlier change is no longer in effect.
+         *     The conversation is linear even when the history branches: undo, redo, and jumps are
+         *     recorded as `event` entries, so the agent knows its earlier change is no longer in effect.
          */
         ChatEntry: {
             /**
@@ -227,13 +248,21 @@ export interface components {
             role: "user" | "assistant" | "event";
             /** Text */
             text: string;
-            /** Turn Id */
-            turn_id?: string | null;
+            /** Step Id */
+            step_id?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at?: string;
+        };
+        /** Checkout */
+        Checkout: {
+            /**
+             * Step Id
+             * @description Step to show, or null for the original photo.
+             */
+            step_id: string | null;
         };
         /**
          * Clarity
@@ -354,18 +383,24 @@ export interface components {
             width: number;
             /** Height */
             height: number;
-            /** Step */
-            step: number;
             /** Revision */
             revision: string;
             /** Operations */
             operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            /** Head */
+            head: string | null;
+            /** Tip */
+            tip: string | null;
             /** Can Undo */
             can_undo: boolean;
             /** Can Redo */
             can_redo: boolean;
-            /** Turns */
-            turns: components["schemas"]["TurnView"][];
+            /** Undo Label */
+            undo_label: string | null;
+            /** Redo Label */
+            redo_label: string | null;
+            /** History */
+            history: components["schemas"]["StepView"][];
             /** Chat */
             chat: components["schemas"]["ChatEntry"][];
         };
@@ -638,6 +673,27 @@ export interface components {
              */
             radius: number;
         };
+        /** StepView */
+        StepView: {
+            /** Id */
+            id: string;
+            /** Parent */
+            parent: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "manual";
+            /** Label */
+            label: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Active */
+            active: boolean;
+        };
         /**
          * Straighten
          * @description Rotate by a small angle to level a tilted horizon, cropping away the empty corners.
@@ -688,19 +744,6 @@ export interface components {
              * @enum {string}
              */
             channel: "rgb" | "red" | "green" | "blue";
-        };
-        /** TurnView */
-        TurnView: {
-            /** Id */
-            id: string;
-            /** Request */
-            request: string;
-            /** Reply */
-            reply: string;
-            /** Operations */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
-            /** Applied */
-            applied: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -1007,6 +1050,48 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    checkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Checkout"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or step */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

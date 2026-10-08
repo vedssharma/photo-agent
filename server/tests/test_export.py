@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from photo_agent.export import GPS_IFD
-from photo_agent.graph import Turn
+from photo_agent.graph import Step
 from photo_agent.operations import Crop, Exposure
 from photo_agent.routes import get_store
 from photo_agent.settings import Settings
@@ -18,7 +18,7 @@ EXIF_ORIENTATION = 0x0112
 def apply(settings: Settings, doc_id: str, *ops: Any) -> None:
     store = get_store(settings)
     doc = store.get(doc_id)
-    doc.commit_turn(Turn(request="test", operations=list(ops)))
+    doc.commit(Step(label="test", operations=list(ops)))
     store.save(doc)
 
 
