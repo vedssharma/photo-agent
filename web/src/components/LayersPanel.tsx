@@ -37,8 +37,8 @@ interface Props {
   onMaskTool: (tool: MaskTool) => void
   /** Operation specs by name, for the manual controls. */
   specs: Map<string, OperationSpec>
-  /** A slider is being dragged (or released, with null), for live previews. */
-  onPreview?: (preview: Preview | null) => void
+  /** A slider is being dragged, for live previews. */
+  onPreview?: (preview: Preview) => void
 }
 
 const BLEND_MODES: { value: BlendMode; label: string }[] = [
@@ -88,7 +88,6 @@ export function LayersPanel({
           ((param, value) => onPreview({ layerId, opId, param, value }))
         }
         onChange={(changes, label, param) => {
-          onPreview?.(null)
           void apply(
             label,
             (s) => updateOperation(s, opId, changes),

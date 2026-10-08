@@ -13,13 +13,15 @@ import { ExportDialog } from './components/ExportDialog'
 import { HistoryButtons } from './components/HistoryButtons'
 import { HistoryPanel } from './components/HistoryPanel'
 import { LayersPanel } from './components/LayersPanel'
+import { LivePreview } from './components/LivePreview'
 import { MaskOverlay } from './components/MaskOverlay'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
 import { useManualEdit } from './hooks/useManualEdit'
 import { useOperationSpecs } from './hooks/useOperationSpecs'
 import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
-import { updateLayer } from './lib/state'
+import { liveTarget } from './lib/livePreview'
+import { type Preview, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
 
 type Health =
@@ -68,6 +70,14 @@ function Editor({
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
   const mask = layer?.mask ?? null
   const showOverlay = layer && mask && (isDrawn(mask.kind) || maskTool.show)
+  // A slider being dragged, shown instantly until the server's render of it arrives.
+  const [preview, setPreview] = useState<
+    (Preview & { revision: string }) | null
+  >(null)
+  const live =
+    preview && preview.revision === doc.revision
+      ? liveTarget(doc.state, preview)
+      : null
   return (
     <main className="workspace">
       <aside className="side" aria-label="Edits">
@@ -80,6 +90,7 @@ function Editor({
           maskTool={maskTool}
           onMaskTool={setMaskTool}
           specs={specs}
+          onPreview={(p) => setPreview(p && { ...p, revision: doc.revision })}
         />
         <HistoryPanel
           doc={doc}
@@ -115,25 +126,43 @@ function Editor({
           alt={doc.filename}
           busy={chat.busy}
           overlay={
-            showOverlay
+            showOverlay || live
               ? (frame) => (
-                  <MaskOverlay
-                    key={`${layer.id}:${doc.revision}`}
-                    mask={mask}
-                    width={frame.width}
-                    height={frame.height}
-                    tool={maskTool}
-                    maskSrc={
-                      maskTool.show ? layerMaskUrl(doc, layer.id) : undefined
-                    }
-                    onChange={(next, label) =>
-                      manual.edit(
-                        `${label} on “${layer.name}”`,
-                        (s) => updateLayer(s, layer.id, { mask: next }),
-                        `layer:${layer.id}:mask:draw`,
-                      )
-                    }
-                  />
+                  <>
+                    {live && (
+                      <LivePreview
+                        src={previewUrl(doc)}
+                        maskSrc={
+                          live.maskLayerId
+                            ? layerMaskUrl(doc, live.maskLayerId)
+                            : undefined
+                        }
+                        adjustment={live.adjustment}
+                        opacity={live.opacity}
+                      />
+                    )}
+                    {showOverlay && (
+                      <MaskOverlay
+                        key={`${layer.id}:${doc.revision}`}
+                        mask={mask}
+                        width={frame.width}
+                        height={frame.height}
+                        tool={maskTool}
+                        maskSrc={
+                          maskTool.show
+                            ? layerMaskUrl(doc, layer.id)
+                            : undefined
+                        }
+                        onChange={(next, label) =>
+                          manual.edit(
+                            `${label} on “${layer.name}”`,
+                            (s) => updateLayer(s, layer.id, { mask: next }),
+                            `layer:${layer.id}:mask:draw`,
+                          )
+                        }
+                      />
+                    )}
+                  </>
                 )
               : undefined
           }
