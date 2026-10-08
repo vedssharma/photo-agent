@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 
 import { api } from './api/client'
-import { type DocumentView, previewUrl, uploadDocument } from './api/documents'
+import {
+  type DocumentView,
+  originalUrl,
+  previewUrl,
+  uploadDocument,
+} from './api/documents'
+import { PhotoCanvas } from './components/PhotoCanvas'
 import { PhotoPicker } from './components/PhotoPicker'
 
 type Health =
@@ -66,7 +72,11 @@ function App() {
 
       {doc ? (
         <main className="workspace">
-          <img className="photo" src={previewUrl(doc)} alt={doc.filename} />
+          <PhotoCanvas
+            src={previewUrl(doc)}
+            beforeSrc={originalUrl(doc)}
+            alt={doc.filename}
+          />
         </main>
       ) : (
         <main className="landing">
