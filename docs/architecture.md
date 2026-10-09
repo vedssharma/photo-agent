@@ -97,3 +97,49 @@ The face-parsing weights are the one non-commercial dependency; swap them before
 
 **Agent.** The agent can give any layer a semantic mask (`"brighten just the subject"`), remove things in their own layer, cut out the subject (`cut_out`, `restore_background`), retouch portraits (`retouch_portrait`), and straighten (`auto_straighten`). Its self-check render after each round shows what a selection actually caught, so it can move the box or add points when the model picked the wrong thing. When it adjusts a selection the person touched up, it keeps their strokes.
 
+
+## Generative edits (Phase 4)
+
+```
+Browser                                     Backend (server/src/photo_agent)
+───────                                     ─────────────────────────────────
+LayersPanel: Generate…, New background…,    generative.py      seeds, models, and cache keys of generative ops
+  Relight…, Restyle…, Restore… ─ …/edits ─▶ render.py          content layers, expand, relight, colorize, restyle
+Crop & rotate: Expand                       compositing.py     harmonize a subject with a new background
+OperationControls: New take, Show options   variants.py        takes on offer, contact sheets
+  ── POST/GET …/operations/{op}/options ──▶
+RecipesPanel: Add a look ─ POST …/looks/… ▶ looks.py           ready-made looks built from adjustments
+ExportDialog: Enlarge ── POST …/export ───▶ export.py          upscaling; credentials.py signs C2PA manifests
+(every new prompt) ───────────────────────▶ safety.py          local rules plus a Claude classifier
+```
+
+**Generative operations (`operations.py`, `generative.py`).** `generate` (fill a masked area from a prompt), `replace_background`, `relight`, `restore_faces`, `colorize`, and `restyle` are content operations: each stands alone in its layer and, like removals, renders before every adjustment. `expand` is a framing operation, so masks and later crops refer to the expanded frame. Each records its `seed` and `model`, filled in when the edit is made (`generative.stamp`, in the manual-edit route and after each agent tool call), so every render, undo, and export shows the same take, and a new seed gives a different one. The worker tries the recorded model first.
+
+**One result, any size (`vision/selection.py`).** A generative result is made once at a fixed working size (1024 px, 2048 for faces) and cached by everything it depends on except the render size: the framing, every content layer up to it, and the operation without its id or the fields applied afterwards (`harmonize`, `amount`, `options`). Preview and export scale the same patch, so they match, and changing how much of a result to use never regenerates it.
+
+**What each one does (`render.py`).**
+- *Generative fill* sends the masked area and its surroundings to SDXL inpainting and blends the patch in through the grown mask.
+- *Expand canvas* pads the frame to an aspect ratio (or by side amounts), seeds the new margins with a soft mirror of the photo, and has the model paint them, overlapping the photo slightly so the seam disappears.
+- *Background replacement* defaults to everything but the main subject, paints the new scene, composites it through the mask's soft edge, then *harmonizes* (`compositing.py`): the subject's average tone and color shift toward the scene and the scene's light wraps over its edge. Harmonizing needs no model, so its slider is instant.
+- *Relighting* redraws the photo under the requested light with IC-Light, then keeps the photo's own fine detail under the new light (`transfer_light`), blended by `amount` and the layer's mask.
+- *Face restoration* runs GFPGAN on faces YuNet finds; *colorizing* runs DDColor and keeps the photo's own brightness (`keep_luminance`).
+- *Restyle* redraws the whole photo with SDXL at a strength that keeps the composition. Color looks never use it.
+- *Upscaling* is an export option (2× or 4×, up to 8000 px across) with Real-ESRGAN, tiled so big photos fit in memory; pixels cross to the worker as 8 bits.
+
+| Task | Model (license) | Fallback |
+| --- | --- | --- |
+| Fill, expand, new background, restyle | SDXL inpainting 0.1 (CreativeML Open RAIL++-M) | continue the surroundings; a plain studio backdrop; a painterly filter |
+| Relight | IC-Light fc on Realistic Vision 5.1, SD 1.5 (CreativeML Open RAIL-M) | shading from the chosen side in the light's color |
+| Upscale | Real-ESRGAN x4 (BSD-3-Clause) | Lanczos and a light sharpen |
+| Restore faces | GFPGAN 1.4 (Apache-2.0) with YuNet faces (MIT) | denoise and sharpen each face |
+| Colorize | DDColor (Apache-2.0) | a hand-tinted look |
+
+The fallbacks are honest stand-ins: the agent is told when no generative model is installed, and the layer says "Made with classical". The new models need the `models` extra, which now includes diffusers, accelerate, and spandrel.
+
+**Looks (`looks.py`).** Ten built-in looks (1970s film, teal and orange, noir, golden hour, …) are layers of ordinary adjustments, including the new `color_grade` (split toning: a hue and amount for shadows, midtones, and highlights). The agent prefers them, or grades by hand, and calls `restyle` only for a new medium ("make it a watercolor").
+
+**Variants (`variants.py`).** "Show me 3 options" puts several seeds on the operation (`options`; the first is the current take) as one history step and generates each. The agent sees them numbered side by side (`show_options`); the layers panel shows them as thumbnails under the seed, and picking one sets the seed, which is instant since each take is cached.
+
+**Safety (`safety.py`).** Every prompt new to the edit state is screened before anything is generated. Local rules always block sexual edits of real people, undressing, and faked documents; with an API key, Claude classifies the rest with a short structured-output call, chiefly for deceptive impersonation of real people. Verdicts are cached; if Claude can't be reached the local rules still apply. A refused manual edit returns 422 with the reason; a refused agent tool call goes back to Claude, and nothing changes.
+
+**Content Credentials (`credentials.py`).** An export in which any generative edit shows is signed with a C2PA manifest (`c2pa-python`) listing each generative edit, its model, and the IPTC `compositeWithTrainedAlgorithmicMedia` source type. The signing certificate and a local certificate authority are made on first use in `.data/c2pa/`. Verifiers read the manifest but report the signer as unknown; a product would sign with a certificate from a C2PA-trusted issuer.
