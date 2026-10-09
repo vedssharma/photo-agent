@@ -43,6 +43,19 @@ def test_rejects_files_that_are_not_photos(client: TestClient) -> None:
     assert "image" in res.json()["detail"]
 
 
+def test_upload_iphone_mpo_jpeg(client: TestClient, settings: Settings) -> None:
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (90, 120, 200)).save(
+        buf, format="MPO", save_all=True, append_images=[Image.new("L", (20, 15))]
+    )
+    res = client.post("/api/documents", files={"file": ("IMG_8684.jpeg", buf.getvalue())})
+    assert res.status_code == 201, res.text
+    doc = res.json()
+    assert doc["format"] == "JPEG"
+    assert (settings.data_dir / "documents" / doc["id"] / "original.jpg").is_file()
+    assert client.get(f"/api/documents/{doc['id']}/original").status_code == 200
+
+
 def test_upload_keeps_only_the_base_filename(client: TestClient, photos: Any) -> None:
     data = (photos / "portrait.jpg").read_bytes()
     res = client.post("/api/documents", files={"file": ("../../evil/me.jpg", data)})

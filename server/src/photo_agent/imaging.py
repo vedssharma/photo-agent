@@ -23,6 +23,10 @@ Array = npt.NDArray[np.float32]
 SUPPORTED_FORMATS = {"JPEG", "PNG", "HEIF"}
 """Pillow format names we accept. `pillow-heif` reports HEIC files as HEIF."""
 
+FORMAT_ALIASES = {"MPO": "JPEG"}
+"""Pillow formats we treat as another. iPhone JPEGs carry a depth map or gain map as a
+second image, so Pillow calls them MPO; the first frame is the ordinary JPEG photo."""
+
 PREVIEW_LONG_EDGE = 1600
 """Long edge of the preview proxy, in pixels. Interactive renders happen at this size."""
 
@@ -64,12 +68,11 @@ def decode(data: bytes) -> DecodedImage:
     except (UnidentifiedImageError, OSError) as exc:
         raise UnsupportedImageError("Could not read this file as an image.") from exc
 
-    if img.format not in SUPPORTED_FORMATS:
+    fmt = FORMAT_ALIASES.get(img.format or "", img.format)
+    if fmt not in SUPPORTED_FORMATS:
         raise UnsupportedImageError(
             f"{img.format or 'This'} files are not supported yet; use JPEG, PNG, or HEIC."
         )
-
-    fmt = img.format
     exif = img.info.get("exif", b"")
     icc = img.info.get("icc_profile")
 
