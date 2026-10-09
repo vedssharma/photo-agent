@@ -523,6 +523,57 @@ def _straighten(x: Array, op: ops.Straighten, ctx: RenderContext) -> Array:
     return cast(Array, np.ascontiguousarray(rotated[y0:y1, x0:x1]))
 
 
+# How far the strongest perspective and lens corrections go.
+PERSPECTIVE_MAX = 0.3
+"""Fraction of the width (or height) the narrow side is stretched by at 100."""
+DISTORTION_MAX = 0.25
+"""Radial coefficient at 100, with the radius measured to the corners."""
+
+
+def perspective_quad(op: ops.Perspective, w: int, h: int) -> Array:
+    """The corners (top-left, top-right, bottom-right, bottom-left) of the region that gets
+    stretched to fill the frame."""
+    quad = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    kv, kh = PERSPECTIVE_MAX * op.vertical / 100, PERSPECTIVE_MAX * op.horizontal / 100
+    top, bottom = (0, 1) if kv > 0 else (3, 2)
+    quad[top, 0] += abs(kv) * w / 2
+    quad[bottom, 0] -= abs(kv) * w / 2
+    right, left = (1, 2) if kh > 0 else (0, 3)
+    quad[right, 1] += abs(kh) * h / 2
+    quad[left, 1] -= abs(kh) * h / 2
+    return quad
+
+
+def _perspective(x: Array, op: ops.Perspective, ctx: RenderContext) -> Array:
+    if abs(op.vertical) < 1e-3 and abs(op.horizontal) < 1e-3:
+        return x
+    h, w = x.shape[:2]
+    frame = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    matrix = cv2.getPerspectiveTransform(perspective_quad(op, w, h), frame)
+    out = cv2.warpPerspective(
+        x, matrix, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+    )
+    return cast(Array, out)
+
+
+def _lens_correction(x: Array, op: ops.LensCorrection, ctx: RenderContext) -> Array:
+    if abs(op.distortion) < 1e-3:
+        return x
+    h, w = x.shape[:2]
+    k = -DISTORTION_MAX * op.distortion / 100
+    reach = math.hypot(w, h) / 2
+    # Scale so the edge point that samples farthest out still lands inside the photo.
+    nearest_edge = min(w, h) / 2 / reach
+    scale = 1 / max(1 + k * nearest_edge**2, 1 + k)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    dx, dy = (xs - (w - 1) / 2) / reach, (ys - (h - 1) / 2) / reach
+    factor = (1 + k * (dx * dx + dy * dy)) * scale
+    map_x = (dx * factor * reach + (w - 1) / 2).astype(np.float32)
+    map_y = (dy * factor * reach + (h - 1) / 2).astype(np.float32)
+    out = cv2.remap(x, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    return cast(Array, out)
+
+
 # Finishing
 
 
@@ -664,6 +715,8 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Crop: _crop,
     ops.Rotate: _rotate,
     ops.Straighten: _straighten,
+    ops.Perspective: _perspective,
+    ops.LensCorrection: _lens_correction,
     ops.Flip: _flip,
     ops.Vignette: _vignette,
     ops.Grain: _grain,

@@ -43,6 +43,8 @@ interface Props {
   onPreview?: (preview: Preview) => void
   /** Adds the portrait retouch layers. */
   onRetouch?: () => void
+  /** Levels the photo and squares up converging verticals. */
+  onStraighten?: () => void
 }
 
 const BLEND_MODES: { value: BlendMode; label: string }[] = [
@@ -73,6 +75,7 @@ export function LayersPanel({
   specs,
   onPreview,
   onRetouch,
+  onStraighten,
 }: Props) {
   const state = doc.state
   const locked = disabled
@@ -520,9 +523,19 @@ export function LayersPanel({
           {selected === FRAMING && (
             <div className="layer-body">
               <p className="hint">Applies to the whole photo, before layers.</p>
+              {onStraighten && (
+                <button
+                  type="button"
+                  disabled={locked}
+                  title="Level the horizon and straighten leaning buildings"
+                  onClick={onStraighten}
+                >
+                  Auto straighten
+                </button>
+              )}
               {state.framing.map((op) => operationControls(op, null))}
               <AddOperation
-                label="Add crop or rotation"
+                label="Add crop, rotation, or lens fix"
                 specs={allSpecs.filter((s) => s.framing)}
                 disabled={locked}
                 onAdd={(spec) => add(spec, null, 'the framing')}

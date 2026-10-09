@@ -202,6 +202,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/straighten": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Straighten
+         * @description Level the photo and square up converging verticals, measured from its straight
+         *     lines, as one step in the history. 422 when it finds nothing to go by.
+         */
+        post: operations["autoStraighten"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/checkout": {
         parameters: {
             query?: never;
@@ -477,6 +498,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AutoStraighten
+         * @description What to fix automatically.
+         */
+        AutoStraighten: {
+            /**
+             * Level
+             * @description Level a tilted horizon or tilted verticals.
+             * @default true
+             */
+            level: boolean;
+            /**
+             * Perspective
+             * @description Make converging verticals (buildings, walls) parallel.
+             * @default true
+             */
+            perspective: boolean;
+        };
         /**
          * Blacks
          * @description Move the black point: negative makes blacks deeper, positive lifts them (matte look).
@@ -783,7 +822,7 @@ export interface components {
              * Framing
              * @default []
              */
-            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"])[];
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"])[];
             /**
              * Layers
              * @default []
@@ -1044,6 +1083,29 @@ export interface components {
             operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"])[];
         };
         /**
+         * LensCorrection
+         * @description Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward
+         *     (pincushion, telephoto). Scales up just enough that no edge is left empty.
+         */
+        LensCorrection: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "lens_correction";
+            /**
+             * Distortion
+             * @description Positive straightens lines that bow outward (barrel); negative straightens lines that bow inward (pincushion).
+             * @default 0
+             */
+            distortion: number;
+        };
+        /**
          * LinearGradientMask
          * @description Full effect on the `start` side, fading to none at `end`. For skies, use a start at
          *     the top and an end a little below the horizon.
@@ -1202,6 +1264,36 @@ export interface components {
             choices?: (string | number)[] | null;
             /** Default */
             default?: unknown;
+        };
+        /**
+         * Perspective
+         * @description Fix lines that converge because the camera was tilted: buildings that lean in toward
+         *     the top, or a wall that shrinks toward one side. The narrow side is stretched out to the
+         *     frame, so nothing is left empty.
+         */
+        Perspective: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "perspective";
+            /**
+             * Vertical
+             * @description Positive widens the top, for verticals that lean in toward the top (camera tilted up); negative widens the bottom.
+             * @default 0
+             */
+            vertical: number;
+            /**
+             * Horizontal
+             * @description Positive widens the right side, for lines that converge toward the right; negative widens the left.
+             * @default 0
+             */
+            horizontal: number;
         };
         /**
          * RadialGradientMask
@@ -2109,6 +2201,41 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["Retouch"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    autoStraighten: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AutoStraighten"] | null;
             };
         };
         responses: {

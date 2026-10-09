@@ -243,6 +243,8 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
     "rotate": [ops.Rotate(degrees=270)],
     "straighten": [ops.Straighten(angle=-4)],
     "flip": [ops.Flip(axis="vertical")],
+    "perspective": [ops.Perspective(vertical=40, horizontal=-20)],
+    "lens_correction": [ops.LensCorrection(distortion=50)],
     "vignette": [ops.Vignette(amount=-60, midpoint=40)],
     "grain": [ops.Grain(amount=60, size=50, id="golden01")],
     "smooth_skin": [ops.SmoothSkin(amount=70, texture=40)],

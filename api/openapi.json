@@ -472,6 +472,66 @@
         }
       }
     },
+    "/api/documents/{doc_id}/straighten": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Auto Straighten",
+        "description": "Level the photo and square up converging verticals, measured from its straight\nlines, as one step in the history. 422 when it finds nothing to go by.",
+        "operationId": "autoStraighten",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AutoStraighten"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Options"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/checkout": {
       "post": {
         "tags": [
@@ -1017,6 +1077,26 @@
   },
   "components": {
     "schemas": {
+      "AutoStraighten": {
+        "properties": {
+          "level": {
+            "type": "boolean",
+            "title": "Level",
+            "description": "Level a tilted horizon or tilted verticals.",
+            "default": true
+          },
+          "perspective": {
+            "type": "boolean",
+            "title": "Perspective",
+            "description": "Make converging verticals (buildings, walls) parallel.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AutoStraighten",
+        "description": "What to fix automatically."
+      },
       "Blacks": {
         "properties": {
           "id": {
@@ -1654,6 +1734,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/Flip"
+                },
+                {
+                  "$ref": "#/components/schemas/Perspective"
+                },
+                {
+                  "$ref": "#/components/schemas/LensCorrection"
                 }
               ],
               "discriminator": {
@@ -1661,6 +1747,8 @@
                 "mapping": {
                   "crop": "#/components/schemas/Crop",
                   "flip": "#/components/schemas/Flip",
+                  "lens_correction": "#/components/schemas/LensCorrection",
+                  "perspective": "#/components/schemas/Perspective",
                   "rotate": "#/components/schemas/Rotate",
                   "straighten": "#/components/schemas/Straighten"
                 }
@@ -2229,6 +2317,33 @@
         "title": "Layer",
         "description": "A named group of adjustments with its own visibility, opacity, and blend mode."
       },
+      "LensCorrection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "lens_correction",
+            "title": "Op",
+            "default": "lens_correction"
+          },
+          "distortion": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Distortion",
+            "description": "Positive straightens lines that bow outward (barrel); negative straightens lines that bow inward (pincushion).",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LensCorrection",
+        "description": "Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward\n(pincushion, telephoto). Scales up just enough that no edge is left empty."
+      },
       "LinearGradientMask": {
         "properties": {
           "invert": {
@@ -2551,6 +2666,41 @@
           "kind"
         ],
         "title": "ParamSpec"
+      },
+      "Perspective": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "perspective",
+            "title": "Op",
+            "default": "perspective"
+          },
+          "vertical": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Vertical",
+            "description": "Positive widens the top, for verticals that lean in toward the top (camera tilted up); negative widens the bottom.",
+            "default": 0
+          },
+          "horizontal": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Horizontal",
+            "description": "Positive widens the right side, for lines that converge toward the right; negative widens the left.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Perspective",
+        "description": "Fix lines that converge because the camera was tilted: buildings that lean in toward\nthe top, or a wall that shrinks toward one side. The narrow side is stretched out to the\nframe, so nothing is left empty."
       },
       "RadialGradientMask": {
         "properties": {

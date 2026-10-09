@@ -22,12 +22,12 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import imaging, portrait, projects, recipes
+from photo_agent import geometry, imaging, portrait, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.layers import EditState, Layer
-from photo_agent.render import RenderCache, render_layer_mask
+from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
 from photo_agent.vision.backends import BackendMode, WorkerConfig
@@ -270,6 +270,34 @@ def retouch_portrait(
     state = doc.state
     state.layers.extend(portrait.retouch_layers(options or portrait.Retouch()))
     if doc.edit_by_hand("Retouch portrait", state):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+@router.post("/{doc_id}/straighten", operation_id="autoStraighten")
+def auto_straighten(
+    doc_id: str,
+    store: Store,
+    options: Annotated[geometry.AutoStraighten | None, Body()] = None,
+) -> DocumentView:
+    """Level the photo and square up converging verticals, measured from its straight
+    lines, as one step in the history. 422 when it finds nothing to go by."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    state = doc.state
+    found = geometry.auto_level(
+        state.framing,
+        lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
+        options,
+    )
+    if not found.describe():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "No clear horizon or verticals to go by, or the photo is already straight.",
+        )
+    state.framing = found.framing  # type: ignore[assignment]
+    if doc.edit_by_hand("Auto straighten", state):
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)

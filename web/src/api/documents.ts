@@ -205,6 +205,18 @@ export async function retouchPortrait(docId: string): Promise<DocumentView> {
   return data
 }
 
+/** Level the photo and square up converging verticals, as one step in the history. */
+export async function autoStraighten(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/straighten',
+    {
+      params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
 /** Record a change made with the manual controls as a step in the history. */
 export async function editByHand(
   docId: string,

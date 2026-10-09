@@ -57,6 +57,7 @@ function setup(selected: string | null = null) {
   const onSelect = vi.fn()
   const onMaskTool = vi.fn()
   const onRetouch = vi.fn()
+  const onStraighten = vi.fn()
   render(
     <LayersPanel
       doc={doc}
@@ -67,9 +68,10 @@ function setup(selected: string | null = null) {
       onMaskTool={onMaskTool}
       specs={SPECS}
       onRetouch={onRetouch}
+      onStraighten={onStraighten}
     />,
   )
-  return { sent, onSelect, onMaskTool, onRetouch }
+  return { sent, onSelect, onMaskTool, onRetouch, onStraighten }
 }
 
 describe('LayersPanel', () => {
@@ -297,6 +299,17 @@ describe('LayersPanel retouch', () => {
     const { sent, onRetouch } = setup()
     await userEvent.click(screen.getByRole('button', { name: 'Retouch' }))
     expect(onRetouch).toHaveBeenCalledOnce()
+    expect(sent).toEqual([])
+  })
+})
+
+describe('LayersPanel framing', () => {
+  it('straightens automatically from the framing section', async () => {
+    const { sent, onStraighten } = setup('framing')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Auto straighten' }),
+    )
+    expect(onStraighten).toHaveBeenCalledOnce()
     expect(sent).toEqual([])
   })
 })

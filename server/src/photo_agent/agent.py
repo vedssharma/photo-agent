@@ -23,6 +23,7 @@ from anthropic.types.beta import (
 from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging
+from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
 from photo_agent.masks import describe_mask
@@ -35,7 +36,7 @@ from photo_agent.operations import (
     Remove,
 )
 from photo_agent.portrait import Retouch, retouch_layers
-from photo_agent.render import RenderCache
+from photo_agent.render import RenderCache, render
 from photo_agent.store import DocumentStore
 
 MAX_MODEL_CALLS = 8
@@ -80,6 +81,10 @@ such as "#ffffff" for a clean product shot, or a different mask to keep somethin
 - For portraits ("make me look good", "fix my skin"), call retouch_portrait. Keep it \
 subtle: people should look like themselves on a good day. Its defaults are a good start; \
 tone them down for close-ups and children.
+- When the horizon is tilted or a building leans ("straighten this", "fix the \
+horizon", "the walls look crooked"), call auto_straighten: it measures the straight lines in \
+the photo and adds a straighten and a perspective fix to the framing. If it finds nothing, \
+set straighten yourself. Use lens_correction for lines that bow (wide-angle barrel).
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -355,6 +360,21 @@ def tool_definitions() -> list[BetaToolParam]:
     )
     tools.append(
         {
+            "name": "auto_straighten",
+            "description": "Level the photo and square up converging verticals, measured "
+            "from the straight lines in it (horizon, walls, buildings). Replaces any "
+            "straighten or perspective already in the framing; keeps crops, rotations, and "
+            "flips. Reports what it found, or that the photo gave no clear lines.",
+            "input_schema": {
+                "type": "object",
+                "properties": AutoStraighten.model_json_schema()["properties"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
             "name": "restore_background",
             "description": "Undo the cutout and bring the background back.",
             "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -404,9 +424,16 @@ class ToolError(Exception):
 class Editor:
     """Applies tool calls to a working copy of the edit state."""
 
-    def __init__(self, state: EditState, default_layer_name: str = "Edits") -> None:
+    def __init__(
+        self,
+        state: EditState,
+        default_layer_name: str = "Edits",
+        framed: Framed | None = None,
+    ) -> None:
         self.state = state.model_copy(deep=True)
         self.default_layer_name = default_layer_name
+        self.framed = framed
+        """Renders the photo with a given framing, for tools that measure it."""
         self.target: str | None = None
         """The layer that operation tools add to: the one added most recently."""
 
@@ -421,6 +448,7 @@ class Editor:
             "remove_layer": self._remove_layer,
             "cut_out": self._cut_out,
             "retouch_portrait": self._retouch,
+            "auto_straighten": self._auto_straighten,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
@@ -543,6 +571,25 @@ class Editor:
         names = ", ".join(f"{layer.id} ({layer.name})" for layer in layers)
         return f"Added retouch layers {names}.", OperationEvent(
             action="added", summary="Portrait retouch: " + ", ".join(lay.name for lay in layers)
+        )
+
+    def _auto_straighten(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            options = AutoStraighten.model_validate(args)
+        except ValidationError as exc:
+            raise ToolError(f"Invalid auto_straighten: {_problems(exc)}") from None
+        if self.framed is None:
+            raise ToolError("The photo is not available to measure.")
+        found = auto_level(self.state.framing, self.framed, options)
+        done = found.describe()
+        if not done:
+            raise ToolError(
+                "Found no clear horizon or verticals to go by, or the photo is already "
+                "straight; nothing changed. Set straighten yourself if it still looks tilted."
+            )
+        self.state.framing = found.framing  # type: ignore[assignment]
+        return f"Added {done} to the framing.", OperationEvent(
+            action="added", summary=f"Auto straighten ({done})"
         )
 
     def _restore_background(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
@@ -684,7 +731,12 @@ class AgentService:
         async with lock:
             doc = self.store.get(doc_id)
             await emit(TurnStarted())
-            editor = Editor(doc.state, default_layer_name=layer_name(request))
+            loaded = self.store.image(doc_id)
+            editor = Editor(
+                doc.state,
+                default_layer_name=layer_name(request),
+                framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
+            )
             reply = await self._converse(doc, request, editor, emit)
 
             doc.chat.append(ChatEntry(role="user", text=request))

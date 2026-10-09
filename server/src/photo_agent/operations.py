@@ -208,6 +208,42 @@ class Flip(OpBase):
     axis: Literal["horizontal", "vertical"] = "horizontal"
 
 
+class Perspective(OpBase):
+    """Fix lines that converge because the camera was tilted: buildings that lean in toward
+    the top, or a wall that shrinks toward one side. The narrow side is stretched out to the
+    frame, so nothing is left empty."""
+
+    op: Literal["perspective"] = "perspective"
+    vertical: float = Field(
+        0,
+        ge=-100,
+        le=100,
+        description="Positive widens the top, for verticals that lean in toward the top "
+        "(camera tilted up); negative widens the bottom.",
+    )
+    horizontal: float = Field(
+        0,
+        ge=-100,
+        le=100,
+        description="Positive widens the right side, for lines that converge toward the "
+        "right; negative widens the left.",
+    )
+
+
+class LensCorrection(OpBase):
+    """Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward
+    (pincushion, telephoto). Scales up just enough that no edge is left empty."""
+
+    op: Literal["lens_correction"] = "lens_correction"
+    distortion: float = Field(
+        0,
+        ge=-100,
+        le=100,
+        description="Positive straightens lines that bow outward (barrel); negative "
+        "straightens lines that bow inward (pincushion).",
+    )
+
+
 # Finishing
 
 
@@ -292,6 +328,8 @@ Operation = Annotated[
     | Rotate
     | Straighten
     | Flip
+    | Perspective
+    | LensCorrection
     | Vignette
     | Grain
     | ToneCurve
@@ -320,6 +358,8 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Rotate,
     Straighten,
     Flip,
+    Perspective,
+    LensCorrection,
     Vignette,
     Grain,
     ToneCurve,
@@ -330,11 +370,21 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
 
-GEOMETRY_TYPES: tuple[type[OpBase], ...] = (Crop, Rotate, Straighten, Flip)
+GEOMETRY_TYPES: tuple[type[OpBase], ...] = (
+    Crop,
+    Rotate,
+    Straighten,
+    Flip,
+    Perspective,
+    LensCorrection,
+)
 """Operations that change framing rather than look."""
 
-FramingOperation = Annotated[Crop | Rotate | Straighten | Flip, Field(discriminator="op")]
-"""Crop, rotation, and flips. They apply to the whole photo, before any layer."""
+FramingOperation = Annotated[
+    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection, Field(discriminator="op")
+]
+"""Crop, rotation, flips, and perspective and lens fixes. They apply to the whole photo,
+before any layer."""
 
 AdjustmentOperation = Annotated[
     Exposure

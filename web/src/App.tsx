@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from './api/client'
 import {
   type DocumentView,
+  autoStraighten,
   beforeUrl,
   downloadProject,
   fetchDocument,
@@ -88,7 +89,7 @@ function Editor({
   const chat = useChat(doc.id, onDocument, createSocket)
   const [exporting, setExporting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [retouching, setRetouching] = useState(false)
+  const [acting, setActing] = useState(false)
   useAutosave(doc, projectStore, setActionError)
 
   async function saveProject() {
@@ -104,18 +105,22 @@ function Editor({
   const [maskTool, setMaskTool] = useState<MaskTool>(DEFAULT_MASK_TOOL)
   const manual = useManualEdit(doc, onDocument)
   const specs = useOperationSpecs()
-  const locked = chat.busy || retouching
-  const job = useJobs(doc.id, chat.busy || manual.working || retouching)
+  const locked = chat.busy || acting
+  const job = useJobs(doc.id, chat.busy || manual.working || acting)
 
-  async function retouch() {
-    setRetouching(true)
+  /** One-click edits the server works out, such as a retouch. */
+  async function act(
+    what: string,
+    run: (docId: string) => Promise<DocumentView>,
+  ) {
+    setActing(true)
     setActionError(null)
     try {
-      onDocument(await retouchPortrait(doc.id))
+      onDocument(await run(doc.id))
     } catch (err) {
-      setActionError(`Could not retouch: ${(err as Error).message}`)
+      setActionError(`Could not ${what}: ${(err as Error).message}`)
     } finally {
-      setRetouching(false)
+      setActing(false)
     }
   }
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
@@ -160,7 +165,8 @@ function Editor({
           onMaskTool={setMaskTool}
           specs={specs}
           onPreview={(p) => setPreview(p && { ...p, revision: doc.revision })}
-          onRetouch={() => void retouch()}
+          onRetouch={() => void act('retouch', retouchPortrait)}
+          onStraighten={() => void act('straighten', autoStraighten)}
         />
         <RecipesPanel
           doc={doc}
