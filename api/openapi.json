@@ -1050,6 +1050,175 @@
         }
       }
     },
+    "/api/documents/{doc_id}/suggestions": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Suggest Edits",
+        "description": "Two to four directions this photo could go in, each as layers with a thumbnail, to\npick from and refine. Proposed by Claude when an API key is set, else built in. The\nanswer is kept, so asking again for the same edits is free.",
+        "operationId": "suggestEdits",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SuggestionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionSet"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Claude could not be reached"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/suggestions/{suggestion_id}/preview": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Suggestion Preview",
+        "description": "A small preview of the photo with a suggestion applied on top of the current edits.",
+        "operationId": "getSuggestionPreview",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such suggestion"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/suggestions/{suggestion_id}": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Suggestion",
+        "description": "Add a suggestion's layers on top of the current edits, as one step the agent knows\nabout, so the conversation can carry on from it (\"a bit less contrast\").",
+        "operationId": "applySuggestion",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or suggestion"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "post": {
         "tags": [
@@ -4315,6 +4484,82 @@
         ],
         "title": "Straighten",
         "description": "Rotate by a small angle to level a tilted horizon, cropping away the empty corners."
+      },
+      "Suggestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "A short name, like \u201cMoody film\u201d."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "One friendly sentence on what it does."
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "title": "Layers",
+            "description": "The layers picking it adds on top."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "layers"
+        ],
+        "title": "Suggestion"
+      },
+      "SuggestionSet": {
+        "properties": {
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "source",
+          "suggestions"
+        ],
+        "title": "SuggestionSet"
+      },
+      "SuggestionsRequest": {
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "description": "Ask again instead of reusing earlier ideas.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SuggestionsRequest"
       },
       "TaskStatus": {
         "properties": {

@@ -266,7 +266,7 @@ function Editor({
           }
         />
       </div>
-      <ChatPanel doc={doc} chat={chat} />
+      <ChatPanel doc={doc} chat={chat} onDocument={onDocument} />
       {exporting && (
         <ExportDialog doc={doc} onClose={() => setExporting(false)} />
       )}

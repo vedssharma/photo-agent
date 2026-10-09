@@ -31,11 +31,21 @@ from photo_agent import (
     projects,
     recipes,
     safety,
+    suggestions,
     variants,
 )
-from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
+from photo_agent.advisor import Advisor, AdvisorError, ClaudeAdvisor
+from photo_agent.agent import (
+    AgentError,
+    AgentEvent,
+    AgentService,
+    ClaudeModel,
+    ModelClient,
+    image_block,
+)
+from photo_agent.diagnostics import measure
 from photo_agent.export import ExportOptions, export_bytes, export_filename
-from photo_agent.graph import Document, DocumentView
+from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import EditState, Layer
 from photo_agent.operations import MAX_OPTIONS, GenerativeBase
 from photo_agent.render import RenderCache, render, render_layer_mask
@@ -575,6 +585,122 @@ def warm_preview(store: DocumentStore, doc: Document) -> None:
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:
     key = settings.anthropic_api_key
     return ClaudeModel(key.get_secret_value(), settings.anthropic_model) if key else None
+
+
+def get_advisor(settings: Annotated[Settings, Depends(get_settings)]) -> Advisor | None:
+    key = settings.anthropic_api_key
+    return ClaudeAdvisor(key.get_secret_value(), settings.anthropic_model) if key else None
+
+
+AdvisorDep = Annotated[Advisor | None, Depends(get_advisor)]
+
+
+class SuggestionsRequest(BaseModel):
+    refresh: bool = Field(False, description="Ask again instead of reusing earlier ideas.")
+
+
+def _stored_suggestions(store: DocumentStore, doc_id: str) -> suggestions.SuggestionSet | None:
+    path = store.file(doc_id, "suggestions.json")
+    if not path.is_file():
+        return None
+    try:
+        return suggestions.SuggestionSet.model_validate_json(path.read_text())
+    except ValueError:
+        return None
+
+
+@router.post(
+    "/{doc_id}/suggestions",
+    operation_id="suggestEdits",
+    responses={502: {"description": "Claude could not be reached"}},
+)
+async def suggest_edits(
+    doc_id: str,
+    store: Store,
+    advisor: AdvisorDep,
+    request: Annotated[SuggestionsRequest | None, Body()] = None,
+) -> suggestions.SuggestionSet:
+    """Two to four directions this photo could go in, each as layers with a thumbnail, to
+    pick from and refine. Proposed by Claude when an API key is set, else built in. The
+    answer is kept, so asking again for the same edits is free."""
+    doc = load(store, doc_id)
+    stored = _stored_suggestions(store, doc_id)
+    if stored and stored.revision == doc.revision and not (request and request.refresh):
+        return stored
+    loaded = store.image(doc_id)
+    pixels = await asyncio.to_thread(
+        previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
+    )
+    source: suggestions.Source = "built-in"
+    directions = suggestions.built_in_directions(pixels)
+    if advisor is not None:
+        try:
+            block = dict(image_block(pixels))
+            found = await suggestions.ask_claude(advisor, block, measure(pixels))
+        except (AdvisorError, ValueError) as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from None
+        if found:
+            directions, source = found, "claude"
+    made = suggestions.SuggestionSet(
+        revision=doc.revision, source=source, suggestions=suggestions.suggestions_from(directions)
+    )
+    store.file(doc_id, "suggestions.json").write_text(made.model_dump_json())
+    return made
+
+
+def _suggestion(store: DocumentStore, doc_id: str, suggestion_id: str) -> suggestions.Suggestion:
+    stored = _stored_suggestions(store, doc_id)
+    for found in stored.suggestions if stored else []:
+        if found.id == suggestion_id:
+            return found
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "No such suggestion.")
+
+
+@router.get(
+    "/{doc_id}/suggestions/{suggestion_id}/preview",
+    operation_id="getSuggestionPreview",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "No such suggestion"}},
+)
+def suggestion_preview(doc_id: str, suggestion_id: str, store: Store) -> Response:
+    """A small preview of the photo with a suggestion applied on top of the current edits."""
+    doc = load(store, doc_id)
+    found = _suggestion(store, doc_id, suggestion_id)
+    loaded = store.image(doc_id)
+    state = suggestions.apply(found, doc.state)
+    rendered = previews.get_or_render(doc.id, loaded.proxy, state, loaded.proxy_context)
+    pixels = imaging.resize_long_edge(rendered, suggestions.THUMBNAIL_LONG_EDGE)
+    return Response(
+        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@router.post(
+    "/{doc_id}/suggestions/{suggestion_id}",
+    operation_id="applySuggestion",
+    responses={404: {"description": "No such document or suggestion"}},
+)
+def apply_suggestion(doc_id: str, suggestion_id: str, store: Store) -> DocumentView:
+    """Add a suggestion's layers on top of the current edits, as one step the agent knows
+    about, so the conversation can carry on from it ("a bit less contrast")."""
+    doc = load(store, doc_id)
+    found = _suggestion(store, doc_id, suggestion_id)
+    request = f"Try the “{found.title}” suggestion."
+    step = Step(
+        kind="agent",
+        label=found.title,
+        request=request,
+        reply=found.description,
+        state=suggestions.apply(found, doc.state),
+    )
+    doc.commit(step)
+    doc.chat.append(ChatEntry(role="user", text=request))
+    doc.chat.append(ChatEntry(role="assistant", text=found.description, step_id=step.id))
+    store.save(doc)
+    warm_preview(store, doc)
+    return DocumentView.of(doc)
 
 
 @router.websocket("/{doc_id}/chat")

@@ -3,6 +3,7 @@
     <data_dir>/documents/<id>/original.<ext>   the uploaded bytes, never modified
     <data_dir>/documents/<id>/document.json    the edit graph
     <data_dir>/documents/<id>/vision/          cached model results (semantic masks, ...)
+    <data_dir>/documents/<id>/suggestions.json the edit directions offered on open
 
 Decoded originals and preview proxies are kept in a small in-memory cache so a chat turn
 does not re-decode the file on every render.
@@ -138,6 +139,10 @@ class DocumentStore:
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(doc.model_dump_json(indent=2))
         tmp.replace(path)
+
+    def file(self, doc_id: str, name: str) -> Path:
+        """A file kept next to a document (suggestions, references, ...)."""
+        return self._folder(doc_id) / name
 
     def image(self, doc_id: str) -> LoadedImage:
         """The decoded original and its preview proxy."""

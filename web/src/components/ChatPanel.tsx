@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from 'react'
 
 import type { DocumentView } from '../api/documents'
 import type { Chat } from '../hooks/useChat'
+import { SuggestionPicker } from './SuggestionPicker'
 
 const SUGGESTIONS = [
   'Make it pop a little more',
@@ -14,9 +15,11 @@ const SUGGESTIONS = [
 interface Props {
   doc: DocumentView
   chat: Chat
+  /** Takes an updated document, after a suggestion is picked. */
+  onDocument?: (doc: DocumentView) => void
 }
 
-export function ChatPanel({ doc, chat }: Props) {
+export function ChatPanel({ doc, chat, onDocument }: Props) {
   const [draft, setDraft] = useState('')
   const log = useRef<HTMLOListElement>(null)
   const active = new Set(doc.history.filter((s) => s.active).map((s) => s.id))
@@ -48,6 +51,13 @@ export function ChatPanel({ doc, chat }: Props) {
       <ol className="chat-log" ref={log} aria-live="polite">
         {empty && (
           <li className="chat-hint">
+            {onDocument && doc.head === null && (
+              <SuggestionPicker
+                doc={doc}
+                onDocument={onDocument}
+                disabled={chat.busy}
+              />
+            )}
             <p>Tell me how you would like this photo to look.</p>
             <p className="fine-print">
               A downsized copy of the photo is sent to Claude so it can see what

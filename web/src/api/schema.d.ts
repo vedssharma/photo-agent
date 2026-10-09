@@ -431,6 +431,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Edits
+         * @description Two to four directions this photo could go in, each as layers with a thumbnail, to
+         *     pick from and refine. Proposed by Claude when an API key is set, else built in. The
+         *     answer is kept, so asking again for the same edits is free.
+         */
+        post: operations["suggestEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/suggestions/{suggestion_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggestion Preview
+         * @description A small preview of the photo with a suggestion applied on top of the current edits.
+         */
+        get: operations["getSuggestionPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/suggestions/{suggestion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Suggestion
+         * @description Add a suggestion's layers on top of the current edits, as one step the agent knows
+         *     about, so the conversation can carry on from it ("a bit less contrast").
+         */
+        post: operations["applySuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -2181,6 +2244,47 @@ export interface components {
              */
             angle: number;
         };
+        /** Suggestion */
+        Suggestion: {
+            /** Id */
+            id: string;
+            /**
+             * Title
+             * @description A short name, like “Moody film”.
+             */
+            title: string;
+            /**
+             * Description
+             * @description One friendly sentence on what it does.
+             */
+            description: string;
+            /**
+             * Layers
+             * @description The layers picking it adds on top.
+             */
+            layers: components["schemas"]["Layer"][];
+        };
+        /** SuggestionSet */
+        SuggestionSet: {
+            /** Revision */
+            revision: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "claude" | "built-in";
+            /** Suggestions */
+            suggestions: components["schemas"]["Suggestion"][];
+        };
+        /** SuggestionsRequest */
+        SuggestionsRequest: {
+            /**
+             * Refresh
+             * @description Ask again instead of reusing earlier ideas.
+             * @default false
+             */
+            refresh: boolean;
+        };
         /** TaskStatus */
         TaskStatus: {
             /** Task */
@@ -3145,6 +3249,126 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JobStatus"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggestEdits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SuggestionsRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestionSet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude could not be reached */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSuggestionPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such suggestion */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    applySuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or suggestion */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

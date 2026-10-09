@@ -39,7 +39,7 @@ export function isSupportedFile(file: File): boolean {
 
 export class ApiError extends Error {}
 
-function detail(error: unknown, status: number): string {
+export function detail(error: unknown, status: number): string {
   if (error && typeof error === 'object' && 'detail' in error) {
     const d = (error as { detail: unknown }).detail
     if (typeof d === 'string') return d
