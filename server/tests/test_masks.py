@@ -17,6 +17,7 @@ from photo_agent.masks import (
     LuminosityMask,
     Mask,
     RadialGradientMask,
+    SemanticMask,
     describe_mask,
     render_mask,
 )
@@ -115,3 +116,43 @@ def test_layer_mask_endpoint(client: TestClient, upload: Upload, settings: Setti
     assert img.ndim == 2
     assert img[0].min() > 250 and img[-1].max() < 5
     assert client.get(f"/api/documents/{doc['id']}/layers/nope/mask").status_code == 404
+
+
+def test_brush_touch_ups_refine_a_semantic_mask() -> None:
+    x = np.zeros((100, 200, 3), np.float32)
+
+    def left_half(mask: SemanticMask, shape: tuple[int, int]) -> np.ndarray:
+        alpha = np.zeros(shape, np.float32)
+        alpha[:, : shape[1] // 2] = 1
+        return alpha
+
+    plain = SemanticMask(target="sky")
+    assert render_mask(plain, x, left_half)[50, 150] == 0
+    touched = SemanticMask(
+        target="sky",
+        strokes=[
+            BrushStroke(points=[[0.75, 0.5]], size=0.05, hardness=100),
+            BrushStroke(points=[[0.25, 0.5]], size=0.05, hardness=100, erase=True),
+        ],
+    )
+    alpha = render_mask(touched, x, left_half)
+    assert alpha[50, 150] == pytest.approx(1, abs=0.01)  # painted on
+    assert alpha[50, 50] == pytest.approx(0, abs=0.01)  # erased
+    assert alpha[10, 20] == 1 and alpha[10, 180] == 0  # the rest as the model found it
+    assert "touched up with 2 brush strokes" in describe_mask(touched)
+    inverted = touched.model_copy(update={"invert": True})
+    np.testing.assert_allclose(render_mask(inverted, x, left_half), 1 - alpha)
+
+
+def test_the_agent_keeps_touch_ups_when_adjusting_a_selection() -> None:
+    from photo_agent.agent import Editor
+
+    stroke = BrushStroke(points=[[0.2, 0.2]], size=0.05)
+    mask = SemanticMask(target="object", box=[0.1, 0.1, 0.4, 0.9], strokes=[stroke])
+    editor = Editor(EditState(layers=[Layer(id="L1", name="Dog", mask=mask)]))
+    moved = {"kind": "semantic", "target": "object", "box": [0.1, 0.1, 0.5, 0.9]}
+    editor.call("update_layer", {"id": "L1", "changes": {"mask": moved}})
+    assert editor.state.layers[0].mask.strokes == [stroke]  # type: ignore[union-attr]
+    sky = {"kind": "semantic", "target": "sky"}
+    editor.call("update_layer", {"id": "L1", "changes": {"mask": sky}})
+    assert editor.state.layers[0].mask.strokes == []  # type: ignore[union-attr]

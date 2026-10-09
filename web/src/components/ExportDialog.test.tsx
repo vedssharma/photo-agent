@@ -10,6 +10,7 @@ const SUBJECT = {
   kind: 'semantic' as const,
   target: 'subject' as const,
   points: [],
+  strokes: [],
   description: '',
   invert: false,
 }

@@ -3015,6 +3015,16 @@
             "title": "Description",
             "description": "What is selected, in plain words: \"the dog\".",
             "default": ""
+          },
+          "strokes": {
+            "items": {
+              "$ref": "#/components/schemas/BrushStroke"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Strokes",
+            "description": "Brush touch-ups painted by the person over what the model found: added where painted, taken away where erased. Keep them when changing the mask.",
+            "default": []
           }
         },
         "additionalProperties": false,

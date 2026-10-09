@@ -23,6 +23,7 @@ const state: EditState = {
       kind: 'semantic',
       target: 'subject',
       points: [],
+      strokes: [],
       description: '',
       invert: false,
     },

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { EditState, Layer } from '../api/documents'
 import type { StateUpdate } from '../hooks/useManualEdit'
-import { DEFAULT_MASK_TOOL } from '../lib/masks'
+import { DEFAULT_MASK_TOOL, semanticMask } from '../lib/masks'
 import { SPECS, makeDoc } from '../test/fixtures'
 import { LayersPanel } from './LayersPanel'
 
@@ -136,6 +136,7 @@ describe('LayersPanel masks', () => {
       kind: 'semantic',
       target: 'sky',
       points: [],
+      strokes: [],
       description: '',
       invert: false,
     })
@@ -205,6 +206,53 @@ describe('LayersPanel masks', () => {
       expect.any(Function),
       'layer:Lwarm:mask:invert',
     )
+  })
+})
+
+describe('LayersPanel touch-ups', () => {
+  const sky = makeDoc({
+    state: {
+      framing: [],
+      layers: [{ ...warm, mask: semanticMask('sky') }],
+    },
+  })
+
+  function renderSky(tool = DEFAULT_MASK_TOOL) {
+    const onEdit = vi.fn(async () => {})
+    const onMaskTool = vi.fn()
+    render(
+      <LayersPanel
+        doc={sky}
+        onEdit={onEdit}
+        selected="Lwarm"
+        onSelect={vi.fn()}
+        maskTool={tool}
+        onMaskTool={onMaskTool}
+        specs={SPECS}
+      />,
+    )
+    return { onEdit, onMaskTool }
+  }
+
+  it('turns on the brush for touching up an AI selection', async () => {
+    const { onMaskTool } = renderSky()
+    expect(screen.queryByRole('slider', { name: 'Brush size' })).toBeNull()
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /Touch up with brush/ }),
+    )
+    expect(onMaskTool).toHaveBeenCalledWith({
+      ...DEFAULT_MASK_TOOL,
+      refining: true,
+    })
+  })
+
+  it('shows brush controls while touching up', () => {
+    renderSky({ ...DEFAULT_MASK_TOOL, refining: true })
+    expect(screen.getByText(/add what the AI missed/)).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Brush size' })).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Clear touch-ups' }),
+    ).toBeDisabled()
   })
 })
 

@@ -26,7 +26,7 @@ from photo_agent import diagnostics, imaging
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
-from photo_agent.masks import describe_mask
+from photo_agent.masks import SemanticMask, describe_mask
 from photo_agent.operations import (
     GEOMETRY_TYPES,
     OPERATIONS_BY_NAME,
@@ -541,6 +541,18 @@ class Editor:
         if not isinstance(changes, dict):
             raise ToolError("changes must be an object of layer properties to values.")
         changes = {k: v for k, v in changes.items() if k not in ("id", "operations")}
+        mask = changes.get("mask")
+        old = layer.mask
+        if (
+            isinstance(mask, dict)
+            and "strokes" not in mask
+            and isinstance(old, SemanticMask)
+            and old.strokes
+            and mask.get("kind") == "semantic"
+            and mask.get("target") == old.target
+        ):
+            # Keep the person's brush touch-ups on a selection the agent only adjusts.
+            changes["mask"] = {**mask, "strokes": [s.model_dump() for s in old.strokes]}
         updated = self._validate_layer({**layer.model_dump(), **changes})
         index = self.state.layers.index(layer)
         self.state.layers[index] = updated

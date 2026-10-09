@@ -6,7 +6,7 @@ import type {
 } from '../api/documents'
 import type { OperationSpec } from '../api/operations'
 import type { EditFn } from '../hooks/useManualEdit'
-import type { MaskTool } from '../lib/masks'
+import { type MaskTool, semanticMask } from '../lib/masks'
 import {
   CUTOUT,
   FRAMING,
@@ -134,13 +134,7 @@ export function LayersPanel({
       setCutout(s, {
         visible: true,
         background: null,
-        mask: {
-          kind: 'semantic',
-          target: 'subject',
-          points: [],
-          description: '',
-          invert: false,
-        },
+        mask: semanticMask('subject'),
       }),
     )
   }

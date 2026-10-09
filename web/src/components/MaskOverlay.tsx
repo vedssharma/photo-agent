@@ -2,10 +2,12 @@ import { useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 import type { Mask } from '../api/documents'
-import type { MaskTool, SemanticMask } from '../lib/masks'
+import { type MaskTool, type SemanticMask, isPainted } from '../lib/masks'
 
 type Point = [number, number]
 type BrushMask = Extract<Mask, { kind: 'brush' }>
+/** Masks made of brush strokes, or touched up with them. */
+type Painted = BrushMask | SemanticMask
 type LinearMask = Extract<Mask, { kind: 'linear' }>
 type RadialMask = Extract<Mask, { kind: 'radial' }>
 
@@ -44,8 +46,8 @@ function toUnit(e: ReactPointerEvent<Element>): Point {
 
 /**
  * Draws the selected layer's mask over the photo and lets the user shape it by dragging:
- * paint brush strokes, place a linear gradient, draw and move a radial one, or click (or
- * drag a box around) an object for an AI selection.
+ * paint brush strokes, place a linear gradient, draw and move a radial one, click (or
+ * drag a box around) an object for an AI selection, or touch up an AI selection by brush.
  * Coordinates are fractions of the framed photo, like the server's.
  */
 export function MaskOverlay({
@@ -72,11 +74,11 @@ export function MaskOverlay({
     e.stopPropagation()
     e.currentTarget.setPointerCapture?.(e.pointerId)
     const p = toUnit(e)
-    if (mask.kind === 'semantic') {
-      drag.current = { kind: 'pick', start: p, moved: false }
-    } else if (mask.kind === 'brush') {
+    if (isPainted(mask, tool)) {
       drag.current = { kind: 'brush', points: [p] }
-      setDraft(withStroke(mask, [p], tool))
+      setDraft(withStroke(mask as Painted, [p], tool))
+    } else if (mask.kind === 'semantic') {
+      drag.current = { kind: 'pick', start: p, moved: false }
     } else if (mask.kind === 'linear') {
       const current = (draft ?? mask) as LinearMask
       if (near(p, current.end)) drag.current = { kind: 'line', handle: 'end' }
@@ -109,12 +111,12 @@ export function MaskOverlay({
       if (!d.moved && !far) return
       d.moved = true
       setDraft({ ...mask, box: boxOf(d.start, p), points: [] })
-    } else if (d.kind === 'brush' && mask.kind === 'brush') {
+    } else if (d.kind === 'brush' && isPainted(mask, tool)) {
       const last = d.points[d.points.length - 1]
       if (Math.hypot(p[0] - last[0], p[1] - last[1]) < MIN_STEP) return
       if (d.points.length >= MAX_POINTS) return
       d.points.push(p)
-      setDraft(withStroke(mask, d.points, tool))
+      setDraft(withStroke(mask as Painted, d.points, tool))
     } else if (d.kind === 'line') {
       setDraft((m) => ({ ...((m ?? mask) as LinearMask), [d.handle]: p }))
     } else if (d.kind === 'ellipse-new') {
@@ -153,9 +155,13 @@ export function MaskOverlay({
     if (!draft) return
     const label =
       d.kind === 'brush'
-        ? tool.erase
-          ? 'Erase from mask'
-          : 'Paint mask'
+        ? mask.kind === 'semantic'
+          ? tool.erase
+            ? 'Erase from selection'
+            : 'Add to selection'
+          : tool.erase
+            ? 'Erase from mask'
+            : 'Paint mask'
         : d.kind === 'line'
           ? 'Place gradient'
           : d.kind === 'ellipse-move'
@@ -166,7 +172,7 @@ export function MaskOverlay({
 
   return (
     <div
-      className={`mask-overlay ${mask.kind}`}
+      className={`mask-overlay ${isPainted(mask, tool) ? 'brush' : mask.kind}`}
       data-testid="mask-overlay"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -191,8 +197,9 @@ export function MaskOverlay({
         viewBox={`0 0 ${width} ${height}`}
         aria-hidden="true"
       >
-        {draft?.kind === 'brush' &&
-          mask.kind === 'brush' &&
+        {draft &&
+          (draft.kind === 'brush' || draft.kind === 'semantic') &&
+          (mask.kind === 'brush' || mask.kind === 'semantic') &&
           draft.strokes.length > mask.strokes.length && (
             <StrokePreview
               stroke={draft.strokes[draft.strokes.length - 1]}
@@ -200,7 +207,9 @@ export function MaskOverlay({
               longEdge={Math.max(width, height)}
             />
           )}
-        {shown.kind === 'semantic' && <SelectionGuide mask={shown} px={px} />}
+        {shown.kind === 'semantic' && !tool.refining && (
+          <SelectionGuide mask={shown} px={px} />
+        )}
         {shown.kind === 'linear' && <LinearGuide mask={shown} px={px} />}
         {shown.kind === 'radial' && (
           <RadialGuide mask={shown} px={px} width={width} height={height} />
@@ -228,7 +237,7 @@ function StrokePreview({
   )
 }
 
-function withStroke(mask: BrushMask, points: Point[], tool: MaskTool): Mask {
+function withStroke(mask: Painted, points: Point[], tool: MaskTool): Mask {
   return {
     ...mask,
     strokes: [
@@ -298,6 +307,7 @@ function clampMask(mask: Mask): Mask {
   const cp = (p: readonly number[]): Point => [c(p[0]), c(p[1])]
   switch (mask.kind) {
     case 'brush':
+    case 'semantic':
       return {
         ...mask,
         strokes: mask.strokes.map((s) => ({ ...s, points: s.points.map(cp) })),

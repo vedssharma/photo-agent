@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Mask } from '../api/documents'
-import { DEFAULT_MASK_TOOL, EMPTY_OBJECT } from '../lib/masks'
+import { DEFAULT_MASK_TOOL, EMPTY_OBJECT, semanticMask } from '../lib/masks'
 import { MaskOverlay } from './MaskOverlay'
 
 function place(el: HTMLElement) {
@@ -86,6 +86,31 @@ describe('MaskOverlay', () => {
         size: 0.05,
         hardness: 50,
         erase: true,
+      },
+    ])
+  })
+
+  it('touches up an AI selection with the brush', () => {
+    const { overlay, onChange } = setup(semanticMask('sky'), {
+      ...DEFAULT_MASK_TOOL,
+      refining: true,
+    })
+    drag(overlay, [
+      [20, 20],
+      [60, 20],
+    ])
+    const [mask, label] = onChange.mock.calls[0]
+    expect(label).toBe('Add to selection')
+    expect(mask).toMatchObject({ kind: 'semantic', target: 'sky' })
+    expect(mask.strokes).toEqual([
+      {
+        points: [
+          [0.1, 0.2],
+          [0.3, 0.2],
+        ],
+        size: 0.04,
+        hardness: 50,
+        erase: false,
       },
     ])
   })

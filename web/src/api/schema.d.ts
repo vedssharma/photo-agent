@@ -1495,6 +1495,12 @@ export interface components {
              * @default
              */
             description: string;
+            /**
+             * Strokes
+             * @description Brush touch-ups painted by the person over what the model found: added where painted, taken away where erased. Keep them when changing the mask.
+             * @default []
+             */
+            strokes: components["schemas"]["BrushStroke"][];
         };
         /**
          * Shadows

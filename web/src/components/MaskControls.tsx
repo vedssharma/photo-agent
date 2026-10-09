@@ -37,12 +37,13 @@ export function MaskControls({
   onMask,
 }: Props) {
   function setChoice(choice: string) {
-    onTool({ ...tool, picking: false })
+    onTool({ ...tool, picking: false, refining: false })
     if (choice === '') return onMask(null, `Remove mask from ${name}`)
     if (choice.startsWith('semantic:')) {
       const target = choice.slice('semantic:'.length) as SemanticTarget
       // An object is selected by clicking it, which commits the mask.
-      if (target === 'object') return onTool({ ...tool, picking: true })
+      if (target === 'object')
+        return onTool({ ...tool, picking: true, refining: false })
       return onMask(
         semanticMask(target),
         `Select ${maskLabel('semantic', target).toLowerCase()} for ${name}`,
@@ -60,6 +61,54 @@ export function MaskControls({
   function tweak(changes: Partial<Mask>, what: string, key: string) {
     if (!mask) return
     onMask({ ...mask, ...changes } as Mask, `${name} mask ${what}`, key)
+  }
+
+  /** Paint or erase, clear the strokes, and the brush's size and hardness. */
+  function brush(strokes: number, clear: string) {
+    return (
+      <>
+        <div className="segmented" role="group" aria-label="Brush mode">
+          <button
+            type="button"
+            aria-pressed={!tool.erase}
+            onClick={() => onTool({ ...tool, erase: false })}
+          >
+            Paint
+          </button>
+          <button
+            type="button"
+            aria-pressed={tool.erase}
+            onClick={() => onTool({ ...tool, erase: true })}
+          >
+            Erase
+          </button>
+          <button
+            type="button"
+            disabled={strokes === 0}
+            onClick={() => tweak({ strokes: [] }, 'cleared', 'clear')}
+          >
+            {clear}
+          </button>
+        </div>
+        <Slider
+          label="Brush size"
+          value={tool.size * 100}
+          min={0.5}
+          max={25}
+          step={0.5}
+          format={(v) => `${v}%`}
+          onCommit={(v) => onTool({ ...tool, size: v / 100 })}
+        />
+        <Slider
+          label="Hardness"
+          value={tool.hardness}
+          min={0}
+          max={100}
+          format={pct}
+          onCommit={(hardness) => onTool({ ...tool, hardness })}
+        />
+      </>
+    )
   }
 
   return (
@@ -120,55 +169,37 @@ export function MaskControls({
               <p className="hint">
                 Paint on the photo where this layer should apply.
               </p>
-              <div className="segmented" role="group" aria-label="Brush mode">
-                <button
-                  type="button"
-                  aria-pressed={!tool.erase}
-                  onClick={() => onTool({ ...tool, erase: false })}
-                >
-                  Paint
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={tool.erase}
-                  onClick={() => onTool({ ...tool, erase: true })}
-                >
-                  Erase
-                </button>
-                <button
-                  type="button"
-                  disabled={mask.strokes.length === 0}
-                  onClick={() => tweak({ strokes: [] }, 'cleared', 'clear')}
-                >
-                  Clear
-                </button>
-              </div>
-              <Slider
-                label="Brush size"
-                value={tool.size * 100}
-                min={0.5}
-                max={25}
-                step={0.5}
-                format={(v) => `${v}%`}
-                onCommit={(v) => onTool({ ...tool, size: v / 100 })}
-              />
-              <Slider
-                label="Hardness"
-                value={tool.hardness}
-                min={0}
-                max={100}
-                format={pct}
-                onCommit={(hardness) => onTool({ ...tool, hardness })}
-              />
+              {brush(mask.strokes.length, 'Clear')}
             </>
           )}
           {mask.kind === 'semantic' && (
-            <p className="hint">
-              {mask.target === 'object'
-                ? 'Click more of it to add to the selection, Shift-click to leave a part out, or drag a new box.'
-                : 'Found with AI. Invert to change everything else instead.'}
-              {mask.description && ` Selected: ${mask.description}.`}
-            </p>
+            <>
+              <p className="hint">
+                {tool.refining
+                  ? 'Paint on the photo to add what the AI missed; erase what it caught by mistake.'
+                  : mask.target === 'object'
+                    ? 'Click more of it to add to the selection, Shift-click to leave a part out, or drag a new box.'
+                    : 'Found with AI. Invert to change everything else instead.'}
+                {mask.description && ` Selected: ${mask.description}.`}
+              </p>
+              <label className="checks">
+                <input
+                  type="checkbox"
+                  checked={tool.refining}
+                  onChange={(e) =>
+                    onTool({
+                      ...tool,
+                      refining: e.target.checked,
+                      picking: false,
+                    })
+                  }
+                />
+                Touch up with brush
+                {mask.strokes.length > 0 &&
+                  ` (${mask.strokes.length} stroke${mask.strokes.length === 1 ? '' : 's'})`}
+              </label>
+              {tool.refining && brush(mask.strokes.length, 'Clear touch-ups')}
+            </>
           )}
           {mask.kind === 'linear' && (
             <p className="hint">

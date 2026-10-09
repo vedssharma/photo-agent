@@ -79,14 +79,18 @@ def _keep_touching(mask: npt.NDArray[np.bool_], seeds: npt.NDArray[np.bool_]) ->
     return np.isin(labels, keep)
 
 
-def _largest(mask: npt.NDArray[np.bool_]) -> npt.NDArray[Any]:
+def _largest(mask: npt.NDArray[np.bool_], share: float = 0.0) -> npt.NDArray[Any]:
+    """The largest connected part, and any others at least `share` of its size."""
     count, labels, stats, _ = cv2.connectedComponentsWithStats(
         mask.astype(np.uint8), connectivity=8
     )
     if count <= 1:
         return mask
-    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    return cast(npt.NDArray[Any], labels == biggest)
+    areas = stats[:, cv2.CC_STAT_AREA].copy()
+    areas[0] = 0
+    keep = areas >= max(1, areas.max() * share) if share > 0 else areas == areas.max()
+    keep[0] = False
+    return cast(npt.NDArray[Any], keep[labels])
 
 
 def _grabcut(work: Array, init: npt.NDArray[np.uint8], iterations: int = 5) -> npt.NDArray[Any]:
@@ -178,7 +182,8 @@ def object_at(image: Array, box: list[float] | None, points: list[list[float]]) 
         kept = _keep_touching(fg, seeds)
         fg = kept if kept.any() else fg
     else:
-        fg = _largest(fg)
+        # Parts of one thing can come apart (a head above a collar), so keep sizable ones.
+        fg = _largest(fg, share=0.1)
     return finish(fg.astype(np.float32), image)
 
 

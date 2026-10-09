@@ -44,6 +44,8 @@ def portable(layers: Sequence[Layer]) -> list[Layer]:
         copy = layer.model_copy(deep=True)
         if copy.mask is not None and not is_portable(copy.mask):
             copy.mask = None
+        if isinstance(copy.mask, SemanticMask):
+            copy.mask.strokes = []  # painted for this photo
         out.append(copy)
     return out
 

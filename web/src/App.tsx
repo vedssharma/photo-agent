@@ -139,10 +139,11 @@ function Editor({
     maskTool.picking &&
     !(target?.mask?.kind === 'semantic' && target.mask.target === 'object')
   const mask = picking ? EMPTY_OBJECT : (target?.mask ?? null)
-  const showOverlay = target && mask && (isDrawn(mask) || maskTool.show)
+  const showOverlay =
+    target && mask && (isDrawn(mask, maskTool) || maskTool.show)
   const select = (layerId: string | null) => {
     setSelectedLayer(layerId)
-    setMaskTool((tool) => ({ ...tool, picking: false }))
+    setMaskTool((tool) => ({ ...tool, picking: false, refining: false }))
   }
   // A slider being dragged, shown instantly until the server's render of it arrives.
   const [preview, setPreview] = useState<

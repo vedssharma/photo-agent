@@ -45,6 +45,7 @@ export function semanticMask(target: SemanticTarget): SemanticMask {
     kind: 'semantic',
     target,
     points: [],
+    strokes: [],
     description: '',
     invert: false,
   }
@@ -82,6 +83,8 @@ export interface MaskTool {
   erase: boolean
   /** Waiting for a click on the photo to select an object for the selected layer. */
   picking: boolean
+  /** Painting touch-ups onto an AI selection instead of clicking to select. */
+  refining: boolean
 }
 
 export const DEFAULT_MASK_TOOL: MaskTool = {
@@ -90,12 +93,19 @@ export const DEFAULT_MASK_TOOL: MaskTool = {
   hardness: 50,
   erase: false,
   picking: false,
+  refining: false,
 }
 
-/** Whether a mask is placed by drawing or clicking on the photo. */
-export function isDrawn(mask: Mask): boolean {
-  if (mask.kind === 'semantic') return mask.target === 'object'
+/** Whether a mask is placed by drawing or clicking on the photo (with this tool). */
+export function isDrawn(mask: Mask, tool?: MaskTool): boolean {
+  if (mask.kind === 'semantic')
+    return mask.target === 'object' || (tool?.refining ?? false)
   return mask.kind !== 'luminosity'
+}
+
+/** Whether pressing on the photo paints strokes into this mask. */
+export function isPainted(mask: Mask, tool: MaskTool): boolean {
+  return mask.kind === 'brush' || (mask.kind === 'semantic' && tool.refining)
 }
 
 /** An object selection with nothing picked yet, for the first click. */
