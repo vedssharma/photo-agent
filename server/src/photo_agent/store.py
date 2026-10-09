@@ -72,6 +72,7 @@ class DocumentStore:
         worker: ModelWorker | None = None,
         backends: BackendMode = "auto",
     ) -> None:
+        self.data_dir = root
         self.root = root / "documents"
         self.worker = worker
         self.backends = backends

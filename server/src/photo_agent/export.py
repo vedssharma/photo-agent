@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 import cv2
@@ -9,7 +10,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from photo_agent import imaging
+from photo_agent import credentials, imaging
 from photo_agent.graph import Document
 from photo_agent.render import render_cutout, render_state
 from photo_agent.store import LoadedImage
@@ -41,7 +42,19 @@ TRANSPARENT_JPEG_BACKGROUND = "#ffffff"
 """JPEG has no transparency, so a transparent cutout exported as JPEG goes on white."""
 
 
-def export_bytes(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes:
+def export_bytes(
+    doc: Document, loaded: LoadedImage, options: ExportOptions, data_dir: Path
+) -> bytes:
+    """The encoded export, with Content Credentials when generative edits show in it."""
+    data = _encode(doc, loaded, options)
+    if credentials.visible_generative_ops(doc.state):
+        data = credentials.sign(
+            data, options.format, doc.state, export_filename(doc, options), data_dir
+        )
+    return data
+
+
+def _encode(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes:
     state, ctx = doc.state, loaded.full_context
     cutout = state.cutout
     transparent = cutout is not None and cutout.visible and cutout.background is None

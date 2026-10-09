@@ -24,6 +24,14 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
   )
   const [quality, setQuality] = useState(92)
   const [keepLocation, setKeepLocation] = useState(false)
+  const generated =
+    doc.state.framing.some((op) => 'seed' in op) ||
+    doc.state.layers.some(
+      (layer) =>
+        layer.visible &&
+        layer.opacity > 0 &&
+        layer.operations.some((op) => 'seed' in op),
+    )
   const [upscale, setUpscale] = useState<ExportOptions['upscale']>(1)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,6 +151,13 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           Keep GPS location{' '}
           <span className="status">(removed by default for privacy)</span>
         </label>
+
+        {generated && (
+          <p className="hint">
+            This photo has AI-generated edits, so the file includes Content
+            Credentials saying so.
+          </p>
+        )}
 
         {error && (
           <p className="error" role="alert">

@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.12.1",
+    "c2pa-python>=0.38",
+    "cryptography>=45",
     "fastapi>=0.115",
     "numpy>=2.5.3",
     "opencv-python-headless>=5.0.0.93",
@@ -81,4 +83,9 @@ module = [
     "spandrel_extra_arches",
     "safetensors.*",
 ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# c2pa-python ships no type information.
+module = ["c2pa", "c2pa.*"]
 ignore_missing_imports = true

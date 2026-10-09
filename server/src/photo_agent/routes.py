@@ -30,6 +30,7 @@ from photo_agent import (
     portrait,
     projects,
     recipes,
+    safety,
     variants,
 )
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
@@ -81,6 +82,19 @@ def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentS
 
 
 Store = Annotated[DocumentStore, Depends(get_store)]
+
+
+@lru_cache
+def _screen_for(api_key: str | None, model: str) -> safety.Screen:
+    return safety.Screen(safety.ClaudeClassifier(api_key, model) if api_key else None)
+
+
+def get_screen(settings: Annotated[Settings, Depends(get_settings)]) -> safety.Screen:
+    key = settings.anthropic_api_key
+    return _screen_for(key.get_secret_value() if key else None, settings.anthropic_model)
+
+
+Screen = Annotated[safety.Screen, Depends(get_screen)]
 
 
 @lru_cache
@@ -241,10 +255,17 @@ class ManualEdit(BaseModel):
     )
 
 
-@router.post("/{doc_id}/edits", operation_id="editByHand")
-def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
+@router.post(
+    "/{doc_id}/edits",
+    operation_id="editByHand",
+    responses={422: {"description": "Invalid, or a generative edit that is not allowed"}},
+)
+def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store, screen: Screen) -> DocumentView:
     """Record a change made with the manual controls as a named step in the history."""
     doc = load(store, doc_id)
+    verdict = screen.check_new(doc.state, edit.state)
+    if not verdict.allowed:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, verdict.reason)
     state = generative.stamp(edit.state, store.model_for)
     if doc.edit_by_hand(edit.label, state, edit.coalesce):
         store.save(doc)
@@ -480,7 +501,7 @@ async def export(doc_id: str, options: ExportOptions, store: Store) -> Response:
     """Render the edits at full resolution and return the file to download."""
     doc = load(store, doc_id)
     loaded = store.image(doc_id)
-    data = await asyncio.to_thread(export_bytes, doc, loaded, options)
+    data = await asyncio.to_thread(export_bytes, doc, loaded, options, store.data_dir)
     filename = export_filename(doc, options)
     return Response(
         data,
@@ -562,6 +583,7 @@ async def chat(
     doc_id: str,
     store: Store,
     model: Annotated[ModelClient | None, Depends(get_model)],
+    screen: Screen,
 ) -> None:
     """Chat with the agent about one document.
 
@@ -579,7 +601,7 @@ async def chat(
     async def emit(event: AgentEvent) -> None:
         await ws.send_text(event.model_dump_json())
 
-    agent = AgentService(store, previews, model) if model else None
+    agent = AgentService(store, previews, model, screen) if model else None
     try:
         while True:
             incoming = await ws.receive_json()

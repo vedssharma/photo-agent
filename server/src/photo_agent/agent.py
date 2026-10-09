@@ -22,7 +22,7 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import diagnostics, imaging, looks, variants
+from photo_agent import diagnostics, imaging, looks, safety, variants
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
@@ -111,6 +111,11 @@ a generative result could reasonably go several ways, call show_options on that 
 operation's id: you see the takes numbered side by side, and so can the person in the \
 layers panel. Say briefly how they differ and which you would pick; set it with \
 update_operation(seed) only if they asked you to choose.
+- Generative edits must not deceive: don't add real, identifiable people to a photo or \
+make someone appear to do something they didn't in a way that could pass as real, and \
+don't make sexual edits of real people or fake documents or evidence. Generative edits \
+are checked before they run; if one is refused, say so briefly and offer an honest \
+alternative. Exports with generative edits carry Content Credentials saying AI was used.
 - To turn a vertical photo into a landscape one, give a tight shot more room, or fit a \
 format without cropping ("make this 16:9 without cutting anything off"), call expand: it \
 extends the canvas with new surroundings painted to match. Prefer an aspect ratio; use \
@@ -530,6 +535,7 @@ class Editor:
         framed: Framed | None = None,
         model_for: Callable[[str], str] | None = None,
         render_state: Callable[[EditState], imaging.Array] | None = None,
+        screen: safety.Screen | None = None,
     ) -> None:
         self.state = state.model_copy(deep=True)
         self.default_layer_name = default_layer_name
@@ -539,6 +545,8 @@ class Editor:
         """Names the backend (model or "classical") that runs a model task."""
         self.render_state = render_state
         """Renders a preview of a state, for tools that show Claude alternatives."""
+        self.screen = screen
+        """Checks new generative prompts before anything is generated."""
         self.images: list[imaging.Array] = []
         """Images the last tool call shows Claude along with its text result."""
         self.target: str | None = None
@@ -546,7 +554,15 @@ class Editor:
 
     def call(self, name: str, args: object) -> tuple[str, OperationEvent]:
         self.images = []
+        before = self.state.model_copy(deep=True)
         result = self._call(name, args)
+        verdict = (self.screen or safety.Screen()).check_new(before, self.state)
+        if not verdict.allowed:
+            self.state = before
+            raise ToolError(
+                f"Not allowed: {verdict.reason} Nothing changed. Tell the person briefly, "
+                "without lecturing, and offer an alternative if there is a good one."
+            )
         # Generative edits get their seed and model now, so every render shows the same take.
         self.state = stamp(self.state, self.model_for)
         return result
@@ -900,10 +916,17 @@ def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam],
 
 
 class AgentService:
-    def __init__(self, store: DocumentStore, renders: RenderCache, model: ModelClient) -> None:
+    def __init__(
+        self,
+        store: DocumentStore,
+        renders: RenderCache,
+        model: ModelClient,
+        screen: safety.Screen | None = None,
+    ) -> None:
         self.store = store
         self.renders = renders
         self.model = model
+        self.screen = screen or safety.Screen()
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def run_turn(self, doc_id: str, request: str, emit: Emit) -> Document:
@@ -918,6 +941,7 @@ class AgentService:
                 default_layer_name=layer_name(request),
                 framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
                 model_for=self.store.model_for,
+                screen=self.screen,
                 render_state=lambda state: self.renders.get_or_render(
                     doc_id, loaded.proxy, state, loaded.proxy_context
                 ),

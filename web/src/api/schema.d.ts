@@ -2672,14 +2672,12 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentView"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid, or a generative edit that is not allowed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
