@@ -32,6 +32,7 @@ from photo_agent.operations import (
     APP_FIELDS,
     CONTENT_TYPES,
     GEOMETRY_TYPES,
+    MASKED_TYPES,
     OPERATIONS_BY_NAME,
     GenerativeBase,
     OpBase,
@@ -88,6 +89,11 @@ in its layer and applies before adjustments, like a removal. Each generative edi
 its prompt and seed, so it renders the same every time; change the seed with \
 update_operation for a different take. Look at the render: if it does not fit, refine the \
 prompt or the mask.
+- To put the subject somewhere else ("put me on a beach", "a clean studio background"), \
+call replace_background with the new scene in a short prompt. It starts its own layer \
+(add_layer first only to name it or to choose what to replace with a mask; without one it \
+replaces everything but the main subject) and matches the subject's light and color to \
+the scene (harmonize). For a plain color or transparency instead, use cut_out.
 - To turn a vertical photo into a landscape one, give a tight shot more room, or fit a \
 format without cropping ("make this 16:9 without cutting anything off"), call expand: it \
 extends the canvas with new surroundings painted to match. Prefer an aspect ratio; use \
@@ -490,7 +496,11 @@ class Editor:
             where = "the framing"
         else:
             layer = self._target_layer()
-            if isinstance(op, CONTENT_TYPES) and (layer.operations or layer.mask is None):
+            if isinstance(op, CONTENT_TYPES) and not isinstance(op, MASKED_TYPES):
+                if layer.operations:
+                    # It works without a mask, so it can start its own layer.
+                    layer = self._new_layer(op.summary())
+            elif isinstance(op, CONTENT_TYPES) and (layer.operations or layer.mask is None):
                 raise ToolError(
                     f"{name} needs its own new layer whose mask selects where it applies: "
                     "call add_layer with that mask first."
@@ -523,7 +533,10 @@ class Editor:
                 return self.state.layer(self.target)
             except KeyError:
                 pass
-        layer = Layer(id=new_layer_id(), name=self.default_layer_name)
+        return self._new_layer(self.default_layer_name)
+
+    def _new_layer(self, name: str) -> Layer:
+        layer = Layer(id=new_layer_id(), name=name[:80])
         self.state.layers.append(layer)
         self.target = layer.id
         return layer

@@ -25,6 +25,7 @@ import numpy as np
 import numpy.typing as npt
 
 from photo_agent import operations as ops
+from photo_agent.compositing import harmonize
 from photo_agent.generative import cache_identity, job_params, task_for
 from photo_agent.imaging import Array
 from photo_agent.layers import BlendMode, EditState, Layer
@@ -213,7 +214,29 @@ def _apply_generative(
             task_for(op), np.clip(x, 0.0, 1.0), hole, job_params(op), _chain_key(chain)
         )
         return _blend_hole(x, made, hole, op.grow, layer.opacity)
+    if isinstance(op, ops.ReplaceBackground):
+        return _replace_background(x, layer, op, chain, ctx)
     return x
+
+
+EVERYTHING_BUT_THE_SUBJECT = SemanticMask(target="subject", invert=True)
+
+
+def _replace_background(
+    x: Array, layer: Layer, op: ops.ReplaceBackground, chain: list[object], ctx: RenderContext
+) -> Array:
+    assert ctx.vision is not None
+    region = np.clip(ctx.mask(layer.mask or EVERYTHING_BUT_THE_SUBJECT, x), 0.0, 1.0)
+    hole = region > REMOVAL_THRESHOLD
+    if not hole.any():
+        return x
+    params = {**job_params(op), "backdrop": True}
+    made = ctx.vision.generate(task_for(op), np.clip(x, 0.0, 1.0), hole, params, _chain_key(chain))
+    # The mask's soft edge (a matte, for the subject) decides the blend, so hair and fine
+    # edges stay as they were.
+    composite = x + (made - x) * region[..., None]
+    composite = harmonize(composite, 1.0 - region, op.harmonize)
+    return cast(Array, x + (composite - x) * (layer.opacity / 100))
 
 
 def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
@@ -232,7 +255,10 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
     target = state.layer(layer_id)
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
-    if target.mask is None:
+    mask = target.mask
+    if mask is None and any(isinstance(op, ops.ReplaceBackground) for op in target.operations):
+        mask = EVERYTHING_BUT_THE_SUBJECT
+    if mask is None:
         return np.ones(out.shape[:2], np.float32)
     if not target.is_content:
         out = _apply_content(out, state.layers, ctx)
@@ -240,7 +266,7 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
         if layer.id == layer_id:
             break
         out = _apply_layer(out, layer, ctx)
-    return ctx.mask(target.mask, out)
+    return ctx.mask(mask, out)
 
 
 def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
@@ -841,6 +867,7 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     # Content operations need their layer's mask, so they render separately (see above).
     ops.Remove: lambda x, op, ctx: x,
     ops.Generate: lambda x, op, ctx: x,
+    ops.ReplaceBackground: lambda x, op, ctx: x,
     # Expanding needs the framing before it, so `apply_operations` handles it.
     ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,

@@ -13,12 +13,20 @@ from collections.abc import Callable
 from typing import Any
 
 from photo_agent.layers import EditState
-from photo_agent.operations import SEED_MAX, Expand, Generate, GenerativeBase, OpBase
+from photo_agent.operations import (
+    SEED_MAX,
+    Expand,
+    Generate,
+    GenerativeBase,
+    OpBase,
+    ReplaceBackground,
+)
 from photo_agent.vision.worker import PREFER
 
 TASKS: dict[type[OpBase], str] = {
     Generate: "generate",
     Expand: "generate",
+    ReplaceBackground: "generate",
 }
 """The model worker task behind each generative operation."""
 
@@ -64,6 +72,10 @@ def job_params(op: GenerativeBase) -> dict[str, Any]:
     return params
 
 
+NOT_IN_KEY = {"id", "harmonize"}
+"""Fields that do not change what a model generates (they apply afterwards, or not at all)."""
+
+
 def cache_identity(op: OpBase) -> dict[str, Any]:
     """The parts of an operation a generated result depends on (not its id)."""
-    return op.model_dump(exclude={"id"})
+    return op.model_dump(exclude=NOT_IN_KEY)

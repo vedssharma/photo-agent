@@ -360,6 +360,20 @@ class Generate(GenerativeBase):
     )
 
 
+class ReplaceBackground(GenerativeBase):
+    """Replace the background with a new scene described in words ("a sunlit beach",
+    "a softly lit studio, pale gray"), painted around the subject so its perspective fits,
+    and match the subject's light and color to it. The layer's mask selects what to
+    replace; without one, everything but the main subject. The only operation in its layer;
+    applies before adjustments."""
+
+    op: Literal["replace_background"] = "replace_background"
+    prompt: str = Field(min_length=1, max_length=400, description="The new background.")
+    harmonize: Strength = Field(
+        50, description="How much to match the subject's light and color to the new scene."
+    )
+
+
 class SmoothSkin(OpBase):
     """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
@@ -420,7 +434,8 @@ Operation = Annotated[
     | SmoothSkin
     | HealBlemishes
     | Generate
-    | Expand,
+    | Expand
+    | ReplaceBackground,
     Field(discriminator="op"),
 ]
 
@@ -453,6 +468,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     HealBlemishes,
     Generate,
     Expand,
+    ReplaceBackground,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -496,14 +512,19 @@ AdjustmentOperation = Annotated[
     | Remove
     | SmoothSkin
     | HealBlemishes
-    | Generate,
+    | Generate
+    | ReplaceBackground,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""
 
-CONTENT_TYPES: tuple[type[OpBase], ...] = (Remove, Generate)
+CONTENT_TYPES: tuple[type[OpBase], ...] = (Remove, Generate, ReplaceBackground)
 """Operations that change what is in the photo rather than how it looks. Each is the only
 operation in its layer, and content layers render before every adjustment layer."""
+
+MASKED_TYPES: tuple[type[OpBase], ...] = (Remove, Generate)
+"""Content operations that only make sense where a mask points (the rest default to a
+sensible region, or the whole photo)."""
 
 
 def op_name(cls: type[OpBase]) -> str:

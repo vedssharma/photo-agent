@@ -12,11 +12,12 @@ from fastapi.testclient import TestClient
 
 from photo_agent import operations as ops
 from photo_agent.agent import TOOLS, Editor, ToolError
+from photo_agent.compositing import harmonize
 from photo_agent.generative import job_params, stamp
 from photo_agent.layers import EditState, Layer
 from photo_agent.masks import RadialGradientMask
 from photo_agent.recipes import portable
-from photo_agent.render import expand_box, extend_canvas, render_state
+from photo_agent.render import expand_box, extend_canvas, render_layer_mask, render_state
 from photo_agent.routes import get_store
 from photo_agent.settings import Settings
 from photo_agent.vision import classical
@@ -221,3 +222,64 @@ def test_the_agent_expands_the_framing() -> None:
     (op,) = editor.state.framing
     assert isinstance(op, ops.Expand) and op.seed is not None
     assert op.model == "sdxl-inpainting-0.1"
+
+
+# Replacing the background
+
+
+def test_harmonize_moves_the_subject_toward_the_scene() -> None:
+    image = np.zeros((60, 60, 3), np.float32)
+    image[:] = [0.2, 0.3, 0.8]  # a blue scene
+    image[20:40, 20:40] = [0.8, 0.6, 0.4]  # a warm subject
+    subject = np.zeros((60, 60), np.float32)
+    subject[20:40, 20:40] = 1
+    out = harmonize(image, subject, 100)
+    np.testing.assert_allclose(out[subject == 0], image[subject == 0], atol=1e-6)
+    before, after = image[30, 30], out[30, 30]
+    assert after[2] - after[0] > before[2] - before[0]  # bluer
+    assert out[20, 30, 2] > after[2] + 0.03  # the scene's light wraps over the edge
+    assert harmonize(image, subject, 0) is image
+
+
+def replacement(**op: Any) -> Layer:
+    return Layer(
+        id="Lbg",
+        name="Beach",
+        operations=[ops.ReplaceBackground(prompt="a sunny beach", seed=3, **op)],
+    )
+
+
+def test_replacing_the_background_keeps_the_subject(settings: Settings, upload: Upload) -> None:
+    doc = upload("portrait.jpg")
+    loaded = get_store(settings).image(doc["id"])
+    ctx = loaded.proxy_context
+    before = render_state(loaded.proxy, EditState(), ctx)
+    plain = render_state(loaded.proxy, EditState(layers=[replacement(harmonize=0)]), ctx)
+    subject = render_layer_mask(
+        loaded.proxy,
+        EditState(layers=[replacement()]),
+        "Lbg",
+        ctx,
+    )
+    assert subject.mean() > 0.1  # the default mask: everything but the subject
+    keep = subject < 0.02
+    background = subject > 0.98
+    assert np.abs(plain - before)[keep].max() < 0.02
+    assert np.abs(plain - before)[background].mean() > 0.02
+    assert loaded.vision is not None
+    tasks = [j.task for j in loaded.vision.worker.jobs(doc["id"])]
+    assert tasks == ["segment_subject", "generate"]
+    matched = render_state(loaded.proxy, EditState(layers=[replacement(harmonize=100)]), ctx)
+    assert np.abs(matched - plain)[keep].mean() > 0.002
+    assert len(loaded.vision.worker.jobs(doc["id"])) == 2  # harmonizing needs no model
+
+
+def test_the_agent_replaces_the_background_in_a_layer_of_its_own() -> None:
+    editor = Editor(EditState())
+    editor.call("add_layer", {"name": "Warmer"})
+    editor.call("white_balance", {"temperature": 20})
+    editor.call("replace_background", {"prompt": "a misty forest"})
+    warm, scene = editor.state.layers
+    assert warm.name == "Warmer" and len(warm.operations) == 1
+    assert scene.is_content and scene.mask is None
+    assert scene.name == "Replace background “a misty forest”"

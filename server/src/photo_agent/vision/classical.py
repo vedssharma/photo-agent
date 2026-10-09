@@ -336,3 +336,22 @@ def generate(image: Array, mask: npt.NDArray[Any] | None = None, seed: int = 0, 
     if mask is None:
         return image
     return inpaint(image, mask, seed=seed)
+
+
+def studio_backdrop(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Array:
+    """A plain studio backdrop where `mask` is set: a soft gradient in a muted version of
+    the old background's color, lighter behind the middle, with fine grain."""
+    hole = np.asarray(mask) > 0.5
+    if not hole.any():
+        return image
+    h, w = hole.shape
+    base = image[hole].mean(axis=0)
+    gray = float(base @ LUMA)
+    color = 0.35 * base + 0.65 * gray
+    color = color + (0.55 - float(color @ LUMA)) * 0.6
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    d = np.sqrt(((xs / w - 0.5) / 0.8) ** 2 + ((ys / h - 0.4) / 0.9) ** 2)
+    shade = (1.15 - 0.45 * np.clip(d, 0, 1.2))[..., None]
+    noise = np.random.default_rng(seed).standard_normal((h, w, 1)).astype(np.float32)
+    backdrop = np.clip(color * shade + 0.008 * noise, 0, 1).astype(np.float32)
+    return cast(Array, np.where(hole[..., None], backdrop, image))

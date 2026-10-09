@@ -398,3 +398,25 @@ describe('LayersPanel expand canvas', () => {
     })
   })
 })
+
+describe('LayersPanel new background', () => {
+  it('replaces everything but the subject with a described scene', async () => {
+    const { sent } = setup()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'New background…' }),
+    )
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'New background' }),
+      'a sunlit beach{Enter}',
+    )
+    expect(sent[0].label).toBe('New background: “a sunlit beach”')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.name).toBe('Background: A sunlit beach')
+    expect(added?.mask).toBeNull()
+    expect(added?.operations[0]).toMatchObject({
+      op: 'replace_background',
+      prompt: 'a sunlit beach',
+      harmonize: 50,
+    })
+  })
+})

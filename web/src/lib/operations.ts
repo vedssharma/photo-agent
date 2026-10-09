@@ -49,4 +49,8 @@ export function isContentOp(op: Operation): boolean {
   return CONTENT_OPS.has(op.op)
 }
 
-export const CONTENT_OPS = new Set<string>(['remove', 'generate'])
+export const CONTENT_OPS = new Set<string>([
+  'remove',
+  'generate',
+  'replace_background',
+])

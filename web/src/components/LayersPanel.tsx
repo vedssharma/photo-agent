@@ -60,7 +60,7 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'soft_light', label: 'Soft light' },
 ]
 
-type GenerativeTool = 'generate'
+type GenerativeTool = 'generate' | 'background'
 
 type ExpandAspect = Extract<Operation, { op: 'expand' }>['aspect']
 
@@ -82,6 +82,11 @@ const GENERATIVE_TOOLS: Record<
     label: 'What to add',
     placeholder: 'a potted fern, a sunset sky, a red kite…',
     submit: 'Add',
+  },
+  background: {
+    label: 'New background',
+    placeholder: 'a sunlit beach, a soft gray studio…',
+    submit: 'Replace',
   },
 }
 
@@ -262,6 +267,30 @@ export function LayersPanel({
     void apply(`Generate “${prompt}”`, (s) => addLayer(s, layer))
   }
 
+  /** A new scene behind the subject, matched to its light. */
+  function replaceBackground(prompt: string) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: `Background: ${layerTitle(prompt)}`,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'replace_background',
+          prompt,
+          seed: newSeed(),
+          harmonize: 50,
+          model: '',
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(`New background: “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
   /** Extend the canvas to an aspect ratio, painting new surroundings. */
   function expand(aspect: ExpandAspect) {
     const op = {
@@ -335,6 +364,18 @@ export function LayersPanel({
         >
           Generate…
         </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'background'}
+          title="Put the subject in a new scene, matched to its light"
+          onClick={() =>
+            setAsking(asking === 'background' ? null : 'background')
+          }
+        >
+          New background…
+        </button>
         {onRetouch && (
           <button
             type="button"
@@ -364,6 +405,7 @@ export function LayersPanel({
           onSubmit={(prompt) => {
             setAsking(null)
             if (asking === 'generate') generate(prompt)
+            else replaceBackground(prompt)
           }}
         />
       )}
@@ -616,6 +658,15 @@ export function LayersPanel({
                       Paint where it goes on the photo, or pick a mask below.
                     </p>
                   )}
+                  {layer.operations.some(
+                    (op) => op.op === 'replace_background',
+                  ) &&
+                    !layer.mask && (
+                      <p className="hint">
+                        Replaces everything but the main subject. Pick a mask to
+                        choose what to replace.
+                      </p>
+                    )}
                   {removes && (
                     <p className="hint">
                       {layer.mask

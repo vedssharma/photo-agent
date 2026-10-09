@@ -2437,6 +2437,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/Generate"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceBackground"
                 }
               ],
               "discriminator": {
@@ -2454,6 +2457,7 @@
                   "hsl": "#/components/schemas/HSL",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
                   "remove": "#/components/schemas/Remove",
+                  "replace_background": "#/components/schemas/ReplaceBackground",
                   "saturation": "#/components/schemas/Saturation",
                   "shadows": "#/components/schemas/Shadows",
                   "sharpen": "#/components/schemas/Sharpen",
@@ -2988,6 +2992,64 @@
         "type": "object",
         "title": "Remove",
         "description": "Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap\nwith plausible surroundings, using an AI inpainting model. Needs a mask; it is the only\noperation in its layer. Removal layers apply first, before any adjustment layer."
+      },
+      "ReplaceBackground": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "op": {
+            "type": "string",
+            "const": "replace_background",
+            "title": "Op",
+            "default": "replace_background"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "The new background."
+          },
+          "harmonize": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Harmonize",
+            "description": "How much to match the subject's light and color to the new scene.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "ReplaceBackground",
+        "description": "Replace the background with a new scene described in words (\"a sunlit beach\",\n\"a softly lit studio, pale gray\"), painted around the subject so its perspective fits,\nand match the subject's light and color to it. The layer's mask selects what to\nreplace; without one, everything but the main subject. The only operation in its layer;\napplies before adjustments."
       },
       "Retouch": {
         "properties": {
