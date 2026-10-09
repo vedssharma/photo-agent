@@ -22,11 +22,22 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import geometry, imaging, portrait, projects, recipes
+from photo_agent import (
+    generative,
+    geometry,
+    imaging,
+    looks,
+    portrait,
+    projects,
+    recipes,
+    safety,
+    variants,
+)
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.layers import EditState, Layer
+from photo_agent.operations import MAX_OPTIONS, GenerativeBase
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
@@ -41,6 +52,7 @@ previews = RenderCache()
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
 recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
+looks_router = APIRouter(prefix="/api/looks", tags=["looks"])
 
 
 @lru_cache
@@ -70,6 +82,19 @@ def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentS
 
 
 Store = Annotated[DocumentStore, Depends(get_store)]
+
+
+@lru_cache
+def _screen_for(api_key: str | None, model: str) -> safety.Screen:
+    return safety.Screen(safety.ClaudeClassifier(api_key, model) if api_key else None)
+
+
+def get_screen(settings: Annotated[Settings, Depends(get_settings)]) -> safety.Screen:
+    key = settings.anthropic_api_key
+    return _screen_for(key.get_secret_value() if key else None, settings.anthropic_model)
+
+
+Screen = Annotated[safety.Screen, Depends(get_screen)]
 
 
 @lru_cache
@@ -230,11 +255,19 @@ class ManualEdit(BaseModel):
     )
 
 
-@router.post("/{doc_id}/edits", operation_id="editByHand")
-def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
+@router.post(
+    "/{doc_id}/edits",
+    operation_id="editByHand",
+    responses={422: {"description": "Invalid, or a generative edit that is not allowed"}},
+)
+def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store, screen: Screen) -> DocumentView:
     """Record a change made with the manual controls as a named step in the history."""
     doc = load(store, doc_id)
-    if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
+    verdict = screen.check_new(doc.state, edit.state)
+    if not verdict.allowed:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, verdict.reason)
+    state = generative.stamp(edit.state, store.model_for)
+    if doc.edit_by_hand(edit.label, state, edit.coalesce):
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)
@@ -256,6 +289,102 @@ def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> D
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)
+
+
+class OptionsRequest(BaseModel):
+    count: int = Field(
+        variants.DEFAULT_COUNT, ge=2, le=MAX_OPTIONS, description="How many takes to offer."
+    )
+
+
+def _generative(doc: Document, op_id: str) -> GenerativeBase:
+    try:
+        return variants.generative_op(doc.state, op_id)
+    except variants.NotGenerativeError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such generative operation.") from None
+
+
+@router.post(
+    "/{doc_id}/operations/{op_id}/options",
+    operation_id="offerOptions",
+    responses={404: {"description": "No such document or generative operation"}},
+)
+def offer_options(
+    doc_id: str,
+    op_id: str,
+    store: Store,
+    request: Annotated[OptionsRequest | None, Body()] = None,
+) -> DocumentView:
+    """Offer several takes on a generative edit to pick from, as one step in the history.
+    Each take is generated now, so showing and picking them is instant."""
+    doc = load(store, doc_id)
+    op = _generative(doc, op_id)
+    state = variants.offer(doc.state, op_id, (request or OptionsRequest()).count)
+    if doc.edit_by_hand(f"Options for {op.summary()}", state):
+        store.save(doc)
+    loaded = store.image(doc_id)
+    for seed in variants.generative_op(state, op_id).options:
+        option = variants.with_seed(state, op_id, seed)
+        previews.get_or_render(doc.id, loaded.proxy, option, loaded.proxy_context)
+    return DocumentView.of(doc)
+
+
+@router.get(
+    "/{doc_id}/operations/{op_id}/options/{seed}",
+    operation_id="getOption",
+    response_class=Response,
+    responses={
+        200: {"content": {"image/jpeg": {}}},
+        404: {"description": "No such document, operation, or take"},
+    },
+)
+def get_option(doc_id: str, op_id: str, seed: int, store: Store) -> Response:
+    """A preview of the photo with one of the takes on offer."""
+    doc = load(store, doc_id)
+    if seed not in _generative(doc, op_id).options:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such take.")
+    loaded = store.image(doc_id)
+    option = variants.with_seed(doc.state, op_id, seed)
+    pixels = previews.get_or_render(doc.id, loaded.proxy, option, loaded.proxy_context)
+    return Response(
+        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+class LookStrength(BaseModel):
+    strength: float = Field(100, ge=0, le=100, description="How much of the look to use.")
+
+
+@router.post(
+    "/{doc_id}/looks/{look_id}",
+    operation_id="applyLook",
+    responses={404: {"description": "No such document or look"}},
+)
+def apply_look(
+    doc_id: str,
+    look_id: str,
+    store: Store,
+    options: Annotated[LookStrength | None, Body()] = None,
+) -> DocumentView:
+    """Add a look's layer on top of the current edits, as one step in the history."""
+    doc = load(store, doc_id)
+    try:
+        look = looks.get(look_id)
+    except looks.LookNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such look.") from None
+    strength = (options or LookStrength()).strength
+    if doc.edit_by_hand(f"Look: {look.name}", looks.apply(look, doc.state, strength)):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+@looks_router.get("", operation_id="listLooks")
+def list_looks() -> list[looks.Look]:
+    """The built-in looks, each a layer of ordinary adjustments."""
+    return looks.LOOKS
 
 
 @router.post("/{doc_id}/retouch", operation_id="retouchPortrait")
@@ -372,7 +501,7 @@ async def export(doc_id: str, options: ExportOptions, store: Store) -> Response:
     """Render the edits at full resolution and return the file to download."""
     doc = load(store, doc_id)
     loaded = store.image(doc_id)
-    data = await asyncio.to_thread(export_bytes, doc, loaded, options)
+    data = await asyncio.to_thread(export_bytes, doc, loaded, options, store.data_dir)
     filename = export_filename(doc, options)
     return Response(
         data,
@@ -454,6 +583,7 @@ async def chat(
     doc_id: str,
     store: Store,
     model: Annotated[ModelClient | None, Depends(get_model)],
+    screen: Screen,
 ) -> None:
     """Chat with the agent about one document.
 
@@ -471,7 +601,7 @@ async def chat(
     async def emit(event: AgentEvent) -> None:
         await ws.send_text(event.model_dump_json())
 
-    agent = AgentService(store, previews, model) if model else None
+    agent = AgentService(store, previews, model, screen) if model else None
     try:
         while True:
             incoming = await ws.receive_json()

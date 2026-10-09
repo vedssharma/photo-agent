@@ -55,6 +55,7 @@ describe('ExportDialog', () => {
       format: 'jpeg',
       quality: 92,
       keep_location: false,
+      upscale: 1,
     })
     expect(onClose).toHaveBeenCalled()
   })
@@ -71,6 +72,11 @@ describe('ExportDialog', () => {
     await userEvent.click(
       screen.getByRole('checkbox', { name: /Keep GPS location/ }),
     )
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /Enlarge/ }),
+      '2',
+    )
+    expect(screen.getByText(/Good for prints/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Download' }))
 
     await waitFor(() => expect(save).toHaveBeenCalled())
@@ -78,6 +84,7 @@ describe('ExportDialog', () => {
     expect(await fetchMock.mock.calls[0][0].json()).toMatchObject({
       format: 'png',
       keep_location: true,
+      upscale: 2,
     })
   })
 

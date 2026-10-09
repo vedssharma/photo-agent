@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
+import cv2
+import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from photo_agent import imaging
+from photo_agent import credentials, imaging
 from photo_agent.graph import Document
 from photo_agent.render import render_cutout, render_state
 from photo_agent.store import LoadedImage
+from photo_agent.vision.selection import upscale_plainly
 
 EXIF_ORIENTATION = 0x0112
 EXIF_IFD = 0x8769
@@ -25,13 +29,32 @@ class ExportOptions(BaseModel):
     keep_location: bool = Field(
         False, description="Keep GPS location from the original. Off by default for privacy."
     )
+    upscale: Literal[1, 2, 4] = Field(
+        1, description="Enlarge the export with an AI upscaler (up to 8000 pixels across)."
+    )
+
+
+MAX_UPSCALED_EDGE = 8000
+"""The longest side an upscaled export can have, to keep files and memory sensible."""
 
 
 TRANSPARENT_JPEG_BACKGROUND = "#ffffff"
 """JPEG has no transparency, so a transparent cutout exported as JPEG goes on white."""
 
 
-def export_bytes(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes:
+def export_bytes(
+    doc: Document, loaded: LoadedImage, options: ExportOptions, data_dir: Path
+) -> bytes:
+    """The encoded export, with Content Credentials when generative edits show in it."""
+    data = _encode(doc, loaded, options)
+    if credentials.visible_generative_ops(doc.state):
+        data = credentials.sign(
+            data, options.format, doc.state, export_filename(doc, options), data_dir
+        )
+    return data
+
+
+def _encode(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes:
     state, ctx = doc.state, loaded.full_context
     cutout = state.cutout
     transparent = cutout is not None and cutout.visible and cutout.background is None
@@ -42,10 +65,28 @@ def export_bytes(doc: Document, loaded: LoadedImage, options: ExportOptions) -> 
             white = cutout.model_copy(update={"background": TRANSPARENT_JPEG_BACKGROUND})
             state = state.model_copy(update={"cutout": white})
         pixels, alpha = render_state(loaded.source.pixels, state, ctx), None
+    if options.upscale > 1:
+        pixels, alpha = enlarge(loaded, pixels, alpha, options.upscale)
     exif = export_exif(loaded.source.exif, pixels.shape[1], pixels.shape[0], options.keep_location)
     if options.format == "png":
         return imaging.encode_png(pixels, exif=exif, alpha=alpha)
     return imaging.encode_jpeg(pixels, quality=options.quality, exif=exif)
+
+
+def enlarge(
+    loaded: LoadedImage, pixels: imaging.Array, alpha: imaging.Array | None, upscale: int
+) -> tuple[imaging.Array, imaging.Array | None]:
+    """The export enlarged by `upscale`, or less if that would pass MAX_UPSCALED_EDGE."""
+    h, w = pixels.shape[:2]
+    scale = min(float(upscale), MAX_UPSCALED_EDGE / max(h, w))
+    if scale <= 1.01:
+        return pixels, alpha
+    vision = loaded.vision
+    big = vision.upscale(pixels, scale) if vision else upscale_plainly(pixels, scale)
+    if alpha is not None:
+        size = big.shape[1::-1]
+        alpha = np.asarray(cv2.resize(alpha, size, interpolation=cv2.INTER_LINEAR), np.float32)
+    return big, alpha
 
 
 def export_exif(raw: bytes, width: int, height: int, keep_location: bool) -> bytes | None:

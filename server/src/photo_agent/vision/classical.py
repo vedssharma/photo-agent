@@ -298,7 +298,7 @@ def face_parts(image: Array) -> dict[str, Array]:
     return {name: finish(mask, image, soften=0.002) for name, mask in parts.items()}
 
 
-def inpaint(image: Array, mask: npt.NDArray[Any]) -> Array:
+def inpaint(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Array:
     """Fill the masked area from its surroundings.
 
     Fast-marching inpainting smears across large holes, so it runs at a scale where the
@@ -321,6 +321,168 @@ def inpaint(image: Array, mask: npt.NDArray[Any]) -> Array:
     ring = cv2.dilate(hole.astype(np.uint8), np.ones((15, 15), np.uint8)).astype(bool) & ~hole
     detail = image - cv2.GaussianBlur(image, (0, 0), 1.5)
     std = detail[ring].std(axis=0) if ring.any() else np.zeros(3, np.float32)
-    noise = np.random.default_rng(0).standard_normal((h, w, 3)).astype(np.float32)
+    noise = np.random.default_rng(seed).standard_normal((h, w, 3)).astype(np.float32)
     noise = cv2.GaussianBlur(noise, (0, 0), 0.7) * std
     return cast(Array, np.where(hole[..., None], np.clip(up + noise, 0, 1), image))
+
+
+# Generative fallbacks: without a generative model there is nothing to draw new content
+# with, so these do the closest honest thing and the app says which backend ran.
+
+
+def generate(
+    image: Array,
+    mask: npt.NDArray[Any] | None = None,
+    seed: int = 0,
+    backdrop: bool = False,
+    restyle: bool = False,
+    strength: float = 0.5,
+    **_: Any,
+) -> Array:
+    """Generative edits without a model; the prompt cannot be followed. A fill continues
+    the surroundings into the area, as a removal would; a new background is a plain studio
+    backdrop; a restyle is a painterly rendering of the photo."""
+    if restyle:
+        return stylize(image, strength)
+    if mask is None:
+        return image
+    if backdrop:
+        return studio_backdrop(image, mask, seed=seed)
+    return inpaint(image, mask, seed=seed)
+
+
+def stylize(image: Array, strength: float = 0.5) -> Array:
+    """A painterly version of the photo: flattened color regions with soft edges."""
+    x = (np.clip(image, 0, 1) * 255).astype(np.uint8)
+    painted = cv2.stylization(x, sigma_s=20 + 100 * strength, sigma_r=0.25 + 0.3 * strength)
+    return (painted.astype(np.float32) / 255).astype(np.float32)
+
+
+def studio_backdrop(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Array:
+    """A plain studio backdrop where `mask` is set: a soft gradient in a muted version of
+    the old background's color, lighter behind the middle, with fine grain."""
+    hole = np.asarray(mask) > 0.5
+    if not hole.any():
+        return image
+    h, w = hole.shape
+    base = image[hole].mean(axis=0)
+    gray = float(base @ LUMA)
+    color = 0.35 * base + 0.65 * gray
+    color = color + (0.55 - float(color @ LUMA)) * 0.6
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    d = np.sqrt(((xs / w - 0.5) / 0.8) ** 2 + ((ys / h - 0.4) / 0.9) ** 2)
+    shade = (1.15 - 0.45 * np.clip(d, 0, 1.2))[..., None]
+    noise = np.random.default_rng(seed).standard_normal((h, w, 1)).astype(np.float32)
+    backdrop = np.clip(color * shade + 0.008 * noise, 0, 1).astype(np.float32)
+    return cast(Array, np.where(hole[..., None], backdrop, image))
+
+
+LIGHT_DIRECTIONS = {
+    "left": (-1.0, 0.0),
+    "right": (1.0, 0.0),
+    "top": (0.0, -1.0),
+    "bottom": (0.0, 1.0),
+}
+
+LIGHT_COLORS: list[tuple[tuple[str, ...], tuple[float, float, float]]] = [
+    (("sunset", "golden", "warm", "candle", "fire", "tungsten", "amber"), (1.0, 0.78, 0.55)),
+    (("moon", "cool", "blue", "cold", "night", "overcast"), (0.72, 0.84, 1.0)),
+    (("neon", "purple", "pink", "magenta", "club"), (1.0, 0.6, 1.0)),
+    (("green", "forest", "jungle"), (0.78, 1.0, 0.75)),
+    (("red", "danger"), (1.0, 0.55, 0.5)),
+]
+
+
+def light_color(prompt: str) -> npt.NDArray[np.float32]:
+    """The color of the light a prompt asks for, from a few telling words (white if none)."""
+    words = prompt.lower()
+    for keys, rgb in LIGHT_COLORS:
+        if any(k in words for k in keys):
+            return np.array(rgb, np.float32)
+    return np.ones(3, np.float32)
+
+
+def relight(image: Array, direction: str = "left", prompt: str = "", **_: Any) -> Array:
+    """Relight without a model: shade the photo as if lit from `direction`, using its own
+    broad brightness as a rough stand-in for shape, in the light's color. Only the light
+    changes; the caller carries the photo's fine detail over (see `render.transfer_light`)."""
+    work = _work(image)
+    h, w = work.shape[:2]
+    lum = gray(work)
+    # Broad shapes: what is lighter is taken to face the camera a little more.
+    height = cv2.GaussianBlur(lum, (0, 0), max(h, w) * 0.03)
+    gy, gx = np.gradient(height * max(h, w) * 0.15)
+    nz = np.ones_like(gx)
+    norm = np.sqrt(gx * gx + gy * gy + nz * nz)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, v = (xs + 0.5) / w - 0.5, (ys + 0.5) / h - 0.5
+    if direction in LIGHT_DIRECTIONS:
+        lx, ly = LIGHT_DIRECTIONS[direction]
+        lambert = np.clip((-gx * lx - gy * ly + nz * 0.6) / norm / 1.17, 0, 1)
+        ramp = 0.5 + (u * lx + v * ly)  # 1 on the lit side, 0 on the far side
+        shade = 0.25 + 0.95 * (0.55 * ramp + 0.45 * lambert)
+    elif direction == "back":
+        # Rim light: edges glow, the middle falls into shadow.
+        rim = np.clip(np.sqrt(gx * gx + gy * gy) * 6, 0, 1)
+        shade = 0.55 + 0.9 * rim - 0.25 * (1 - np.sqrt(u * u + v * v) * 1.4)
+    else:  # front: even light from the camera, falling off toward the edges
+        shade = 1.15 - 0.6 * (u * u + v * v)
+    color = light_color(prompt)
+    linear = np.power(np.clip(work, 0, 1), 2.2)
+    lit = linear * shade[..., None].astype(np.float32) * color / float(color @ LUMA)
+    out = np.power(np.clip(lit, 0, 1), 1 / 2.2).astype(np.float32)
+    return cast(Array, cv2.resize(out, image.shape[1::-1], interpolation=cv2.INTER_LINEAR))
+
+
+def restore_faces(image: Array, **_: Any) -> Array:
+    """Restore faces without a model: calm noise and blockiness on each face, then bring
+    back its edges. It cannot invent lost detail the way a restoration model does."""
+    out = image.copy()
+    h, w = image.shape[:2]
+    for x0, y0, x1, y1 in find_faces(image):
+        pad = round(0.25 * (x1 - x0))
+        bx0, by0 = max(0, x0 - pad), max(0, y0 - pad)
+        bx1, by1 = min(w, x1 + pad), min(h, y1 + pad)
+        face = np.ascontiguousarray(image[by0:by1, bx0:bx1], np.float32)
+        size = max(face.shape[:2])
+        calm = cv2.bilateralFilter(face, 0, 0.06, max(1.0, size * 0.01))
+        soft = cv2.GaussianBlur(calm, (0, 0), max(1.0, size * 0.006))
+        sharp = np.clip(calm + 0.8 * (calm - soft), 0, 1)
+        fh, fw = face.shape[:2]
+        ys, xs = np.mgrid[0:fh, 0:fw].astype(np.float32)
+        r = np.hypot((xs + 0.5) / fw - 0.5, (ys + 0.5) / fh - 0.5) * 2
+        weight = np.clip((1 - r) * 3, 0, 1)[..., None]
+        out[by0:by1, bx0:bx1] = face + (sharp - face) * weight
+    return out
+
+
+SKY_BLUE = np.array([0.45, 0.62, 0.85], np.float32)
+WARM_MIDS = np.array([0.80, 0.62, 0.50], np.float32)
+COOL_SHADOWS = np.array([0.30, 0.34, 0.40], np.float32)
+
+
+def colorize(image: Array, **_: Any) -> Array:
+    """Colorize without a model: a hand-tinted look, cool in the shadows and warm in the
+    midtones, with a bright, smooth top read as sky. Only color changes."""
+    lum = gray(image)
+    h, w = lum.shape
+    shadow = np.clip(1 - lum * 2, 0, 1)[..., None]
+    tint = COOL_SHADOWS * shadow + WARM_MIDS * (1 - shadow)
+    ys = (np.arange(h, dtype=np.float32)[:, None] + 0.5) / h
+    smooth = cv2.GaussianBlur(np.abs(cv2.Laplacian(lum, cv2.CV_32F)), (0, 0), max(h, w) * 0.01)
+    sky = np.clip((lum - 0.55) * 4, 0, 1) * np.clip(1 - ys * 2.5, 0, 1) * (smooth < 0.02)
+    tint = tint + (SKY_BLUE - tint) * cv2.GaussianBlur(sky.astype(np.float32), (0, 0), 3)[..., None]
+    colored = tint / np.maximum(tint @ LUMA, 1e-3)[..., None] * lum[..., None]
+    return cast(Array, np.clip(colored, 0, 1).astype(np.float32))
+
+
+def upscale(image: npt.NDArray[Any], scale: float = 2.0, **_: Any) -> npt.NDArray[np.uint8]:
+    """Enlarge without a model: Lanczos resampling and a light sharpen. Takes and returns
+    8-bit pixels, which keeps big images small between processes."""
+    h, w = image.shape[:2]
+    size = (max(1, round(w * scale)), max(1, round(h * scale)))
+    x = np.asarray(image, np.float32) / 255.0
+    big = cv2.resize(x, size, interpolation=cv2.INTER_LANCZOS4)
+    soft = cv2.GaussianBlur(big, (0, 0), max(0.8, scale * 0.5))
+    sharp = np.clip(big + 0.35 * (big - soft), 0, 1)
+    return (sharp * 255 + 0.5).astype(np.uint8)

@@ -25,6 +25,8 @@ import numpy as np
 import numpy.typing as npt
 
 from photo_agent import operations as ops
+from photo_agent.compositing import harmonize
+from photo_agent.generative import cache_identity, job_params, task_for
 from photo_agent.imaging import Array
 from photo_agent.layers import BlendMode, EditState, Layer
 from photo_agent.masks import Mask, SemanticMask, render_mask
@@ -44,6 +46,20 @@ class Vision(Protocol):
 
     def fill(self, image: Array, hole: npt.NDArray[np.bool_], key: str) -> Array:
         """`image` with the `hole` filled in by inpainting; cached under `key`."""
+        ...
+
+    def generate(
+        self,
+        task: str,
+        image: Array,
+        hole: npt.NDArray[np.bool_] | None,
+        params: dict[str, Any],
+        key: str,
+        edge: int = ...,
+    ) -> Array:
+        """`image` with the region around `hole` (or all of it) generated anew by `task`;
+        cached under `key` at a fixed working size (long edge `edge`), whatever the render
+        size."""
         ...
 
 
@@ -89,7 +105,7 @@ def render_cutout(
     """The rendered photo and, when a visible cutout is set, its alpha (1 keeps a pixel)."""
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
-    out = _apply_removals(out, state.layers, ctx)
+    out = _apply_content(out, state.layers, ctx)
     for layer in state.layers:
         out = _apply_layer(out, layer, ctx)
     out = np.clip(out, 0.0, 1.0, out=out)
@@ -115,7 +131,7 @@ def _backdrop(shape: tuple[int, int], color: str | None) -> Array:
 
 
 def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
-    if not layer.visible or layer.opacity <= 0 or not layer.operations or layer.is_removal:
+    if not layer.visible or layer.opacity <= 0 or not layer.operations or layer.is_content:
         return x
     adjusted = blend(x, apply_operations(x, layer.operations, ctx), layer.blend_mode)
     weight: Array | float = layer.opacity / 100
@@ -131,33 +147,160 @@ REMOVAL_THRESHOLD = 0.35
 """Where a removal layer's mask is at least this strong, the photo is filled in."""
 
 
-def _apply_removals(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Array:
-    """Fill in what each visible removal layer selects, in stack order.
+def _apply_content(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Array:
+    """Apply each visible content layer (removals and generative edits), in stack order.
 
-    Removals come before every adjustment, whatever their place in the stack, so the
-    filled-in area takes each adjustment just like the photo around it. Each fill is found
-    from the photo as earlier removals left it, and is cached by everything it depends on.
+    Content layers come before every adjustment, whatever their place in the stack, so new
+    or filled-in areas take each adjustment just like the photo around them. Each result is
+    found from the photo as earlier content layers left it, and is cached by everything it
+    depends on.
     """
-    chain: list[object] = [[op.model_dump(exclude={"id"}) for op in ctx.framing], x.shape]
+    chain: list[object] = [[op.model_dump(exclude={"id", "options"}) for op in ctx.framing]]
     for layer in layers:
-        if not layer.is_removal or not layer.visible or layer.opacity <= 0:
+        if not layer.is_content or not layer.visible or layer.opacity <= 0:
             continue
-        if layer.mask is None or ctx.vision is None:
+        if ctx.vision is None:
             continue
         op = layer.operations[0]
-        assert isinstance(op, ops.Remove)
-        chain.append([layer.mask.model_dump(), op.grow])
-        region = ctx.mask(layer.mask, x)
-        radius = max(1, round(op.grow / 100 * 0.02 * long_edge(x)))
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
-        hole = cv2.dilate((region > REMOVAL_THRESHOLD).astype(np.uint8), kernel).astype(bool)
-        if not hole.any():
-            continue
-        key = hashlib.sha256(json.dumps(chain, default=str).encode()).hexdigest()[:24]
-        filled = ctx.vision.fill(np.clip(x, 0.0, 1.0), hole, key)
-        weight = blur(hole.astype(np.float32), max(1.0, radius / 2)) * (layer.opacity / 100)
-        x = x + (filled - x) * weight[..., None]
+        chain.append([layer.mask.model_dump() if layer.mask else None, cache_identity(op)])
+        if isinstance(op, ops.Remove):
+            x = _apply_removal(x, layer, op, [*chain, x.shape], ctx)
+        elif isinstance(op, ops.GenerativeBase):
+            x = _apply_generative(x, layer, op, chain, ctx)
     return x
+
+
+def _chain_key(chain: list[object]) -> str:
+    return hashlib.sha256(json.dumps(chain, default=str).encode()).hexdigest()[:24]
+
+
+def _hole(layer: Layer, x: Array, grow: float, ctx: RenderContext) -> npt.NDArray[np.bool_] | None:
+    """Where a content layer's mask selects, grown by `grow` (0..100), as a boolean map."""
+    if layer.mask is None:
+        return None
+    region = ctx.mask(layer.mask, x)
+    radius = max(1, round(grow / 100 * 0.02 * long_edge(x)))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
+    hole = cv2.dilate((region > REMOVAL_THRESHOLD).astype(np.uint8), kernel).astype(bool)
+    return hole if hole.any() else None
+
+
+def _apply_removal(
+    x: Array, layer: Layer, op: ops.Remove, chain: list[object], ctx: RenderContext
+) -> Array:
+    assert ctx.vision is not None
+    hole = _hole(layer, x, op.grow, ctx)
+    if hole is None:
+        return x
+    filled = ctx.vision.fill(np.clip(x, 0.0, 1.0), hole, _chain_key(chain))
+    return _blend_hole(x, filled, hole, op.grow, layer.opacity)
+
+
+def _blend_hole(
+    x: Array, filled: Array, hole: npt.NDArray[np.bool_], grow: float, opacity: float
+) -> Array:
+    radius = max(1, round(grow / 100 * 0.02 * long_edge(x)))
+    weight = blur(hole.astype(np.float32), max(1.0, radius / 2)) * (opacity / 100)
+    return x + (filled - x) * weight[..., None]
+
+
+def _apply_generative(
+    x: Array, layer: Layer, op: ops.GenerativeBase, chain: list[object], ctx: RenderContext
+) -> Array:
+    assert ctx.vision is not None
+    if isinstance(op, ops.Generate):
+        hole = _hole(layer, x, op.grow, ctx)
+        if hole is None:
+            return x
+        made = ctx.vision.generate(
+            task_for(op), np.clip(x, 0.0, 1.0), hole, job_params(op), _chain_key(chain)
+        )
+        return _blend_hole(x, made, hole, op.grow, layer.opacity)
+    if isinstance(op, ops.ReplaceBackground):
+        return _replace_background(x, layer, op, chain, ctx)
+    if isinstance(op, ops.Relight):
+        made = ctx.vision.generate(
+            task_for(op),
+            np.clip(x, 0.0, 1.0),
+            None,
+            {**job_params(op), "direction": op.direction},
+            _chain_key(chain),
+        )
+        return _blend_whole(x, transfer_light(x, made), layer, op.amount, ctx)
+    if isinstance(op, ops.RestoreFaces):
+        # Faces need more pixels than other generated results to keep their new detail.
+        made = ctx.vision.generate(
+            task_for(op),
+            np.clip(x, 0.0, 1.0),
+            None,
+            job_params(op),
+            _chain_key(chain),
+            RESTORE_EDGE,
+        )
+        return _blend_whole(x, made, layer, op.amount, ctx)
+    if isinstance(op, ops.Colorize):
+        made = ctx.vision.generate(
+            task_for(op), np.clip(x, 0.0, 1.0), None, job_params(op), _chain_key(chain)
+        )
+        return _blend_whole(x, keep_luminance(x, made), layer, op.amount, ctx)
+    if isinstance(op, ops.Restyle):
+        params = {**job_params(op), "strength": 0.25 + 0.7 * op.strength / 100, "restyle": True}
+        made = ctx.vision.generate(
+            task_for(op), np.clip(x, 0.0, 1.0), None, params, _chain_key(chain)
+        )
+        return _blend_whole(x, made, layer, 100, ctx)
+    return x
+
+
+RESTORE_EDGE = 2048
+"""Working size for face restoration."""
+
+
+def keep_luminance(x: Array, colored: Array) -> Array:
+    """The photo's own brightness and detail with the color of `colored` (a colorized
+    version of it, generated smaller)."""
+    lab = cv2.cvtColor(np.clip(x, 0.0, 1.0).astype(np.float32), cv2.COLOR_RGB2LAB)
+    other = cv2.cvtColor(np.clip(colored, 0.0, 1.0).astype(np.float32), cv2.COLOR_RGB2LAB)
+    lab[..., 1:] = other[..., 1:]
+    return cast(Array, np.clip(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB), 0.0, 1.0))
+
+
+def _blend_whole(x: Array, result: Array, layer: Layer, amount: float, ctx: RenderContext) -> Array:
+    """Blend a whole-photo result in by amount (0..100), opacity, and the layer's mask."""
+    weight: Array | float = amount / 100 * layer.opacity / 100
+    if layer.mask is not None:
+        weight = ctx.mask(layer.mask, x)[..., None] * weight
+    return cast(Array, x + (result - x) * weight)
+
+
+def transfer_light(x: Array, lit: Array) -> Array:
+    """The photo's own fine detail under the broad light and color of `lit`, a relit
+    version of it (generated smaller, so its own detail is soft or reinvented)."""
+    sigma = max(1.0, long_edge(x) * 0.006)
+    eps = 0.02
+    base = blur(np.clip(x, 0.0, 1.0), sigma)
+    light = blur(np.clip(lit, 0.0, 1.0), sigma)
+    return cast(Array, np.clip(x * (light + eps) / (base + eps), 0.0, 1.5))
+
+
+EVERYTHING_BUT_THE_SUBJECT = SemanticMask(target="subject", invert=True)
+
+
+def _replace_background(
+    x: Array, layer: Layer, op: ops.ReplaceBackground, chain: list[object], ctx: RenderContext
+) -> Array:
+    assert ctx.vision is not None
+    region = np.clip(ctx.mask(layer.mask or EVERYTHING_BUT_THE_SUBJECT, x), 0.0, 1.0)
+    hole = region > REMOVAL_THRESHOLD
+    if not hole.any():
+        return x
+    params = {**job_params(op), "backdrop": True}
+    made = ctx.vision.generate(task_for(op), np.clip(x, 0.0, 1.0), hole, params, _chain_key(chain))
+    # The mask's soft edge (a matte, for the subject) decides the blend, so hair and fine
+    # edges stay as they were.
+    composite = x + (made - x) * region[..., None]
+    composite = harmonize(composite, 1.0 - region, op.harmonize)
+    return cast(Array, x + (composite - x) * (layer.opacity / 100))
 
 
 def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
@@ -176,20 +319,27 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
     target = state.layer(layer_id)
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
-    if target.mask is None:
+    mask = target.mask
+    if mask is None and any(isinstance(op, ops.ReplaceBackground) for op in target.operations):
+        mask = EVERYTHING_BUT_THE_SUBJECT
+    if mask is None:
         return np.ones(out.shape[:2], np.float32)
-    if not target.is_removal:
-        out = _apply_removals(out, state.layers, ctx)
+    if not target.is_content:
+        out = _apply_content(out, state.layers, ctx)
     for layer in state.layers:
         if layer.id == layer_id:
             break
         out = _apply_layer(out, layer, ctx)
-    return ctx.mask(target.mask, out)
+    return ctx.mask(mask, out)
 
 
 def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
-    for op in operations:
-        x = _APPLY[type(op)](x, op, ctx)
+    for i, op in enumerate(operations):
+        if isinstance(op, ops.Expand):
+            # What it paints depends on the framing before it.
+            x = _expand(x, op, ctx, operations[:i])
+        else:
+            x = _APPLY[type(op)](x, op, ctx)
     return x
 
 
@@ -574,6 +724,63 @@ def _lens_correction(x: Array, op: ops.LensCorrection, ctx: RenderContext) -> Ar
     return cast(Array, out)
 
 
+def expand_box(op: ops.Expand, w: int, h: int) -> tuple[int, int, int, int]:
+    """The expanded canvas size and where the photo sits in it: (width, height, x, y)."""
+    if op.aspect != "free":
+        ratio = ASPECTS[op.aspect]
+        if w / h < ratio:
+            new_w, new_h = max(w, round(h * ratio)), h
+        else:
+            new_w, new_h = w, max(h, round(w / ratio))
+        return new_w, new_h, (new_w - w) // 2, (new_h - h) // 2
+    left, right = round(op.left * w), round(op.right * w)
+    top, bottom = round(op.top * h), round(op.bottom * h)
+    return w + left + right, h + top + bottom, left, top
+
+
+EXPAND_OVERLAP = 0.015
+"""How far into the photo (fraction of the long edge) the model may repaint, so the seam
+between the photo and the new area blends."""
+EXPAND_PROMPT = "a natural continuation of the surrounding scene, photograph"
+
+
+def extend_canvas(x: Array, new_w: int, new_h: int, x0: int, y0: int) -> Array:
+    """The photo on a larger canvas, the new area holding a mirror of the photo that softens
+    with distance: a starting point the generative model paints over."""
+    h, w = x.shape[:2]
+    pad = ((y0, new_h - h - y0), (x0, new_w - w - x0), (0, 0))
+    mirrored = np.pad(np.clip(x, 0.0, 1.0), pad, mode="symmetric").astype(np.float32)
+    edge = max(new_w, new_h)
+    soft = blur(mirrored, edge * 0.02)
+    inside = np.zeros((new_h, new_w), np.uint8)
+    inside[y0 : y0 + h, x0 : x0 + w] = 1
+    distance = np.asarray(cv2.distanceTransform(1 - inside, cv2.DIST_L2, 5), np.float32)
+    fade = smoothstep(0.0, edge * 0.12, distance)[..., None]
+    out = mirrored + (soft - mirrored) * fade
+    out[y0 : y0 + h, x0 : x0 + w] = x
+    return cast(Array, out)
+
+
+def _expand(x: Array, op: ops.Expand, ctx: RenderContext, before: Sequence[ops.OpBase]) -> Array:
+    h, w = x.shape[:2]
+    new_w, new_h, x0, y0 = expand_box(op, w, h)
+    if (new_w, new_h) == (w, h):
+        return x
+    canvas = extend_canvas(x, new_w, new_h, x0, y0)
+    if ctx.vision is None:
+        return canvas
+    added = np.ones((new_h, new_w), np.uint8)
+    added[y0 : y0 + h, x0 : x0 + w] = 0
+    overlap = max(1, round(EXPAND_OVERLAP * max(new_w, new_h)))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * overlap + 1, 2 * overlap + 1))
+    hole = cv2.dilate(added, kernel).astype(bool)
+    params = {**job_params(op), "prompt": op.prompt or EXPAND_PROMPT, "extend": True}
+    key = _chain_key([[cache_identity(o) for o in before], cache_identity(op)])
+    made = ctx.vision.generate("generate", canvas, hole, params, key)
+    weight = np.maximum(blur(hole.astype(np.float32), overlap / 2), added.astype(np.float32))
+    return cast(Array, canvas + (made - canvas) * weight[..., None])
+
+
 # Finishing
 
 
@@ -591,6 +798,35 @@ def _vignette(x: Array, op: ops.Vignette, ctx: RenderContext) -> Array:
 
 def _seed(op: ops.OpBase) -> int:
     return int.from_bytes(hashlib.sha256(op.id.encode()).digest()[:8], "little")
+
+
+def hue_tint(hue: float) -> npt.NDArray[np.float32]:
+    """The color offset that tints toward `hue` (degrees) without changing brightness."""
+    hsv = np.array([[[hue % 360, 1.0, 1.0]]], np.float32)
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)[0, 0]
+    return np.asarray(rgb - float(rgb @ LUMA), np.float32)
+
+
+GRADE_STRENGTH = 0.22
+"""How far a full-strength grade moves a tone toward its hue."""
+
+
+def _color_grade(x: Array, op: ops.ColorGrade, ctx: RenderContext) -> Array:
+    lum = np.clip(luma(x), 0.0, 1.0)
+    pivot = 0.5 - op.balance / 100 * 0.25
+    shadows = np.clip(1.0 - lum / pivot, 0.0, 1.0) ** 1.5
+    highlights = np.clip((lum - pivot) / (1.0 - pivot), 0.0, 1.0) ** 1.5
+    midtones = np.clip(1.0 - shadows - highlights, 0.0, 1.0) * 4 * lum * (1 - lum)
+    out = x
+    for weight, hue, amount in (
+        (shadows, op.shadows_hue, op.shadows),
+        (midtones, op.midtones_hue, op.midtones),
+        (highlights, op.highlights_hue, op.highlights),
+    ):
+        if amount > 0:
+            tint = hue_tint(hue) * (GRADE_STRENGTH * amount / 100)
+            out = out + weight[..., None] * tint
+    return out
 
 
 def _grain(x: Array, op: ops.Grain, ctx: RenderContext) -> Array:
@@ -721,8 +957,17 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Vignette: _vignette,
     ops.Grain: _grain,
     ops.ToneCurve: _tone_curve,
-    # Removal needs the layer's mask, so removal layers render separately (see above).
+    # Content operations need their layer's mask, so they render separately (see above).
     ops.Remove: lambda x, op, ctx: x,
+    ops.Generate: lambda x, op, ctx: x,
+    ops.ReplaceBackground: lambda x, op, ctx: x,
+    ops.Relight: lambda x, op, ctx: x,
+    ops.RestoreFaces: lambda x, op, ctx: x,
+    ops.Colorize: lambda x, op, ctx: x,
+    ops.Restyle: lambda x, op, ctx: x,
+    ops.ColorGrade: _color_grade,
+    # Expanding needs the framing before it, so `apply_operations` handles it.
+    ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,
     ops.HealBlemishes: _heal_blemishes,
 }

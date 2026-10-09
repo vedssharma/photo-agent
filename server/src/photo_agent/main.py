@@ -16,6 +16,7 @@ app = FastAPI(title="photo-agent", version=__version__)
 app.include_router(routes.router)
 app.include_router(routes.projects_router)
 app.include_router(routes.recipes_router)
+app.include_router(routes.looks_router)
 
 
 class HealthResponse(BaseModel):

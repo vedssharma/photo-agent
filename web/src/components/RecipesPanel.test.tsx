@@ -66,4 +66,34 @@ describe('RecipesPanel', () => {
     )
     expect(await screen.findByText(/No recipes yet/)).toBeInTheDocument()
   })
+
+  it('adds a built-in look', async () => {
+    const doc = makeDoc()
+    const applied = makeDoc({ state: { framing: [], layers: [warm] } })
+    const onDocument = vi.fn()
+    let body: unknown
+    stubApi({
+      'GET /api/recipes': () => Response.json([]),
+      'GET /api/looks': () =>
+        Response.json([
+          {
+            id: 'noir',
+            name: 'Noir',
+            description: 'Black and white.',
+            operations: [{ id: 's', op: 'saturation', amount: -100 }],
+          },
+        ]),
+      'POST /api/documents/abc123abc123/looks/noir': async (req) => {
+        body = await req.json()
+        return Response.json(applied)
+      },
+    })
+    render(<RecipesPanel doc={doc} onDocument={onDocument} />)
+    await userEvent.selectOptions(
+      await screen.findByRole('combobox', { name: /Add a look/ }),
+      'noir',
+    )
+    await vi.waitFor(() => expect(onDocument).toHaveBeenCalledWith(applied))
+    expect(body).toEqual({ strength: 100 })
+  })
 })

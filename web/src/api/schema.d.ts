@@ -181,6 +181,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/operations/{op_id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Offer Options
+         * @description Offer several takes on a generative edit to pick from, as one step in the history.
+         *     Each take is generated now, so showing and picking them is instant.
+         */
+        post: operations["offerOptions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/operations/{op_id}/options/{seed}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Option
+         * @description A preview of the photo with one of the takes on offer.
+         */
+        get: operations["getOption"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/looks/{look_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Look
+         * @description Add a look's layer on top of the current edits, as one step in the history.
+         */
+        post: operations["applyLook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/retouch": {
         parameters: {
             query?: never;
@@ -434,6 +495,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/looks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Looks
+         * @description The built-in looks, each a layer of ordinary adjustments.
+         */
+        get: operations["listLooks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -642,6 +723,105 @@ export interface components {
             amount: number;
         };
         /**
+         * ColorGrade
+         * @description Split toning, as colorists grade film: tint the shadows, midtones, and highlights
+         *     each toward a hue (degrees: 0 red, 30 orange, 60 yellow, 120 green, 180 cyan, 210 teal
+         *     blue, 240 blue, 300 magenta) by its own amount, keeping brightness. Teal shadows with
+         *     orange highlights is the blockbuster look; warm highlights and cool shadows read as
+         *     film.
+         */
+        ColorGrade: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "color_grade";
+            /**
+             * Shadows Hue
+             * @default 210
+             */
+            shadows_hue: number;
+            /**
+             * Shadows
+             * @description How strongly the shadows take their hue.
+             * @default 0
+             */
+            shadows: number;
+            /**
+             * Midtones Hue
+             * @default 30
+             */
+            midtones_hue: number;
+            /**
+             * Midtones
+             * @description How strongly the midtones take their hue.
+             * @default 0
+             */
+            midtones: number;
+            /**
+             * Highlights Hue
+             * @default 40
+             */
+            highlights_hue: number;
+            /**
+             * Highlights
+             * @description How strongly the highlights take their hue.
+             * @default 0
+             */
+            highlights: number;
+            /**
+             * Balance
+             * @description Moves the split: positive gives highlights more of the range.
+             * @default 0
+             */
+            balance: number;
+        };
+        /**
+         * Colorize
+         * @description Colorize a black-and-white photo with an AI colorization model. The photo's own
+         *     brightness and detail stay; only color is added. The only operation in its layer.
+         */
+        Colorize: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "colorize";
+            /**
+             * Amount
+             * @description How strong the new colors are.
+             * @default 100
+             */
+            amount: number;
+        };
+        /**
          * Contrast
          * @description Increase or decrease overall contrast around the midtones.
          */
@@ -822,13 +1002,86 @@ export interface components {
              * Framing
              * @default []
              */
-            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"])[];
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"] | components["schemas"]["Expand"])[];
             /**
              * Layers
              * @default []
              */
             layers: components["schemas"]["Layer"][];
             cutout?: components["schemas"]["Cutout"] | null;
+        };
+        /**
+         * Expand
+         * @description Expand the canvas: extend the photo past its edges, with new surroundings painted by
+         *     a generative model to match (outpainting). Use it to turn a vertical photo into a
+         *     landscape one, or to give a tight shot more room, without cropping anything away. Masks
+         *     and later crops refer to the expanded frame.
+         */
+        Expand: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "expand";
+            /**
+             * Aspect
+             * @description Grow the frame to this width:height, centered on the photo; "free" adds the side amounts below instead.
+             * @default free
+             * @enum {string}
+             */
+            aspect: "free" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
+            /**
+             * Left
+             * @description Add this fraction of the width on the left.
+             * @default 0
+             */
+            left: number;
+            /**
+             * Right
+             * @description Add this fraction of the width on the right.
+             * @default 0
+             */
+            right: number;
+            /**
+             * Top
+             * @description Add this fraction of the height on top.
+             * @default 0
+             */
+            top: number;
+            /**
+             * Bottom
+             * @description Add this fraction of the height at the bottom.
+             * @default 0
+             */
+            bottom: number;
+            /**
+             * Prompt
+             * @description What the new area should show; empty continues the scene naturally.
+             * @default
+             */
+            prompt: string;
         };
         /** ExportOptions */
         ExportOptions: {
@@ -850,6 +1103,13 @@ export interface components {
              * @default false
              */
             keep_location: boolean;
+            /**
+             * Upscale
+             * @description Enlarge the export with an AI upscaler (up to 8000 pixels across).
+             * @default 1
+             * @enum {integer}
+             */
+            upscale: 1 | 2 | 4;
         };
         /**
          * Exposure
@@ -893,6 +1153,53 @@ export interface components {
              * @enum {string}
              */
             axis: "horizontal" | "vertical";
+        };
+        /**
+         * Generate
+         * @description Generative fill: paint new content where the layer's mask selects, described in
+         *     words ("a potted plant", "a sunset sky", "calm water"). The model blends it into the
+         *     photo's light and perspective. Needs a mask; it is the only operation in its layer, and
+         *     like removals it applies before any adjustment layer.
+         */
+        Generate: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "generate";
+            /**
+             * Prompt
+             * @description What to put there, in plain words.
+             */
+            prompt: string;
+            /**
+             * Grow
+             * @description How far past the selection's edge to repaint, for a seamless blend.
+             * @default 10
+             */
+            grow: number;
         };
         /**
          * Grain
@@ -1080,7 +1387,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
         };
         /**
          * LensCorrection
@@ -1132,6 +1439,26 @@ export interface components {
              * @description [x, y] as fractions of the photo.
              */
             end: number[];
+        };
+        /** Look */
+        Look: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Operations */
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
+        };
+        /** LookStrength */
+        LookStrength: {
+            /**
+             * Strength
+             * @description How much of the look to use.
+             * @default 100
+             */
+            strength: number;
         };
         /**
          * LuminosityMask
@@ -1232,11 +1559,20 @@ export interface components {
              * Group
              * @enum {string}
              */
-            group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch";
+            group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch" | "generative";
             /** Framing */
             framing: boolean;
             /** Params */
             params: components["schemas"]["ParamSpec"][];
+        };
+        /** OptionsRequest */
+        OptionsRequest: {
+            /**
+             * Count
+             * @description How many takes to offer.
+             * @default 3
+             */
+            count: number;
         };
         /** ParamSpec */
         ParamSpec: {
@@ -1248,7 +1584,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "number" | "choice" | "curve";
+            kind: "number" | "choice" | "curve" | "text" | "seed";
             /**
              * Description
              * @default
@@ -1349,6 +1685,61 @@ export interface components {
             layers: components["schemas"]["Layer"][];
         };
         /**
+         * Relight
+         * @description Change the light: where it comes from and its mood ("warm sunset light", "cool
+         *     moonlight", "neon purple"), as an AI relighting model imagines the scene lit that way.
+         *     Best for portraits and products; give the layer a mask on the subject to relight only
+         *     it. Fine detail stays from the photo. The only operation in its layer.
+         */
+        Relight: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "relight";
+            /**
+             * Direction
+             * @description Where the light comes from; back is a rim light from behind.
+             * @default left
+             * @enum {string}
+             */
+            direction: "left" | "right" | "top" | "bottom" | "front" | "back";
+            /**
+             * Prompt
+             * @description The light's color and mood; empty is soft daylight.
+             * @default
+             */
+            prompt: string;
+            /**
+             * Amount
+             * @description How much of the new light to use.
+             * @default 60
+             */
+            amount: number;
+        };
+        /**
          * Remove
          * @description Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap
          *     with plausible surroundings, using an AI inpainting model. Needs a mask; it is the only
@@ -1371,6 +1762,142 @@ export interface components {
              * @default 20
              */
             grow: number;
+        };
+        /**
+         * ReplaceBackground
+         * @description Replace the background with a new scene described in words ("a sunlit beach",
+         *     "a softly lit studio, pale gray"), painted around the subject so its perspective fits,
+         *     and match the subject's light and color to it. The layer's mask selects what to
+         *     replace; without one, everything but the main subject. The only operation in its layer;
+         *     applies before adjustments.
+         */
+        ReplaceBackground: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "replace_background";
+            /**
+             * Prompt
+             * @description The new background.
+             */
+            prompt: string;
+            /**
+             * Harmonize
+             * @description How much to match the subject's light and color to the new scene.
+             * @default 50
+             */
+            harmonize: number;
+        };
+        /**
+         * RestoreFaces
+         * @description Restore faces in an old, blurry, or low-resolution photo with an AI face restoration
+         *     model: sharper eyes, skin, and hair that still look like the person. Only faces change.
+         *     The only operation in its layer.
+         */
+        RestoreFaces: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "restore_faces";
+            /**
+             * Amount
+             * @description How much of the restored faces to use; lower keeps more of the original.
+             * @default 70
+             */
+            amount: number;
+        };
+        /**
+         * Restyle
+         * @description Redraw the whole photo in a style ("watercolor painting", "1970s film photo",
+         *     "Studio Ghibli anime") with an image generation model, keeping its composition. Use
+         *     only when asked for a new style or medium; for a color look, use color_grade and the
+         *     other adjustments instead. The only operation in its layer.
+         */
+        Restyle: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "restyle";
+            /**
+             * Prompt
+             * @description The style to redraw it in.
+             */
+            prompt: string;
+            /**
+             * Strength
+             * @description How far it may stray from the photo; higher is more stylized.
+             * @default 50
+             */
+            strength: number;
         };
         /**
          * Retouch
@@ -2145,14 +2672,12 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentView"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid, or a generative edit that is not allowed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -2178,6 +2703,132 @@ export interface operations {
                 };
             };
             /** @description No such document or recipe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    offerOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                op_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OptionsRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or generative operation */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getOption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                op_id: string;
+                seed: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such document, operation, or take */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    applyLook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                look_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LookStrength"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or look */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2638,6 +3289,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listLooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Look"][];
                 };
             };
         };

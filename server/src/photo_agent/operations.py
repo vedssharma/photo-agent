@@ -36,6 +36,41 @@ class OpBase(BaseModel):
         return f"{title} ({', '.join(parts)})" if parts else title
 
 
+SEED_MAX = 2**31 - 1
+MAX_OPTIONS = 4
+"""The most takes offered to pick from at once."""
+APP_FIELDS = ("model", "options")
+"""Fields the app fills in on generative operations; tools and sliders leave them out."""
+
+
+class GenerativeBase(OpBase):
+    """An operation whose pixels come from a generative model. The prompt, the seed, and the
+    model are recorded, so the same result can be rendered again, or varied by a new seed."""
+
+    seed: int | None = Field(
+        None,
+        ge=0,
+        le=SEED_MAX,
+        description="The same prompt and seed give the same result; leave it out for a "
+        "fresh one, or change it for a different take.",
+    )
+    model: str = Field(
+        "", max_length=80, description="The model that generates it, recorded by the app."
+    )
+    options: list[Annotated[int, Field(ge=0, le=SEED_MAX)]] = Field(
+        [],
+        max_length=MAX_OPTIONS,
+        description="Seeds of alternative takes offered to pick from, recorded by the app.",
+    )
+
+    def summary(self) -> str:
+        title = self.op.replace("_", " ").capitalize()  # type: ignore[attr-defined]
+        prompt = getattr(self, "prompt", "")
+        what = f" “{prompt}”" if prompt else ""
+        seed = f" (seed {self.seed})" if self.seed is not None else ""
+        return f"{title}{what}{seed}"
+
+
 def _fmt(v: object) -> str:
     if isinstance(v, float):
         return f"{v:+g}"
@@ -244,6 +279,43 @@ class LensCorrection(OpBase):
     )
 
 
+ExpandAspect = Literal["free", "1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9"]
+Extension = Annotated[float, Field(ge=0, le=1.5)]
+
+
+class Expand(GenerativeBase):
+    """Expand the canvas: extend the photo past its edges, with new surroundings painted by
+    a generative model to match (outpainting). Use it to turn a vertical photo into a
+    landscape one, or to give a tight shot more room, without cropping anything away. Masks
+    and later crops refer to the expanded frame."""
+
+    op: Literal["expand"] = "expand"
+    aspect: ExpandAspect = Field(
+        "free",
+        description="Grow the frame to this width:height, centered on the photo; "
+        '"free" adds the side amounts below instead.',
+    )
+    left: Extension = Field(0, description="Add this fraction of the width on the left.")
+    right: Extension = Field(0, description="Add this fraction of the width on the right.")
+    top: Extension = Field(0, description="Add this fraction of the height on top.")
+    bottom: Extension = Field(0, description="Add this fraction of the height at the bottom.")
+    prompt: str = Field(
+        "",
+        max_length=400,
+        description="What the new area should show; empty continues the scene naturally.",
+    )
+
+    def summary(self) -> str:
+        if self.aspect != "free":
+            size = f"to {self.aspect}"
+        else:
+            sides = {"left": self.left, "right": self.right, "top": self.top}
+            sides["bottom"] = self.bottom
+            size = ", ".join(f"{k} +{v:.0%}" for k, v in sides.items() if v) or "by nothing"
+        what = f" with “{self.prompt}”" if self.prompt else ""
+        return f"Expand canvas {size}{what}"
+
+
 # Finishing
 
 
@@ -253,6 +325,28 @@ class Vignette(OpBase):
     op: Literal["vignette"] = "vignette"
     amount: Amount
     midpoint: Strength = Field(50, description="How far in the effect reaches; lower is wider.")
+
+
+Hue = Annotated[float, Field(ge=0, le=360)]
+
+
+class ColorGrade(OpBase):
+    """Split toning, as colorists grade film: tint the shadows, midtones, and highlights
+    each toward a hue (degrees: 0 red, 30 orange, 60 yellow, 120 green, 180 cyan, 210 teal
+    blue, 240 blue, 300 magenta) by its own amount, keeping brightness. Teal shadows with
+    orange highlights is the blockbuster look; warm highlights and cool shadows read as
+    film."""
+
+    op: Literal["color_grade"] = "color_grade"
+    shadows_hue: Hue = 210
+    shadows: Strength = Field(0, description="How strongly the shadows take their hue.")
+    midtones_hue: Hue = 30
+    midtones: Strength = Field(0, description="How strongly the midtones take their hue.")
+    highlights_hue: Hue = 40
+    highlights: Strength = Field(0, description="How strongly the highlights take their hue.")
+    balance: Amount = Field(
+        0, description="Moves the split: positive gives highlights more of the range."
+    )
 
 
 class Grain(OpBase):
@@ -274,6 +368,95 @@ class Remove(OpBase):
     op: Literal["remove"] = "remove"
     grow: Strength = Field(
         20, description="How far past the selection's edge to fill, so outlines and halos go."
+    )
+
+
+# Generative
+
+
+class Generate(GenerativeBase):
+    """Generative fill: paint new content where the layer's mask selects, described in
+    words ("a potted plant", "a sunset sky", "calm water"). The model blends it into the
+    photo's light and perspective. Needs a mask; it is the only operation in its layer, and
+    like removals it applies before any adjustment layer."""
+
+    op: Literal["generate"] = "generate"
+    prompt: str = Field(
+        min_length=1, max_length=400, description="What to put there, in plain words."
+    )
+    grow: Strength = Field(
+        10, description="How far past the selection's edge to repaint, for a seamless blend."
+    )
+
+
+class ReplaceBackground(GenerativeBase):
+    """Replace the background with a new scene described in words ("a sunlit beach",
+    "a softly lit studio, pale gray"), painted around the subject so its perspective fits,
+    and match the subject's light and color to it. The layer's mask selects what to
+    replace; without one, everything but the main subject. The only operation in its layer;
+    applies before adjustments."""
+
+    op: Literal["replace_background"] = "replace_background"
+    prompt: str = Field(min_length=1, max_length=400, description="The new background.")
+    harmonize: Strength = Field(
+        50, description="How much to match the subject's light and color to the new scene."
+    )
+
+
+LightDirection = Literal["left", "right", "top", "bottom", "front", "back"]
+
+
+class Relight(GenerativeBase):
+    """Change the light: where it comes from and its mood ("warm sunset light", "cool
+    moonlight", "neon purple"), as an AI relighting model imagines the scene lit that way.
+    Best for portraits and products; give the layer a mask on the subject to relight only
+    it. Fine detail stays from the photo. The only operation in its layer."""
+
+    op: Literal["relight"] = "relight"
+    direction: LightDirection = Field(
+        "left", description="Where the light comes from; back is a rim light from behind."
+    )
+    prompt: str = Field(
+        "", max_length=400, description="The light's color and mood; empty is soft daylight."
+    )
+    amount: Strength = Field(60, description="How much of the new light to use.")
+
+
+class RestoreFaces(GenerativeBase):
+    """Restore faces in an old, blurry, or low-resolution photo with an AI face restoration
+    model: sharper eyes, skin, and hair that still look like the person. Only faces change.
+    The only operation in its layer."""
+
+    op: Literal["restore_faces"] = "restore_faces"
+    amount: Strength = Field(
+        70, description="How much of the restored faces to use; lower keeps more of the original."
+    )
+
+    def summary(self) -> str:
+        return "Restore faces"
+
+
+class Colorize(GenerativeBase):
+    """Colorize a black-and-white photo with an AI colorization model. The photo's own
+    brightness and detail stay; only color is added. The only operation in its layer."""
+
+    op: Literal["colorize"] = "colorize"
+    amount: Strength = Field(100, description="How strong the new colors are.")
+
+    def summary(self) -> str:
+        return "Colorize"
+
+
+class Restyle(GenerativeBase):
+    """Redraw the whole photo in a style ("watercolor painting", "1970s film photo",
+    "Studio Ghibli anime") with an image generation model, keeping its composition. Use
+    only when asked for a new style or medium; for a color look, use color_grade and the
+    other adjustments instead. The only operation in its layer."""
+
+    op: Literal["restyle"] = "restyle"
+    prompt: str = Field(min_length=1, max_length=400, description="The style to redraw it in.")
+    strength: Strength = Field(
+        50, description="How far it may stray from the photo; higher is more stylized."
     )
 
 
@@ -331,11 +514,19 @@ Operation = Annotated[
     | Perspective
     | LensCorrection
     | Vignette
+    | ColorGrade
     | Grain
     | ToneCurve
     | Remove
     | SmoothSkin
-    | HealBlemishes,
+    | HealBlemishes
+    | Generate
+    | Expand
+    | ReplaceBackground
+    | Relight
+    | RestoreFaces
+    | Colorize
+    | Restyle,
     Field(discriminator="op"),
 ]
 
@@ -361,11 +552,19 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Perspective,
     LensCorrection,
     Vignette,
+    ColorGrade,
     Grain,
     ToneCurve,
     Remove,
     SmoothSkin,
     HealBlemishes,
+    Generate,
+    Expand,
+    ReplaceBackground,
+    Relight,
+    RestoreFaces,
+    Colorize,
+    Restyle,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -377,14 +576,16 @@ GEOMETRY_TYPES: tuple[type[OpBase], ...] = (
     Flip,
     Perspective,
     LensCorrection,
+    Expand,
 )
 """Operations that change framing rather than look."""
 
 FramingOperation = Annotated[
-    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection, Field(discriminator="op")
+    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection | Expand,
+    Field(discriminator="op"),
 ]
-"""Crop, rotation, flips, and perspective and lens fixes. They apply to the whole photo,
-before any layer."""
+"""Crop, rotation, flips, perspective and lens fixes, and canvas expansion. They apply to
+the whole photo, before any layer."""
 
 AdjustmentOperation = Annotated[
     Exposure
@@ -402,14 +603,37 @@ AdjustmentOperation = Annotated[
     | Clarity
     | Dehaze
     | Vignette
+    | ColorGrade
     | Grain
     | ToneCurve
     | Remove
     | SmoothSkin
-    | HealBlemishes,
+    | HealBlemishes
+    | Generate
+    | ReplaceBackground
+    | Relight
+    | RestoreFaces
+    | Colorize
+    | Restyle,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""
+
+CONTENT_TYPES: tuple[type[OpBase], ...] = (
+    Remove,
+    Generate,
+    ReplaceBackground,
+    Relight,
+    RestoreFaces,
+    Colorize,
+    Restyle,
+)
+"""Operations that change what is in the photo rather than how it looks. Each is the only
+operation in its layer, and content layers render before every adjustment layer."""
+
+MASKED_TYPES: tuple[type[OpBase], ...] = (Remove, Generate)
+"""Content operations that only make sense where a mask points (the rest default to a
+sensible region, or the whole photo)."""
 
 
 def op_name(cls: type[OpBase]) -> str:

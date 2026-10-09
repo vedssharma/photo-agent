@@ -246,6 +246,9 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
     "perspective": [ops.Perspective(vertical=40, horizontal=-20)],
     "lens_correction": [ops.LensCorrection(distortion=50)],
     "vignette": [ops.Vignette(amount=-60, midpoint=40)],
+    "color_grade": [
+        ops.ColorGrade(shadows_hue=195, shadows=60, highlights_hue=30, highlights=50, midtones=20)
+    ],
     "grain": [ops.Grain(amount=60, size=50, id="golden01")],
     "smooth_skin": [ops.SmoothSkin(amount=70, texture=40)],
     "heal_blemishes": [ops.HealBlemishes(amount=80, size=60)],
@@ -253,7 +256,11 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
 }
 
 
-MODEL_OPERATIONS = {"remove"}
+MODEL_OPERATIONS = {
+    name
+    for name, cls in ops.OPERATIONS_BY_NAME.items()
+    if issubclass(cls, ops.CONTENT_TYPES) or issubclass(cls, ops.GenerativeBase)
+}
 """Operations whose result comes from an AI model (tested in their own modules)."""
 
 

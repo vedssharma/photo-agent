@@ -1,12 +1,16 @@
-import type {
-  BlendMode,
-  DocumentView,
-  Layer,
-  Operation,
+import {
+  type BlendMode,
+  type DocumentView,
+  type Layer,
+  type Operation,
+  optionUrl,
 } from '../api/documents'
 import type { OperationSpec } from '../api/operations'
+import { useState } from 'react'
+
 import type { EditFn } from '../hooks/useManualEdit'
-import { type MaskTool, semanticMask } from '../lib/masks'
+import { type MaskTool, defaultMask, semanticMask } from '../lib/masks'
+import { isContentOp, newSeed } from '../lib/operations'
 import {
   CUTOUT,
   FRAMING,
@@ -45,6 +49,8 @@ interface Props {
   onRetouch?: () => void
   /** Levels the photo and squares up converging verticals. */
   onStraighten?: () => void
+  /** Offers several takes on a generative operation, by id. */
+  onOptions?: (opId: string) => void
 }
 
 const BLEND_MODES: { value: BlendMode; label: string }[] = [
@@ -56,6 +62,127 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'overlay', label: 'Overlay' },
   { value: 'soft_light', label: 'Soft light' },
 ]
+
+type GenerativeTool = 'generate' | 'background' | 'light' | 'style'
+
+type LightDirection = Extract<Operation, { op: 'relight' }>['direction']
+
+const LIGHT_DIRECTIONS: { value: LightDirection; label: string }[] = [
+  { value: 'left', label: 'From the left' },
+  { value: 'right', label: 'From the right' },
+  { value: 'top', label: 'From above' },
+  { value: 'bottom', label: 'From below' },
+  { value: 'front', label: 'From the front' },
+  { value: 'back', label: 'From behind (rim)' },
+]
+
+type ExpandAspect = Extract<Operation, { op: 'expand' }>['aspect']
+
+const EXPAND_ASPECTS: ExpandAspect[] = [
+  '16:9',
+  '3:2',
+  '4:3',
+  '1:1',
+  '4:5',
+  '9:16',
+]
+
+/** What each generative tool asks for. */
+const GENERATIVE_TOOLS: Record<
+  GenerativeTool,
+  { label: string; placeholder: string; submit: string; directions?: boolean }
+> = {
+  generate: {
+    label: 'What to add',
+    placeholder: 'a potted fern, a sunset sky, a red kite…',
+    submit: 'Add',
+  },
+  background: {
+    label: 'New background',
+    placeholder: 'a sunlit beach, a soft gray studio…',
+    submit: 'Replace',
+  },
+  light: {
+    label: 'The new light',
+    placeholder: 'warm sunset light, cool moonlight, neon…',
+    submit: 'Relight',
+    directions: true,
+  },
+  style: {
+    label: 'New style',
+    placeholder: 'a watercolor painting, anime, oil on canvas…',
+    submit: 'Restyle',
+  },
+}
+
+/** A layer name from a prompt: its start, capitalized. */
+function layerTitle(prompt: string): string {
+  const words = prompt.trim().replace(/\s+/g, ' ')
+  const short = words.length <= 40 ? words : `${words.slice(0, 39)}…`
+  return short.charAt(0).toUpperCase() + short.slice(1)
+}
+
+/** Asks for a prompt before a generative layer is added. */
+function PromptForm({
+  label,
+  placeholder,
+  submit,
+  directions,
+  disabled,
+  onSubmit,
+  onCancel,
+}: {
+  label: string
+  placeholder: string
+  submit: string
+  /** Also ask where the light comes from. */
+  directions?: boolean
+  disabled: boolean
+  onSubmit: (prompt: string, direction: LightDirection) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState('')
+  const [direction, setDirection] = useState<LightDirection>('left')
+  return (
+    <form
+      className="prompt-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (text.trim()) onSubmit(text.trim(), direction)
+      }}
+    >
+      <input
+        type="text"
+        aria-label={label}
+        placeholder={placeholder}
+        value={text}
+        autoFocus
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel()
+        }}
+      />
+      {directions && (
+        <select
+          aria-label="Where the light comes from"
+          value={direction}
+          disabled={disabled}
+          onChange={(e) => setDirection(e.target.value as LightDirection)}
+        >
+          {LIGHT_DIRECTIONS.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      )}
+      <button type="submit" disabled={disabled || !text.trim()}>
+        {submit}
+      </button>
+    </form>
+  )
+}
 
 const blendLabel = (mode: BlendMode) =>
   BLEND_MODES.find((m) => m.value === mode)?.label ?? mode
@@ -76,6 +203,7 @@ export function LayersPanel({
   onPreview,
   onRetouch,
   onStraighten,
+  onOptions,
 }: Props) {
   const state = doc.state
   const locked = disabled
@@ -107,6 +235,10 @@ export function LayersPanel({
             removeOperation(s, opId),
           )
         }
+        onOptions={
+          onOptions && 'seed' in op ? () => onOptions(opId) : undefined
+        }
+        optionUrl={(seed) => optionUrl(doc, opId, seed)}
       />
     )
   }
@@ -155,6 +287,154 @@ export function LayersPanel({
     void apply('Remove an object', (s) => addLayer(s, layer))
   }
 
+  /** What a generative tool asks for before it adds its layer, if one is open. */
+  const [asking, setAsking] = useState<GenerativeTool | null>(null)
+
+  /** A generative fill layer, waiting for the person to paint where it goes. */
+  function generate(prompt: string) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: layerTitle(prompt),
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'generate',
+          prompt,
+          seed: newSeed(),
+          grow: 10,
+          model: '',
+          options: [],
+        },
+      ],
+      mask: defaultMask('brush'),
+    }
+    onSelect(layer.id)
+    onMaskTool({ ...maskTool, picking: false, refining: false, erase: false })
+    void apply(`Generate “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
+  /** A new scene behind the subject, matched to its light. */
+  function replaceBackground(prompt: string) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: `Background: ${layerTitle(prompt)}`,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'replace_background',
+          prompt,
+          seed: newSeed(),
+          harmonize: 50,
+          model: '',
+          options: [],
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(`New background: “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
+  /** New light on the photo (or, with a mask added later, on part of it). */
+  function relight(prompt: string, direction: LightDirection) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: `Light: ${layerTitle(prompt)}`,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'relight',
+          direction,
+          prompt,
+          seed: newSeed(),
+          amount: 60,
+          model: '',
+          options: [],
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(`Relight: “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
+  /** The whole photo redrawn in a new style or medium. */
+  function restyle(prompt: string) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: `Style: ${layerTitle(prompt)}`,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'restyle',
+          prompt,
+          seed: newSeed(),
+          strength: 50,
+          model: '',
+          options: [],
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(`Restyle: “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
+  /** A whole-photo model edit (face restoration, colorizing) in a layer of its own. */
+  function restore(op: 'restore_faces' | 'colorize') {
+    const name = op === 'colorize' ? 'Colorize' : 'Restore faces'
+    const layer: Layer = {
+      id: newLayerId(),
+      name,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op,
+          seed: newSeed(),
+          amount: op === 'colorize' ? 100 : 70,
+          model: '',
+          options: [],
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(name, (s) => addLayer(s, layer))
+  }
+
+  /** Extend the canvas to an aspect ratio, painting new surroundings. */
+  function expand(aspect: ExpandAspect) {
+    const op = {
+      id: newOpId(),
+      op: 'expand',
+      aspect,
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      prompt: '',
+      seed: newSeed(),
+      model: '',
+      options: [],
+    } as Operation
+    void apply(`Expand canvas to ${aspect}`, (s) => addOperation(s, null, op))
+  }
+
   function newLayer() {
     const layer: Layer = {
       id: newLayerId(),
@@ -201,6 +481,63 @@ export function LayersPanel({
         >
           Remove…
         </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'generate'}
+          title="Paint something new into the photo from a description"
+          onClick={() => setAsking(asking === 'generate' ? null : 'generate')}
+        >
+          Generate…
+        </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'background'}
+          title="Put the subject in a new scene, matched to its light"
+          onClick={() =>
+            setAsking(asking === 'background' ? null : 'background')
+          }
+        >
+          New background…
+        </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'light'}
+          title="Change where the light comes from and its mood"
+          onClick={() => setAsking(asking === 'light' ? null : 'light')}
+        >
+          Relight…
+        </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'style'}
+          title="Redraw the photo in a new style, like a painting (for color looks, see Recipes)"
+          onClick={() => setAsking(asking === 'style' ? null : 'style')}
+        >
+          Restyle…
+        </button>
+        <select
+          className="icon"
+          aria-label="Restore"
+          disabled={locked}
+          value=""
+          title="Fix an old or damaged photo"
+          onChange={(e) => {
+            const op = e.target.value
+            if (op === 'restore_faces' || op === 'colorize') restore(op)
+          }}
+        >
+          <option value="">Restore…</option>
+          <option value="restore_faces">Restore faces</option>
+          <option value="colorize">Colorize black and white</option>
+        </select>
         {onRetouch && (
           <button
             type="button"
@@ -221,6 +558,21 @@ export function LayersPanel({
           + New layer
         </button>
       </div>
+      {asking && (
+        <PromptForm
+          key={asking}
+          {...GENERATIVE_TOOLS[asking]}
+          disabled={locked}
+          onCancel={() => setAsking(null)}
+          onSubmit={(prompt, direction) => {
+            setAsking(null)
+            if (asking === 'generate') generate(prompt)
+            else if (asking === 'light') relight(prompt, direction)
+            else if (asking === 'style') restyle(prompt)
+            else replaceBackground(prompt)
+          }}
+        />
+      )}
       {state.layers.length === 0 && (
         <p className="empty">
           No edits yet. Each change the agent makes shows up here as a layer.
@@ -351,6 +703,10 @@ export function LayersPanel({
         {topFirst.map((layer, i) => {
           const isSelected = layer.id === selected
           const removes = layer.operations.some((op) => op.op === 'remove')
+          const content = layer.operations.some(isContentOp)
+          const generated = layer.operations.find(
+            (op) => 'model' in op && op.model,
+          )
           return (
             <li
               key={layer.id}
@@ -436,7 +792,7 @@ export function LayersPanel({
                       )
                     }
                   />
-                  {!removes && (
+                  {!content && (
                     <>
                       <label className="field">
                         <span>Blend</span>
@@ -461,6 +817,20 @@ export function LayersPanel({
                       </label>
                     </>
                   )}
+                  {layer.operations.some((op) => op.op === 'generate') && (
+                    <p className="hint">
+                      Paint where it goes on the photo, or pick a mask below.
+                    </p>
+                  )}
+                  {layer.operations.some(
+                    (op) => op.op === 'replace_background',
+                  ) &&
+                    !layer.mask && (
+                      <p className="hint">
+                        Replaces everything but the main subject. Pick a mask to
+                        choose what to replace.
+                      </p>
+                    )}
                   {removes && (
                     <p className="hint">
                       {layer.mask
@@ -485,11 +855,22 @@ export function LayersPanel({
                   {layer.operations.map((op) =>
                     operationControls(op, layer.id),
                   )}
-                  {!removes && (
+                  {generated && 'model' in generated && (
+                    <p className="hint">
+                      Made with {generated.model}
+                      {generated.model === 'classical' &&
+                        ' (no generative model installed: a rough stand-in)'}
+                      .
+                    </p>
+                  )}
+                  {!content && (
                     <AddOperation
                       label="Add adjustment"
                       specs={allSpecs.filter(
-                        (s) => !s.framing && s.group !== 'retouch',
+                        (s) =>
+                          !s.framing &&
+                          s.group !== 'retouch' &&
+                          s.group !== 'generative',
                       )}
                       disabled={locked}
                       onAdd={(spec) => add(spec, layer.id, `“${layer.name}”`)}
@@ -527,6 +908,25 @@ export function LayersPanel({
                   Auto straighten
                 </button>
               )}
+              <label className="field">
+                <span>Expand</span>
+                <select
+                  value=""
+                  disabled={locked}
+                  title="Extend the photo past its edges with new surroundings painted to match"
+                  onChange={(e) => {
+                    const aspect = e.target.value as ExpandAspect
+                    if (aspect) expand(aspect)
+                  }}
+                >
+                  <option value="">Expand canvas to…</option>
+                  {EXPAND_ASPECTS.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {state.framing.map((op) => operationControls(op, null))}
               <AddOperation
                 label="Add crop, rotation, or lens fix"

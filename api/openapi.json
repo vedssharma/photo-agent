@@ -345,14 +345,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+            "description": "Invalid, or a generative edit that is not allowed"
           }
         }
       }
@@ -398,6 +391,210 @@
           },
           "404": {
             "description": "No such document or recipe"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/operations/{op_id}/options": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Offer Options",
+        "description": "Offer several takes on a generative edit to pick from, as one step in the history.\nEach take is generated now, so showing and picking them is instant.",
+        "operationId": "offerOptions",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "op_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Op Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OptionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or generative operation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/operations/{op_id}/options/{seed}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Option",
+        "description": "A preview of the photo with one of the takes on offer.",
+        "operationId": "getOption",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "op_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Op Id"
+            }
+          },
+          {
+            "name": "seed",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Seed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such document, operation, or take"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/looks/{look_id}": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Look",
+        "description": "Add a look's layer on top of the current edits, as one step in the history.",
+        "operationId": "applyLook",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "look_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Look Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LookStrength"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Options"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or look"
           },
           "422": {
             "description": "Validation Error",
@@ -1004,6 +1201,32 @@
         }
       }
     },
+    "/api/looks": {
+      "get": {
+        "tags": [
+          "looks"
+        ],
+        "summary": "List Looks",
+        "description": "The built-in looks, each a layer of ordinary adjustments.",
+        "operationId": "listLooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Look"
+                  },
+                  "type": "array",
+                  "title": "Response Listlooks"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -1346,6 +1569,138 @@
         ],
         "title": "Clarity",
         "description": "Add (positive) or soften (negative) midtone local contrast and texture."
+      },
+      "ColorGrade": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "color_grade",
+            "title": "Op",
+            "default": "color_grade"
+          },
+          "shadows_hue": {
+            "type": "number",
+            "maximum": 360.0,
+            "minimum": 0.0,
+            "title": "Shadows Hue",
+            "default": 210
+          },
+          "shadows": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Shadows",
+            "description": "How strongly the shadows take their hue.",
+            "default": 0
+          },
+          "midtones_hue": {
+            "type": "number",
+            "maximum": 360.0,
+            "minimum": 0.0,
+            "title": "Midtones Hue",
+            "default": 30
+          },
+          "midtones": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Midtones",
+            "description": "How strongly the midtones take their hue.",
+            "default": 0
+          },
+          "highlights_hue": {
+            "type": "number",
+            "maximum": 360.0,
+            "minimum": 0.0,
+            "title": "Highlights Hue",
+            "default": 40
+          },
+          "highlights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Highlights",
+            "description": "How strongly the highlights take their hue.",
+            "default": 0
+          },
+          "balance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Balance",
+            "description": "Moves the split: positive gives highlights more of the range.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ColorGrade",
+        "description": "Split toning, as colorists grade film: tint the shadows, midtones, and highlights\neach toward a hue (degrees: 0 red, 30 orange, 60 yellow, 120 green, 180 cyan, 210 teal\nblue, 240 blue, 300 magenta) by its own amount, keeping brightness. Teal shadows with\norange highlights is the blockbuster look; warm highlights and cool shadows read as\nfilm."
+      },
+      "Colorize": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "colorize",
+            "title": "Op",
+            "default": "colorize"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How strong the new colors are.",
+            "default": 100
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Colorize",
+        "description": "Colorize a black-and-white photo with an AI colorization model. The photo's own\nbrightness and detail stay; only color is added. The only operation in its layer."
       },
       "Contrast": {
         "properties": {
@@ -1740,12 +2095,16 @@
                 },
                 {
                   "$ref": "#/components/schemas/LensCorrection"
+                },
+                {
+                  "$ref": "#/components/schemas/Expand"
                 }
               ],
               "discriminator": {
                 "propertyName": "op",
                 "mapping": {
                   "crop": "#/components/schemas/Crop",
+                  "expand": "#/components/schemas/Expand",
                   "flip": "#/components/schemas/Flip",
                   "lens_correction": "#/components/schemas/LensCorrection",
                   "perspective": "#/components/schemas/Perspective",
@@ -1782,6 +2141,115 @@
         "title": "EditState",
         "description": "Everything needed to render the photo from the original."
       },
+      "Expand": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "expand",
+            "title": "Op",
+            "default": "expand"
+          },
+          "aspect": {
+            "type": "string",
+            "enum": [
+              "free",
+              "1:1",
+              "4:5",
+              "5:4",
+              "3:4",
+              "4:3",
+              "2:3",
+              "3:2",
+              "9:16",
+              "16:9"
+            ],
+            "title": "Aspect",
+            "description": "Grow the frame to this width:height, centered on the photo; \"free\" adds the side amounts below instead.",
+            "default": "free"
+          },
+          "left": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Left",
+            "description": "Add this fraction of the width on the left.",
+            "default": 0
+          },
+          "right": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Right",
+            "description": "Add this fraction of the width on the right.",
+            "default": 0
+          },
+          "top": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Top",
+            "description": "Add this fraction of the height on top.",
+            "default": 0
+          },
+          "bottom": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Bottom",
+            "description": "Add this fraction of the height at the bottom.",
+            "default": 0
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "title": "Prompt",
+            "description": "What the new area should show; empty continues the scene naturally.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Expand",
+        "description": "Expand the canvas: extend the photo past its edges, with new surroundings painted by\na generative model to match (outpainting). Use it to turn a vertical photo into a\nlandscape one, or to give a tight shot more room, without cropping anything away. Masks\nand later crops refer to the expanded frame."
+      },
       "ExportOptions": {
         "properties": {
           "format": {
@@ -1806,6 +2274,17 @@
             "title": "Keep Location",
             "description": "Keep GPS location from the original. Off by default for privacy.",
             "default": false
+          },
+          "upscale": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              4
+            ],
+            "title": "Upscale",
+            "description": "Enlarge the export with an AI upscaler (up to 8000 pixels across).",
+            "default": 1
           }
         },
         "type": "object",
@@ -1867,6 +2346,76 @@
         "type": "object",
         "title": "Flip",
         "description": "Mirror the photo."
+      },
+      "Generate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "generate",
+            "title": "Op",
+            "default": "generate"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "What to put there, in plain words."
+          },
+          "grow": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Grow",
+            "description": "How far past the selection's edge to repaint, for a seamless blend.",
+            "default": 10
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "Generate",
+        "description": "Generative fill: paint new content where the layer's mask selects, described in\nwords (\"a potted plant\", \"a sunset sky\", \"calm water\"). The model blends it into the\nphoto's light and perspective. Needs a mask; it is the only operation in its layer, and\nlike removals it applies before any adjustment layer."
       },
       "Grain": {
         "properties": {
@@ -2262,6 +2811,9 @@
                   "$ref": "#/components/schemas/Vignette"
                 },
                 {
+                  "$ref": "#/components/schemas/ColorGrade"
+                },
+                {
                   "$ref": "#/components/schemas/Grain"
                 },
                 {
@@ -2275,6 +2827,24 @@
                 },
                 {
                   "$ref": "#/components/schemas/HealBlemishes"
+                },
+                {
+                  "$ref": "#/components/schemas/Generate"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceBackground"
+                },
+                {
+                  "$ref": "#/components/schemas/Relight"
+                },
+                {
+                  "$ref": "#/components/schemas/RestoreFaces"
+                },
+                {
+                  "$ref": "#/components/schemas/Colorize"
+                },
+                {
+                  "$ref": "#/components/schemas/Restyle"
                 }
               ],
               "discriminator": {
@@ -2282,15 +2852,22 @@
                 "mapping": {
                   "blacks": "#/components/schemas/Blacks",
                   "clarity": "#/components/schemas/Clarity",
+                  "color_grade": "#/components/schemas/ColorGrade",
+                  "colorize": "#/components/schemas/Colorize",
                   "contrast": "#/components/schemas/Contrast",
                   "dehaze": "#/components/schemas/Dehaze",
                   "exposure": "#/components/schemas/Exposure",
+                  "generate": "#/components/schemas/Generate",
                   "grain": "#/components/schemas/Grain",
                   "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
+                  "replace_background": "#/components/schemas/ReplaceBackground",
+                  "restore_faces": "#/components/schemas/RestoreFaces",
+                  "restyle": "#/components/schemas/Restyle",
                   "saturation": "#/components/schemas/Saturation",
                   "shadows": "#/components/schemas/Shadows",
                   "sharpen": "#/components/schemas/Sharpen",
@@ -2391,6 +2968,166 @@
         ],
         "title": "LinearGradientMask",
         "description": "Full effect on the `start` side, fading to none at `end`. For skies, use a start at\nthe top and an end a little below the horizon."
+      },
+      "Look": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Exposure"
+                },
+                {
+                  "$ref": "#/components/schemas/Contrast"
+                },
+                {
+                  "$ref": "#/components/schemas/Highlights"
+                },
+                {
+                  "$ref": "#/components/schemas/Shadows"
+                },
+                {
+                  "$ref": "#/components/schemas/Whites"
+                },
+                {
+                  "$ref": "#/components/schemas/Blacks"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalance"
+                },
+                {
+                  "$ref": "#/components/schemas/Vibrance"
+                },
+                {
+                  "$ref": "#/components/schemas/Saturation"
+                },
+                {
+                  "$ref": "#/components/schemas/HSL"
+                },
+                {
+                  "$ref": "#/components/schemas/Sharpen"
+                },
+                {
+                  "$ref": "#/components/schemas/NoiseReduction"
+                },
+                {
+                  "$ref": "#/components/schemas/Clarity"
+                },
+                {
+                  "$ref": "#/components/schemas/Dehaze"
+                },
+                {
+                  "$ref": "#/components/schemas/Vignette"
+                },
+                {
+                  "$ref": "#/components/schemas/ColorGrade"
+                },
+                {
+                  "$ref": "#/components/schemas/Grain"
+                },
+                {
+                  "$ref": "#/components/schemas/ToneCurve"
+                },
+                {
+                  "$ref": "#/components/schemas/Remove"
+                },
+                {
+                  "$ref": "#/components/schemas/SmoothSkin"
+                },
+                {
+                  "$ref": "#/components/schemas/HealBlemishes"
+                },
+                {
+                  "$ref": "#/components/schemas/Generate"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceBackground"
+                },
+                {
+                  "$ref": "#/components/schemas/Relight"
+                },
+                {
+                  "$ref": "#/components/schemas/RestoreFaces"
+                },
+                {
+                  "$ref": "#/components/schemas/Colorize"
+                },
+                {
+                  "$ref": "#/components/schemas/Restyle"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "blacks": "#/components/schemas/Blacks",
+                  "clarity": "#/components/schemas/Clarity",
+                  "color_grade": "#/components/schemas/ColorGrade",
+                  "colorize": "#/components/schemas/Colorize",
+                  "contrast": "#/components/schemas/Contrast",
+                  "dehaze": "#/components/schemas/Dehaze",
+                  "exposure": "#/components/schemas/Exposure",
+                  "generate": "#/components/schemas/Generate",
+                  "grain": "#/components/schemas/Grain",
+                  "heal_blemishes": "#/components/schemas/HealBlemishes",
+                  "highlights": "#/components/schemas/Highlights",
+                  "hsl": "#/components/schemas/HSL",
+                  "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "relight": "#/components/schemas/Relight",
+                  "remove": "#/components/schemas/Remove",
+                  "replace_background": "#/components/schemas/ReplaceBackground",
+                  "restore_faces": "#/components/schemas/RestoreFaces",
+                  "restyle": "#/components/schemas/Restyle",
+                  "saturation": "#/components/schemas/Saturation",
+                  "shadows": "#/components/schemas/Shadows",
+                  "sharpen": "#/components/schemas/Sharpen",
+                  "smooth_skin": "#/components/schemas/SmoothSkin",
+                  "tone_curve": "#/components/schemas/ToneCurve",
+                  "vibrance": "#/components/schemas/Vibrance",
+                  "vignette": "#/components/schemas/Vignette",
+                  "white_balance": "#/components/schemas/WhiteBalance",
+                  "whites": "#/components/schemas/Whites"
+                }
+              }
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Operations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "operations"
+        ],
+        "title": "Look"
+      },
+      "LookStrength": {
+        "properties": {
+          "strength": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "description": "How much of the look to use.",
+            "default": 100
+          }
+        },
+        "type": "object",
+        "title": "LookStrength"
       },
       "LuminosityMask": {
         "properties": {
@@ -2550,7 +3287,8 @@
               "detail",
               "framing",
               "finishing",
-              "retouch"
+              "retouch",
+              "generative"
             ],
             "title": "Group"
           },
@@ -2577,6 +3315,20 @@
         ],
         "title": "OperationSpec"
       },
+      "OptionsRequest": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 2.0,
+            "title": "Count",
+            "description": "How many takes to offer.",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "title": "OptionsRequest"
+      },
       "ParamSpec": {
         "properties": {
           "name": {
@@ -2592,7 +3344,9 @@
             "enum": [
               "number",
               "choice",
-              "curve"
+              "curve",
+              "text",
+              "seed"
             ],
             "title": "Kind"
           },
@@ -2796,6 +3550,87 @@
         ],
         "title": "Recipe"
       },
+      "Relight": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "relight",
+            "title": "Op",
+            "default": "relight"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "top",
+              "bottom",
+              "front",
+              "back"
+            ],
+            "title": "Direction",
+            "description": "Where the light comes from; back is a rim light from behind.",
+            "default": "left"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "title": "Prompt",
+            "description": "The light's color and mood; empty is soft daylight.",
+            "default": ""
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How much of the new light to use.",
+            "default": 60
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Relight",
+        "description": "Change the light: where it comes from and its mood (\"warm sunset light\", \"cool\nmoonlight\", \"neon purple\"), as an AI relighting model imagines the scene lit that way.\nBest for portraits and products; give the layer a mask on the subject to relight only\nit. Fine detail stays from the photo. The only operation in its layer."
+      },
       "Remove": {
         "properties": {
           "id": {
@@ -2822,6 +3657,206 @@
         "type": "object",
         "title": "Remove",
         "description": "Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap\nwith plausible surroundings, using an AI inpainting model. Needs a mask; it is the only\noperation in its layer. Removal layers apply first, before any adjustment layer."
+      },
+      "ReplaceBackground": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "replace_background",
+            "title": "Op",
+            "default": "replace_background"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "The new background."
+          },
+          "harmonize": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Harmonize",
+            "description": "How much to match the subject's light and color to the new scene.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "ReplaceBackground",
+        "description": "Replace the background with a new scene described in words (\"a sunlit beach\",\n\"a softly lit studio, pale gray\"), painted around the subject so its perspective fits,\nand match the subject's light and color to it. The layer's mask selects what to\nreplace; without one, everything but the main subject. The only operation in its layer;\napplies before adjustments."
+      },
+      "RestoreFaces": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "restore_faces",
+            "title": "Op",
+            "default": "restore_faces"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How much of the restored faces to use; lower keeps more of the original.",
+            "default": 70
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RestoreFaces",
+        "description": "Restore faces in an old, blurry, or low-resolution photo with an AI face restoration\nmodel: sharper eyes, skin, and hair that still look like the person. Only faces change.\nThe only operation in its layer."
+      },
+      "Restyle": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
+          "op": {
+            "type": "string",
+            "const": "restyle",
+            "title": "Op",
+            "default": "restyle"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "The style to redraw it in."
+          },
+          "strength": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "description": "How far it may stray from the photo; higher is more stylized.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "Restyle",
+        "description": "Redraw the whole photo in a style (\"watercolor painting\", \"1970s film photo\",\n\"Studio Ghibli anime\") with an image generation model, keeping its composition. Use\nonly when asked for a new style or medium; for a color look, use color_grade and the\nother adjustments instead. The only operation in its layer."
       },
       "Retouch": {
         "properties": {

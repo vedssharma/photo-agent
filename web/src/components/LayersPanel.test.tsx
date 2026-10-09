@@ -361,3 +361,97 @@ describe('LayersPanel framing', () => {
     expect(sent).toEqual([])
   })
 })
+
+describe('LayersPanel generative fill', () => {
+  it('asks what to add, then adds a layer to paint it into', async () => {
+    const { sent, onSelect } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Generate…' }))
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'What to add' }),
+      'a potted fern{Enter}',
+    )
+    expect(sent[0].label).toBe('Generate “a potted fern”')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.name).toBe('A potted fern')
+    expect(added?.mask).toEqual({ kind: 'brush', strokes: [], invert: false })
+    expect(added?.operations[0]).toMatchObject({
+      op: 'generate',
+      prompt: 'a potted fern',
+    })
+    expect(onSelect).toHaveBeenCalledWith(added?.id)
+    expect(screen.queryByRole('textbox', { name: 'What to add' })).toBeNull()
+  })
+})
+
+describe('LayersPanel expand canvas', () => {
+  it('expands the framing to an aspect ratio', async () => {
+    const { sent } = setup('framing')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Expand' }),
+      '16:9',
+    )
+    expect(sent[0].label).toBe('Expand canvas to 16:9')
+    expect(sent[0].state.framing.at(-1)).toMatchObject({
+      op: 'expand',
+      aspect: '16:9',
+      prompt: '',
+    })
+  })
+})
+
+describe('LayersPanel new background', () => {
+  it('replaces everything but the subject with a described scene', async () => {
+    const { sent } = setup()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'New background…' }),
+    )
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'New background' }),
+      'a sunlit beach{Enter}',
+    )
+    expect(sent[0].label).toBe('New background: “a sunlit beach”')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.name).toBe('Background: A sunlit beach')
+    expect(added?.mask).toBeNull()
+    expect(added?.operations[0]).toMatchObject({
+      op: 'replace_background',
+      prompt: 'a sunlit beach',
+      harmonize: 50,
+    })
+  })
+
+  it('relights from the chosen direction in a layer of its own', async () => {
+    const { sent } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Relight…' }))
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Where the light comes from' }),
+      'top',
+    )
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'The new light' }),
+      'soft window light{Enter}',
+    )
+    expect(sent[0].label).toBe('Relight: “soft window light”')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.name).toBe('Light: Soft window light')
+    expect(added?.mask).toBeNull()
+    expect(added?.operations[0]).toMatchObject({
+      op: 'relight',
+      direction: 'top',
+      prompt: 'soft window light',
+      amount: 60,
+    })
+  })
+
+  it('restores faces and colorizes in layers of their own', async () => {
+    const { sent } = setup()
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Restore' }),
+      'colorize',
+    )
+    expect(sent[0].label).toBe('Colorize')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.mask).toBeNull()
+    expect(added?.operations[0]).toMatchObject({ op: 'colorize', amount: 100 })
+  })
+})

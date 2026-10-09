@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.12.1",
+    "c2pa-python>=0.38",
+    "cryptography>=45",
     "fastapi>=0.115",
     "numpy>=2.5.3",
     "opencv-python-headless>=5.0.0.93",
@@ -17,13 +19,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Open-source models for AI edits (Phase 3). Without them, each task uses its classical
+# Open-source models for AI edits (Phases 3 and 4). Without them, each task uses its classical
 # computer-vision fallback. Install with `uv sync --extra models`.
 models = [
+    "accelerate>=1.0",
+    "diffusers>=0.35",
     "einops>=0.8",
     "huggingface-hub>=0.30",
     "kornia>=0.7",
     "onnxruntime>=1.20",
+    "spandrel>=0.4",
+    "spandrel-extra-arches>=0.2",
     "timm>=1.0",
     "torch>=2.5",
     "transformers>=4.57",
@@ -63,5 +69,23 @@ testpaths = ["tests"]
 
 [[tool.mypy.overrides]]
 # Optional model packages (the `models` extra) are not installed in CI.
-module = ["torch", "torch.*", "transformers", "transformers.*", "onnxruntime", "huggingface_hub"]
+module = [
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+    "onnxruntime",
+    "huggingface_hub",
+    "diffusers",
+    "diffusers.*",
+    "safetensors",
+    "spandrel",
+    "spandrel_extra_arches",
+    "safetensors.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# c2pa-python ships no type information.
+module = ["c2pa", "c2pa.*"]
 ignore_missing_imports = true

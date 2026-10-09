@@ -2,7 +2,8 @@
 once, and remember it.
 
 A semantic mask says what to select ("the sky", the object in a box); the model worker finds
-it in the framed original photo. A removal fills in a hole. Results are cached by everything
+it in the framed original photo. A removal fills in a hole; a generative edit paints new
+content from a prompt. Results are cached by everything
 they depend on (what is selected, the framing, and the backend that finds it), in memory and
 as PNGs in the document's folder, so re-rendering, undo, and export never run a model twice.
 Change the crop or the selection and the key changes, so the model runs again.
@@ -38,6 +39,11 @@ WORK_EDGE = 1024
 """Long edge of the framed photo that models look at."""
 MEMORY_ITEMS = 32
 MEMORY_FILLS = 8
+GENERATE_EDGE = 1024
+"""Long edge of what generative models are shown. Previews and full-resolution exports
+shrink to the same input, so a generated result looks the same in both."""
+
+FractionBox = tuple[float, float, float, float]
 
 TARGET_TASKS = {
     "subject": "segment_subject",
@@ -47,6 +53,12 @@ TARGET_TASKS = {
 }
 FACE_TASK = "parse_face"
 """Every face part (skin, eyes, ...) comes from one face-parsing job."""
+
+
+def upscale_plainly(image: Array, scale: float) -> Array:
+    h, w = image.shape[:2]
+    size = (max(1, round(w * scale)), max(1, round(h * scale)))
+    return np.asarray(cv2.resize(image, size, interpolation=cv2.INTER_LANCZOS4), np.float32)
 
 
 def task_for(mask: SemanticMask) -> str:
@@ -75,6 +87,7 @@ class DocumentVision:
         self.backends = backends
         self._memory: OrderedDict[str, Array] = OrderedDict()
         self._fills: OrderedDict[str, tuple[tuple[int, int, int, int], Array]] = OrderedDict()
+        self._patches: OrderedDict[str, tuple[FractionBox, Array]] = OrderedDict()
         self._locks: dict[str, threading.Lock] = {}
         self._lock = threading.Lock()
 
@@ -193,6 +206,125 @@ class DocumentVision:
         self._remember_fill(name, found)
         return found
 
+    def generate(
+        self,
+        task: str,
+        image: Array,
+        hole: npt.NDArray[np.bool_] | None,
+        params: dict[str, Any],
+        key: str,
+        edge: int = GENERATE_EDGE,
+    ) -> Array:
+        """`image` with the region around `hole` (the whole image when None) replaced by
+        a generative model's result. The caller blends it in where it applies.
+
+        `key` identifies everything the result depends on except the render size: the
+        result is generated once, at the models' working size, and scaled to whatever
+        resolution renders it, so the preview and the export show the same thing. `edge` is
+        that working size's long edge."""
+        name = f"gen-{key}"
+        found = self._remembered_patch(name)
+        if found is None:
+            with self._key_lock(name):
+                found = self._remembered_patch(name)
+                if found is None:
+                    found = self._run_generate(task, image, hole, params, name, edge)
+        if found is None:
+            return image
+        (fx0, fy0, fx1, fy1), patch = found
+        h, w = image.shape[:2]
+        x0, y0 = min(w - 1, round(fx0 * w)), min(h - 1, round(fy0 * h))
+        x1, y1 = max(x0 + 1, round(fx1 * w)), max(y0 + 1, round(fy1 * h))
+        flags = cv2.INTER_AREA if (y1 - y0) < patch.shape[0] else cv2.INTER_CUBIC
+        region = cv2.resize(patch, (x1 - x0, y1 - y0), interpolation=flags)
+        out = image.copy()
+        out[y0:y1, x0:x1] = np.clip(region, 0.0, 1.0)
+        return out
+
+    def _run_generate(
+        self,
+        task: str,
+        image: Array,
+        hole: npt.NDArray[np.bool_] | None,
+        params: dict[str, Any],
+        name: str,
+        edge: int,
+    ) -> tuple[FractionBox, Array] | None:
+        h, w = image.shape[:2]
+        if hole is None:
+            x0, y0, x1, y1 = 0, 0, w, h
+        else:
+            ys, xs = np.nonzero(hole)
+            if not len(xs):
+                return None
+            # Enough surroundings for the model to match light and perspective.
+            pad = max(24, round(0.6 * max(xs.max() - xs.min(), ys.max() - ys.min())))
+            x0, y0 = max(0, int(xs.min()) - pad), max(0, int(ys.min()) - pad)
+            x1, y1 = min(w, int(xs.max()) + 1 + pad), min(h, int(ys.max()) + 1 + pad)
+        crop = imaging.resize_long_edge(
+            np.ascontiguousarray(np.clip(image[y0:y1, x0:x1], 0.0, 1.0), np.float32),
+            edge,
+        )
+        job = dict(params)
+        if hole is not None:
+            ch, cw = crop.shape[:2]
+            region = hole[y0:y1, x0:x1].astype(np.float32)
+            job["mask"] = np.asarray(
+                cv2.resize(region, (cw, ch), interpolation=cv2.INTER_LINEAR) > 0.5, np.float32
+            )
+        try:
+            result = self.worker.run(task, crop, job, doc_id=self.doc_id)
+        except JobFailedError as exc:
+            log.warning("Could not generate (%s): %s", task, exc)
+            return None
+        box: FractionBox = (x0 / w, y0 / h, x1 / w, y1 / h)
+        patch = imaging.to_uint8(np.asarray(result.value, np.float32))
+        self.folder.mkdir(parents=True, exist_ok=True)
+        tmp = self._path(name).with_suffix(".tmp")
+        tmp.write_bytes(imaging.encode_png(patch.astype(np.float32) / 255.0))
+        tmp.replace(self._path(name))
+        meta = {"box": box, "backend": result.backend}
+        self._path(name).with_suffix(".json").write_text(json.dumps(meta))
+        stored = (box, patch.astype(np.float32) / 255.0)
+        self._remember_patch(name, stored)
+        return stored
+
+    def upscale(self, image: Array, scale: float) -> Array:
+        """`image` enlarged by `scale` (for export; not cached). Pixels cross to the model
+        worker as 8 bits, which keeps a big photo small on the way."""
+        pixels = imaging.to_uint8(np.clip(image, 0.0, 1.0))
+        try:
+            result = self.worker.run("upscale", pixels, {"scale": scale}, doc_id=self.doc_id)
+        except JobFailedError as exc:
+            log.warning("Could not upscale: %s", exc)
+            return upscale_plainly(image, scale)
+        return (np.asarray(result.value, np.float32) / 255).astype(np.float32)
+
+    def _remember_patch(self, name: str, patch: tuple[FractionBox, Array]) -> None:
+        with self._lock:
+            self._patches[name] = patch
+            self._patches.move_to_end(name)
+            while len(self._patches) > MEMORY_FILLS:
+                self._patches.popitem(last=False)
+
+    def _remembered_patch(self, name: str) -> tuple[FractionBox, Array] | None:
+        with self._lock:
+            hit = self._patches.get(name)
+        if hit is not None:
+            return hit
+        meta, path = self._path(name).with_suffix(".json"), self._path(name)
+        if not (meta.is_file() and path.is_file()):
+            return None
+        try:
+            fx0, fy0, fx1, fy1 = (float(v) for v in json.loads(meta.read_text())["box"])
+            with Image.open(path) as img:
+                patch = np.asarray(img.convert("RGB"), np.float32) / 255.0
+        except (OSError, ValueError, KeyError):
+            return None
+        found: tuple[FractionBox, Array] = ((fx0, fy0, fx1, fy1), patch)
+        self._remember_patch(name, found)
+        return found
+
     def key(self, mask: SemanticMask, framing: Sequence[OpBase]) -> str:
         task = task_for(mask)
         choices = TASKS[task].choices(self.backends)
@@ -200,7 +332,7 @@ class DocumentVision:
             "v": 1,
             "task": task,
             "backend": choices[0].name if choices else "none",
-            "framing": [op.model_dump(exclude={"id"}) for op in framing],
+            "framing": [op.model_dump(exclude={"id", "options"}) for op in framing],
         }
         if task == "segment_object":
             payload["box"] = mask.box
@@ -214,7 +346,8 @@ class DocumentVision:
         """The original with the framing applied, at the models' working size."""
         from photo_agent.render import RenderContext, apply_operations
 
-        ctx = RenderContext(scale=self.scale, source_aspect=self.source_aspect)
+        # With this vision, so an expanded canvas holds what the preview shows.
+        ctx = RenderContext(scale=self.scale, source_aspect=self.source_aspect, vision=self)
         out = apply_operations(self.proxy.astype(np.float32, copy=True), framing, ctx)
         return np.ascontiguousarray(
             imaging.resize_long_edge(np.clip(out, 0.0, 1.0), WORK_EDGE), np.float32

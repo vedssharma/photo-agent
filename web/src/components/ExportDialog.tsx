@@ -24,6 +24,15 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
   )
   const [quality, setQuality] = useState(92)
   const [keepLocation, setKeepLocation] = useState(false)
+  const generated =
+    doc.state.framing.some((op) => 'seed' in op) ||
+    doc.state.layers.some(
+      (layer) =>
+        layer.visible &&
+        layer.opacity > 0 &&
+        layer.operations.some((op) => 'seed' in op),
+    )
+  const [upscale, setUpscale] = useState<ExportOptions['upscale']>(1)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,6 +53,7 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           format,
           quality,
           keep_location: keepLocation,
+          upscale,
         }),
       )
       onClose()
@@ -113,6 +123,25 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           </label>
         )}
 
+        <label className="upscale">
+          Enlarge{' '}
+          <select
+            value={upscale}
+            onChange={(e) =>
+              setUpscale(Number(e.target.value) as ExportOptions['upscale'])
+            }
+          >
+            <option value={1}>No</option>
+            <option value={2}>2× with AI upscaling</option>
+            <option value={4}>4× with AI upscaling</option>
+          </select>
+        </label>
+        {upscale > 1 && (
+          <p className="hint">
+            Good for prints. Enlarging adds new fine detail and takes longer.
+          </p>
+        )}
+
         <label>
           <input
             type="checkbox"
@@ -122,6 +151,13 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           Keep GPS location{' '}
           <span className="status">(removed by default for privacy)</span>
         </label>
+
+        {generated && (
+          <p className="hint">
+            This photo has AI-generated edits, so the file includes Content
+            Credentials saying so.
+          </p>
+        )}
 
         {error && (
           <p className="error" role="alert">
@@ -139,7 +175,7 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
             onClick={download}
             disabled={working}
           >
-            {working ? 'Rendering…' : 'Download'}
+            {working ? (upscale > 1 ? 'Enlarging…' : 'Rendering…') : 'Download'}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { api } from './api/client'
 import {
   type DocumentView,
   autoStraighten,
+  offerOptions,
   beforeUrl,
   downloadProject,
   fetchDocument,
@@ -168,6 +169,9 @@ function Editor({
           onPreview={(p) => setPreview(p && { ...p, revision: doc.revision })}
           onRetouch={() => void act('retouch', retouchPortrait)}
           onStraighten={() => void act('straighten', autoStraighten)}
+          onOptions={(opId) =>
+            void act('show options', (id) => offerOptions(id, opId))
+          }
         />
         <RecipesPanel
           doc={doc}
