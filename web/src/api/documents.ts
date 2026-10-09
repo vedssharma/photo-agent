@@ -12,6 +12,7 @@ export type AdjustmentOperation = Layer['operations'][number]
 export type Operation = FramingOperation | AdjustmentOperation
 export type StepView = DocumentView['history'][number]
 export type ManualEdit = components['schemas']['ManualEdit']
+export type JobStatus = components['schemas']['JobStatus']
 
 /** Photo types the backend can decode. HEIC often has no MIME type in browsers. */
 export const PHOTO_TYPES =
@@ -157,6 +158,16 @@ export function layerMaskUrl(doc: DocumentView, layerId: string): string {
 /** URL of the edited photo at preview size; changes whenever the edits do. */
 export function previewUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/preview?revision=${doc.revision}`
+}
+
+/** AI model jobs running (or just finished) for a document. */
+export async function fetchJobs(docId: string): Promise<JobStatus[]> {
+  const { data, error, response } = await api.GET(
+    '/api/documents/{doc_id}/jobs',
+    { params: { path: { doc_id: docId } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
 }
 
 export async function undo(docId: string): Promise<DocumentView> {

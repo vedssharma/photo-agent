@@ -686,6 +686,53 @@
         }
       }
     },
+    "/api/documents/{doc_id}/jobs": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "List Jobs",
+        "description": "AI model jobs running (or just finished) for this document, with their progress.\nThe web app polls this while it waits on a change.",
+        "operationId": "listJobs",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobStatus"
+                  },
+                  "title": "Response Listjobs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "post": {
         "tags": [
@@ -878,6 +925,28 @@
                   },
                   "type": "array",
                   "title": "Response Listoperations"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Models",
+        "description": "Which model (or classical fallback) runs each AI task, and on what device.",
+        "operationId": "getModels",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerStatus"
                 }
               }
             }
@@ -1742,6 +1811,79 @@
         "title": "Highlights",
         "description": "Recover (negative) or boost (positive) the brightest areas without touching shadows."
       },
+      "JobStatus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "doc_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "doc_id",
+          "task",
+          "label",
+          "state"
+        ],
+        "title": "JobStatus"
+      },
       "Layer": {
         "properties": {
           "id": {
@@ -2595,6 +2737,39 @@
         "title": "Straighten",
         "description": "Rotate by a small angle to level a tilted horizon, cropping away the empty corners."
       },
+      "TaskStatus": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "backend": {
+            "type": "string",
+            "title": "Backend"
+          },
+          "license": {
+            "type": "string",
+            "title": "License"
+          },
+          "uses_weights": {
+            "type": "boolean",
+            "title": "Uses Weights"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task",
+          "label",
+          "backend",
+          "license",
+          "uses_weights"
+        ],
+        "title": "TaskStatus"
+      },
       "ToneCurve": {
         "properties": {
           "id": {
@@ -2811,6 +2986,36 @@
         ],
         "title": "Whites",
         "description": "Move the white point: positive makes the brightest tones brighter, negative dims them."
+      },
+      "WorkerStatus": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "process",
+              "inline"
+            ],
+            "title": "Mode"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskStatus"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "device",
+          "tasks"
+        ],
+        "title": "WorkerStatus"
       },
       "AgentError": {
         "properties": {

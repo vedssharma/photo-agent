@@ -13,6 +13,8 @@ interface Props {
   alt: string
   /** Show a "working" veil over the photo, e.g. while the agent edits. */
   busy?: boolean
+  /** What is taking a while, shown on the veil (e.g. "Finding the sky… 40%"). */
+  status?: string | null
   /**
    * Drawn exactly over the photo and zoomed with it, e.g. mask handles. Gets the photo's
    * on-screen size before zooming.
@@ -71,6 +73,7 @@ export function PhotoCanvas({
   beforeSrc,
   alt,
   busy = false,
+  status = null,
   overlay,
 }: Props) {
   const [view, setView] = useState<View>(FIT)
@@ -198,6 +201,11 @@ export function PhotoCanvas({
         </div>
         {showBefore && <span className="badge">Original</span>}
         {busy && <div className="veil" aria-hidden="true" />}
+        {busy && status && (
+          <span className="badge working" role="status">
+            {status}
+          </span>
+        )}
       </div>
 
       <div className="canvas-tools">

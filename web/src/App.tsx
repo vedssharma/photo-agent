@@ -23,6 +23,7 @@ import { LivePreview } from './components/LivePreview'
 import { MaskOverlay } from './components/MaskOverlay'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
+import { jobText, useJobs } from './hooks/useJobs'
 import { useManualEdit } from './hooks/useManualEdit'
 import { useOperationSpecs } from './hooks/useOperationSpecs'
 import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
@@ -97,6 +98,7 @@ function Editor({
   const manual = useManualEdit(doc, onDocument)
   const specs = useOperationSpecs()
   const locked = chat.busy
+  const job = useJobs(doc.id, chat.busy || manual.working)
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
   const mask = layer?.mask ?? null
   const showOverlay = layer && mask && (isDrawn(mask.kind) || maskTool.show)
@@ -167,7 +169,8 @@ function Editor({
           src={previewUrl(doc)}
           beforeSrc={beforeUrl(doc)}
           alt={doc.filename}
-          busy={chat.busy}
+          busy={chat.busy || job !== null}
+          status={job && jobText(job)}
           overlay={
             showOverlay || live
               ? (frame) => (

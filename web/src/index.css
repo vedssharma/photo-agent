@@ -845,3 +845,11 @@ select {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+.badge.working {
+  top: auto;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}

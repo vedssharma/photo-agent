@@ -307,6 +307,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description AI model jobs running (or just finished) for this document, with their progress.
+         *     The web app polls this while it waits on a change.
+         */
+        get: operations["listJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -403,6 +424,26 @@ export interface paths {
          * @description Every operation with its parameters' ranges, for building manual controls.
          */
         get: operations["listOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Models
+         * @description Which model (or classical fallback) runs each AI task, and on what device.
+         */
+        get: operations["getModels"];
         put?: never;
         post?: never;
         delete?: never;
@@ -863,6 +904,31 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** JobStatus */
+        JobStatus: {
+            /** Id */
+            id: string;
+            /** Doc Id */
+            doc_id: string | null;
+            /** Task */
+            task: string;
+            /** Label */
+            label: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "failed";
+            /** Fraction */
+            fraction?: number | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Backend */
+            backend?: string | null;
+        };
         /**
          * Layer
          * @description A named group of adjustments with its own visibility, opacity, and blend mode.
@@ -1279,6 +1345,19 @@ export interface components {
              */
             angle: number;
         };
+        /** TaskStatus */
+        TaskStatus: {
+            /** Task */
+            task: string;
+            /** Label */
+            label: string;
+            /** Backend */
+            backend: string;
+            /** License */
+            license: string;
+            /** Uses Weights */
+            uses_weights: boolean;
+        };
         /**
          * ToneCurve
          * @description Remap tones with a curve through control points (input, output), both 0..1.
@@ -1409,6 +1488,18 @@ export interface components {
             op: "whites";
             /** Amount */
             amount: number;
+        };
+        /** WorkerStatus */
+        WorkerStatus: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "process" | "inline";
+            /** Device */
+            device: string;
+            /** Tasks */
+            tasks: components["schemas"]["TaskStatus"][];
         };
         /** AgentError */
         AgentError: {
@@ -2005,6 +2096,37 @@ export interface operations {
             };
         };
     };
+    listJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     openProject: {
         parameters: {
             query?: never;
@@ -2177,6 +2299,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperationSpec"][];
+                };
+            };
+        };
+    };
+    getModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerStatus"];
                 };
             };
         };

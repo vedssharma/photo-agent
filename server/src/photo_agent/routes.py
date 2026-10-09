@@ -29,6 +29,8 @@ from photo_agent.layers import EditState, Layer
 from photo_agent.render import RenderCache, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
+from photo_agent.vision.backends import WorkerConfig
+from photo_agent.vision.worker import JobStatus, Mode, ModelWorker
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 PREVIEW_QUALITY = 88
@@ -62,6 +64,23 @@ def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes
 
 
 Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
+
+
+@lru_cache
+def _worker_for(config: WorkerConfig, mode: Mode) -> ModelWorker:
+    return ModelWorker(config, mode)
+
+
+def get_worker(settings: Annotated[Settings, Depends(get_settings)]) -> ModelWorker:
+    config = WorkerConfig(
+        backends=settings.model_backends,
+        device=settings.model_device,
+        cache_dir=settings.model_cache_dir,
+    )
+    return _worker_for(config, settings.model_worker)
+
+
+Worker = Annotated[ModelWorker, Depends(get_worker)]
 
 
 def load(store: DocumentStore, doc_id: str) -> Document:
@@ -354,6 +373,14 @@ def layer_mask(doc_id: str, layer_id: str, store: Store) -> Response:
         media_type="image/png",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@router.get("/{doc_id}/jobs", operation_id="listJobs")
+def list_jobs(doc_id: str, store: Store, worker: Worker) -> list[JobStatus]:
+    """AI model jobs running (or just finished) for this document, with their progress.
+    The web app polls this while it waits on a change."""
+    load(store, doc_id)
+    return worker.jobs(doc_id)
 
 
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:

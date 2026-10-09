@@ -10,6 +10,7 @@ from photo_agent import __version__, routes
 from photo_agent.agent import ChatEvent, ChatMessage
 from photo_agent.controls import OperationSpec, operation_specs
 from photo_agent.settings import Settings, get_settings
+from photo_agent.vision.worker import ModelWorker, WorkerStatus
 
 app = FastAPI(title="photo-agent", version=__version__)
 app.include_router(routes.router)
@@ -37,6 +38,12 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRespon
 def operations() -> list[OperationSpec]:
     """Every operation with its parameters' ranges, for building manual controls."""
     return operation_specs()
+
+
+@app.get("/api/models", operation_id="getModels", tags=["meta"])
+def models(worker: Annotated[ModelWorker, Depends(routes.get_worker)]) -> WorkerStatus:
+    """Which model (or classical fallback) runs each AI task, and on what device."""
+    return worker.status()
 
 
 def openapi() -> dict[str, Any]:

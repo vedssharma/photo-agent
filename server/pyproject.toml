@@ -16,6 +16,19 @@ dependencies = [
     "uvicorn[standard]>=0.30",
 ]
 
+[project.optional-dependencies]
+# Open-source models for AI edits (Phase 3). Without them, each task uses its classical
+# computer-vision fallback. Install with `uv sync --extra models`.
+models = [
+    "einops>=0.8",
+    "huggingface-hub>=0.30",
+    "kornia>=0.7",
+    "onnxruntime>=1.20",
+    "timm>=1.0",
+    "torch>=2.5",
+    "transformers>=4.57",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -47,3 +60,8 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[[tool.mypy.overrides]]
+# Optional model packages (the `models` extra) are not installed in CI.
+module = ["torch", "torch.*", "transformers", "transformers.*", "onnxruntime", "huggingface_hub"]
+ignore_missing_imports = true
