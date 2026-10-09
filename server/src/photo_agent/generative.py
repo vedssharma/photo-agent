@@ -19,6 +19,7 @@ from photo_agent.operations import (
     Generate,
     GenerativeBase,
     OpBase,
+    Relight,
     ReplaceBackground,
 )
 from photo_agent.vision.worker import PREFER
@@ -27,6 +28,7 @@ TASKS: dict[type[OpBase], str] = {
     Generate: "generate",
     Expand: "generate",
     ReplaceBackground: "generate",
+    Relight: "relight",
 }
 """The model worker task behind each generative operation."""
 
@@ -72,7 +74,7 @@ def job_params(op: GenerativeBase) -> dict[str, Any]:
     return params
 
 
-NOT_IN_KEY = {"id", "harmonize"}
+NOT_IN_KEY = {"id", "harmonize", "amount"}
 """Fields that do not change what a model generates (they apply afterwards, or not at all)."""
 
 

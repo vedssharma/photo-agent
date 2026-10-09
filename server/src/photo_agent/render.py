@@ -216,7 +216,34 @@ def _apply_generative(
         return _blend_hole(x, made, hole, op.grow, layer.opacity)
     if isinstance(op, ops.ReplaceBackground):
         return _replace_background(x, layer, op, chain, ctx)
+    if isinstance(op, ops.Relight):
+        made = ctx.vision.generate(
+            task_for(op),
+            np.clip(x, 0.0, 1.0),
+            None,
+            {**job_params(op), "direction": op.direction},
+            _chain_key(chain),
+        )
+        return _blend_whole(x, transfer_light(x, made), layer, op.amount, ctx)
     return x
+
+
+def _blend_whole(x: Array, result: Array, layer: Layer, amount: float, ctx: RenderContext) -> Array:
+    """Blend a whole-photo result in by amount (0..100), opacity, and the layer's mask."""
+    weight: Array | float = amount / 100 * layer.opacity / 100
+    if layer.mask is not None:
+        weight = ctx.mask(layer.mask, x)[..., None] * weight
+    return cast(Array, x + (result - x) * weight)
+
+
+def transfer_light(x: Array, lit: Array) -> Array:
+    """The photo's own fine detail under the broad light and color of `lit`, a relit
+    version of it (generated smaller, so its own detail is soft or reinvented)."""
+    sigma = max(1.0, long_edge(x) * 0.006)
+    eps = 0.02
+    base = blur(np.clip(x, 0.0, 1.0), sigma)
+    light = blur(np.clip(lit, 0.0, 1.0), sigma)
+    return cast(Array, np.clip(x * (light + eps) / (base + eps), 0.0, 1.5))
 
 
 EVERYTHING_BUT_THE_SUBJECT = SemanticMask(target="subject", invert=True)
@@ -868,6 +895,7 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Remove: lambda x, op, ctx: x,
     ops.Generate: lambda x, op, ctx: x,
     ops.ReplaceBackground: lambda x, op, ctx: x,
+    ops.Relight: lambda x, op, ctx: x,
     # Expanding needs the framing before it, so `apply_operations` handles it.
     ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,

@@ -94,6 +94,11 @@ call replace_background with the new scene in a short prompt. It starts its own 
 (add_layer first only to name it or to choose what to replace with a mask; without one it \
 replaces everything but the main subject) and matches the subject's light and color to \
 the scene (harmonize). For a plain color or transparency instead, use cut_out.
+- To change the light itself ("light me from the left", "golden hour light", "make it look \
+like neon at night"), call relight with where the light comes from and its color and mood \
+in a short prompt. It starts its own layer like replace_background; mask the layer on the \
+subject to relight only it. Exposure and white balance only brighten or tint what is \
+there; relight moves light and shadow. Use amount to keep it believable.
 - To turn a vertical photo into a landscape one, give a tight shot more room, or fit a \
 format without cropping ("make this 16:9 without cutting anything off"), call expand: it \
 extends the canvas with new surroundings painted to match. Prefer an aspect ratio; use \

@@ -74,5 +74,7 @@ module = [
     "huggingface_hub",
     "diffusers",
     "diffusers.*",
+    "safetensors",
+    "safetensors.*",
 ]
 ignore_missing_imports = true

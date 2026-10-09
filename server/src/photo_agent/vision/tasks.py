@@ -55,6 +55,7 @@ def _tasks() -> list[Task]:
         task("parse_face", "Finding faces", hub.FaceParser(), Classical(classical.face_parts)),
         task("inpaint", "Filling in", hub.LamaInpaint(), Classical(classical.inpaint)),
         task("generate", "Generating", hub.SdxlInpaint(), Classical(classical.generate)),
+        task("relight", "Relighting", hub.IcLight(), Classical(classical.relight)),
     ]
 
 

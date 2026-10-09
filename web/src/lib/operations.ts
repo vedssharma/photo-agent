@@ -53,4 +53,5 @@ export const CONTENT_OPS = new Set<string>([
   'remove',
   'generate',
   'replace_background',
+  'relight',
 ])

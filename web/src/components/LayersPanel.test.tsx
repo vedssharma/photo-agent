@@ -419,4 +419,27 @@ describe('LayersPanel new background', () => {
       harmonize: 50,
     })
   })
+
+  it('relights from the chosen direction in a layer of its own', async () => {
+    const { sent } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Relight…' }))
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Where the light comes from' }),
+      'top',
+    )
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'The new light' }),
+      'soft window light{Enter}',
+    )
+    expect(sent[0].label).toBe('Relight: “soft window light”')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.name).toBe('Light: Soft window light')
+    expect(added?.mask).toBeNull()
+    expect(added?.operations[0]).toMatchObject({
+      op: 'relight',
+      direction: 'top',
+      prompt: 'soft window light',
+      amount: 60,
+    })
+  })
 })

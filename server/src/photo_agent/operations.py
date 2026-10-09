@@ -374,6 +374,25 @@ class ReplaceBackground(GenerativeBase):
     )
 
 
+LightDirection = Literal["left", "right", "top", "bottom", "front", "back"]
+
+
+class Relight(GenerativeBase):
+    """Change the light: where it comes from and its mood ("warm sunset light", "cool
+    moonlight", "neon purple"), as an AI relighting model imagines the scene lit that way.
+    Best for portraits and products; give the layer a mask on the subject to relight only
+    it. Fine detail stays from the photo. The only operation in its layer."""
+
+    op: Literal["relight"] = "relight"
+    direction: LightDirection = Field(
+        "left", description="Where the light comes from; back is a rim light from behind."
+    )
+    prompt: str = Field(
+        "", max_length=400, description="The light's color and mood; empty is soft daylight."
+    )
+    amount: Strength = Field(60, description="How much of the new light to use.")
+
+
 class SmoothSkin(OpBase):
     """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
@@ -435,7 +454,8 @@ Operation = Annotated[
     | HealBlemishes
     | Generate
     | Expand
-    | ReplaceBackground,
+    | ReplaceBackground
+    | Relight,
     Field(discriminator="op"),
 ]
 
@@ -469,6 +489,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Generate,
     Expand,
     ReplaceBackground,
+    Relight,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -513,12 +534,13 @@ AdjustmentOperation = Annotated[
     | SmoothSkin
     | HealBlemishes
     | Generate
-    | ReplaceBackground,
+    | ReplaceBackground
+    | Relight,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""
 
-CONTENT_TYPES: tuple[type[OpBase], ...] = (Remove, Generate, ReplaceBackground)
+CONTENT_TYPES: tuple[type[OpBase], ...] = (Remove, Generate, ReplaceBackground, Relight)
 """Operations that change what is in the photo rather than how it looks. Each is the only
 operation in its layer, and content layers render before every adjustment layer."""
 

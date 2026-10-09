@@ -60,7 +60,18 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'soft_light', label: 'Soft light' },
 ]
 
-type GenerativeTool = 'generate' | 'background'
+type GenerativeTool = 'generate' | 'background' | 'light'
+
+type LightDirection = Extract<Operation, { op: 'relight' }>['direction']
+
+const LIGHT_DIRECTIONS: { value: LightDirection; label: string }[] = [
+  { value: 'left', label: 'From the left' },
+  { value: 'right', label: 'From the right' },
+  { value: 'top', label: 'From above' },
+  { value: 'bottom', label: 'From below' },
+  { value: 'front', label: 'From the front' },
+  { value: 'back', label: 'From behind (rim)' },
+]
 
 type ExpandAspect = Extract<Operation, { op: 'expand' }>['aspect']
 
@@ -76,7 +87,7 @@ const EXPAND_ASPECTS: ExpandAspect[] = [
 /** What each generative tool asks for. */
 const GENERATIVE_TOOLS: Record<
   GenerativeTool,
-  { label: string; placeholder: string; submit: string }
+  { label: string; placeholder: string; submit: string; directions?: boolean }
 > = {
   generate: {
     label: 'What to add',
@@ -87,6 +98,12 @@ const GENERATIVE_TOOLS: Record<
     label: 'New background',
     placeholder: 'a sunlit beach, a soft gray studio…',
     submit: 'Replace',
+  },
+  light: {
+    label: 'The new light',
+    placeholder: 'warm sunset light, cool moonlight, neon…',
+    submit: 'Relight',
+    directions: true,
   },
 }
 
@@ -102,6 +119,7 @@ function PromptForm({
   label,
   placeholder,
   submit,
+  directions,
   disabled,
   onSubmit,
   onCancel,
@@ -109,17 +127,20 @@ function PromptForm({
   label: string
   placeholder: string
   submit: string
+  /** Also ask where the light comes from. */
+  directions?: boolean
   disabled: boolean
-  onSubmit: (prompt: string) => void
+  onSubmit: (prompt: string, direction: LightDirection) => void
   onCancel: () => void
 }) {
   const [text, setText] = useState('')
+  const [direction, setDirection] = useState<LightDirection>('left')
   return (
     <form
       className="prompt-form"
       onSubmit={(e) => {
         e.preventDefault()
-        if (text.trim()) onSubmit(text.trim())
+        if (text.trim()) onSubmit(text.trim(), direction)
       }}
     >
       <input
@@ -134,6 +155,20 @@ function PromptForm({
           if (e.key === 'Escape') onCancel()
         }}
       />
+      {directions && (
+        <select
+          aria-label="Where the light comes from"
+          value={direction}
+          disabled={disabled}
+          onChange={(e) => setDirection(e.target.value as LightDirection)}
+        >
+          {LIGHT_DIRECTIONS.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      )}
       <button type="submit" disabled={disabled || !text.trim()}>
         {submit}
       </button>
@@ -291,6 +326,31 @@ export function LayersPanel({
     void apply(`New background: “${prompt}”`, (s) => addLayer(s, layer))
   }
 
+  /** New light on the photo (or, with a mask added later, on part of it). */
+  function relight(prompt: string, direction: LightDirection) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: `Light: ${layerTitle(prompt)}`,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'relight',
+          direction,
+          prompt,
+          seed: newSeed(),
+          amount: 60,
+          model: '',
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(`Relight: “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
   /** Extend the canvas to an aspect ratio, painting new surroundings. */
   function expand(aspect: ExpandAspect) {
     const op = {
@@ -376,6 +436,16 @@ export function LayersPanel({
         >
           New background…
         </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'light'}
+          title="Change where the light comes from and its mood"
+          onClick={() => setAsking(asking === 'light' ? null : 'light')}
+        >
+          Relight…
+        </button>
         {onRetouch && (
           <button
             type="button"
@@ -402,9 +472,10 @@ export function LayersPanel({
           {...GENERATIVE_TOOLS[asking]}
           disabled={locked}
           onCancel={() => setAsking(null)}
-          onSubmit={(prompt) => {
+          onSubmit={(prompt, direction) => {
             setAsking(null)
             if (asking === 'generate') generate(prompt)
+            else if (asking === 'light') relight(prompt, direction)
             else replaceBackground(prompt)
           }}
         />

@@ -355,3 +355,60 @@ def studio_backdrop(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Arra
     noise = np.random.default_rng(seed).standard_normal((h, w, 1)).astype(np.float32)
     backdrop = np.clip(color * shade + 0.008 * noise, 0, 1).astype(np.float32)
     return cast(Array, np.where(hole[..., None], backdrop, image))
+
+
+LIGHT_DIRECTIONS = {
+    "left": (-1.0, 0.0),
+    "right": (1.0, 0.0),
+    "top": (0.0, -1.0),
+    "bottom": (0.0, 1.0),
+}
+
+LIGHT_COLORS: list[tuple[tuple[str, ...], tuple[float, float, float]]] = [
+    (("sunset", "golden", "warm", "candle", "fire", "tungsten", "amber"), (1.0, 0.78, 0.55)),
+    (("moon", "cool", "blue", "cold", "night", "overcast"), (0.72, 0.84, 1.0)),
+    (("neon", "purple", "pink", "magenta", "club"), (1.0, 0.6, 1.0)),
+    (("green", "forest", "jungle"), (0.78, 1.0, 0.75)),
+    (("red", "danger"), (1.0, 0.55, 0.5)),
+]
+
+
+def light_color(prompt: str) -> npt.NDArray[np.float32]:
+    """The color of the light a prompt asks for, from a few telling words (white if none)."""
+    words = prompt.lower()
+    for keys, rgb in LIGHT_COLORS:
+        if any(k in words for k in keys):
+            return np.array(rgb, np.float32)
+    return np.ones(3, np.float32)
+
+
+def relight(image: Array, direction: str = "left", prompt: str = "", **_: Any) -> Array:
+    """Relight without a model: shade the photo as if lit from `direction`, using its own
+    broad brightness as a rough stand-in for shape, in the light's color. Only the light
+    changes; the caller carries the photo's fine detail over (see `render.transfer_light`)."""
+    work = _work(image)
+    h, w = work.shape[:2]
+    lum = gray(work)
+    # Broad shapes: what is lighter is taken to face the camera a little more.
+    height = cv2.GaussianBlur(lum, (0, 0), max(h, w) * 0.03)
+    gy, gx = np.gradient(height * max(h, w) * 0.15)
+    nz = np.ones_like(gx)
+    norm = np.sqrt(gx * gx + gy * gy + nz * nz)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, v = (xs + 0.5) / w - 0.5, (ys + 0.5) / h - 0.5
+    if direction in LIGHT_DIRECTIONS:
+        lx, ly = LIGHT_DIRECTIONS[direction]
+        lambert = np.clip((-gx * lx - gy * ly + nz * 0.6) / norm / 1.17, 0, 1)
+        ramp = 0.5 + (u * lx + v * ly)  # 1 on the lit side, 0 on the far side
+        shade = 0.25 + 0.95 * (0.55 * ramp + 0.45 * lambert)
+    elif direction == "back":
+        # Rim light: edges glow, the middle falls into shadow.
+        rim = np.clip(np.sqrt(gx * gx + gy * gy) * 6, 0, 1)
+        shade = 0.55 + 0.9 * rim - 0.25 * (1 - np.sqrt(u * u + v * v) * 1.4)
+    else:  # front: even light from the camera, falling off toward the edges
+        shade = 1.15 - 0.6 * (u * u + v * v)
+    color = light_color(prompt)
+    linear = np.power(np.clip(work, 0, 1), 2.2)
+    lit = linear * shade[..., None].astype(np.float32) * color / float(color @ LUMA)
+    out = np.power(np.clip(lit, 0, 1), 1 / 2.2).astype(np.float32)
+    return cast(Array, cv2.resize(out, image.shape[1::-1], interpolation=cv2.INTER_LINEAR))

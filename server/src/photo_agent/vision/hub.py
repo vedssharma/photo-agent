@@ -12,6 +12,8 @@ its weights' license, so moving to a product later does not mean swapping models
     lama                    Carve/LaMa-ONNX (lama_fp32.onnx)   Apache-2.0
     sdxl-inpainting-0.1     diffusers/stable-diffusion-xl-     CreativeML Open RAIL++-M
                             1.0-inpainting-0.1
+    ic-light-fc             lllyasviel/ic-light                CreativeML Open RAIL-M
+                            (iclight_sd15_fc) on stablediffusionapi/realistic-vision-v51
 """
 
 from __future__ import annotations
@@ -339,6 +341,163 @@ class SdxlInpaint(HubBackend):
         ).images[0]
         out = (np.asarray(result.convert("RGB")) / 255.0).astype(np.float32)
         return _resize(out, (h, w))
+
+
+class IcLight(HubBackend):
+    """IC-Light (foreground-conditioned): Stable Diffusion 1.5 retrained to redraw a photo
+    under new light, keeping its content. The light's look comes from `prompt`; its
+    direction from a gradient the diffusion starts from (none for light from the front)."""
+
+    name = "ic-light-fc"
+    license = "CreativeML Open RAIL-M"
+    repo = "lllyasviel/ic-light"
+    base = "stablediffusionapi/realistic-vision-v51"
+    weights = "iclight_sd15_fc.safetensors"
+    packages = ("torch", "diffusers", "transformers", "safetensors")
+    SIZE = 768
+    STEPS = 25
+    DENOISE = 0.9
+    """How much of the directional gradient the diffusion redraws."""
+    QUALITY = "best quality"
+    NEGATIVE = "lowres, bad anatomy, bad hands, cropped, worst quality"
+
+    def _load(self, env: Env) -> Any:
+        import torch
+        from diffusers import (
+            AutoencoderKL,
+            DPMSolverMultistepScheduler,
+            StableDiffusionImg2ImgPipeline,
+            StableDiffusionPipeline,
+            UNet2DConditionModel,
+        )
+        from huggingface_hub import hf_hub_download
+        from safetensors.torch import load_file
+        from transformers import CLIPTextModel, CLIPTokenizer
+
+        cache = self._cache(env)
+        dtype = torch.float16 if env.device in ("cuda", "mps") else torch.float32
+        tokenizer = CLIPTokenizer.from_pretrained(self.base, subfolder="tokenizer", cache_dir=cache)
+        text_encoder = CLIPTextModel.from_pretrained(
+            self.base, subfolder="text_encoder", cache_dir=cache
+        )
+        vae = AutoencoderKL.from_pretrained(self.base, subfolder="vae", cache_dir=cache)
+        unet = UNet2DConditionModel.from_pretrained(self.base, subfolder="unet", cache_dir=cache)
+
+        # The photo's latent goes in beside the noise: widen the first convolution to 8
+        # channels (the new ones start at zero), then add IC-Light's trained offsets.
+        with torch.no_grad():
+            old = unet.conv_in
+            conv = torch.nn.Conv2d(8, old.out_channels, old.kernel_size, old.stride, old.padding)
+            conv.weight.zero_()
+            conv.weight[:, :4].copy_(old.weight)
+            conv.bias = old.bias
+            unet.conv_in = conv
+        forward = unet.forward
+
+        def hooked(sample: Any, timestep: Any, encoder_hidden_states: Any, **kwargs: Any) -> Any:
+            extra = dict(kwargs.get("cross_attention_kwargs") or {})
+            cond = extra.pop("concat_conds").to(sample)
+            cond = torch.cat([cond] * (sample.shape[0] // cond.shape[0]), dim=0)
+            kwargs["cross_attention_kwargs"] = extra
+            return forward(
+                torch.cat([sample, cond], dim=1), timestep, encoder_hidden_states, **kwargs
+            )
+
+        unet.forward = hooked
+        offsets = load_file(hf_hub_download(self.repo, self.weights, cache_dir=cache))
+        merged = {k: v + offsets[k] if k in offsets else v for k, v in unet.state_dict().items()}
+        unet.load_state_dict(merged, strict=True)
+        for part in (text_encoder, vae, unet):
+            part.to(device=env.device, dtype=dtype)
+
+        scheduler = DPMSolverMultistepScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.00085,
+            beta_end=0.012,
+            algorithm_type="sde-dpmsolver++",
+            use_karras_sigmas=True,
+            steps_offset=1,
+        )
+        parts = {
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "unet": unet,
+            "scheduler": scheduler,
+            "safety_checker": None,
+            "feature_extractor": None,
+            "requires_safety_checker": False,
+        }
+        t2i = StableDiffusionPipeline(**parts)
+        i2i = StableDiffusionImg2ImgPipeline(**parts)
+        for pipe in (t2i, i2i):
+            pipe.set_progress_bar_config(disable=True)
+        return t2i, i2i, vae
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        import torch
+        from PIL import Image
+
+        t2i, i2i, vae = self.model(env, progress)
+        h, w = image.shape[:2]
+        scale = self.SIZE / max(h, w)
+        gw, gh = (max(256, round(v * scale / 64) * 64) for v in (w, h))
+        photo = cv2.resize(image, (gw, gh), interpolation=cv2.INTER_AREA)
+        with torch.no_grad():
+            pixels = torch.from_numpy(photo * 2 - 1).permute(2, 0, 1)[None]
+            pixels = pixels.to(device=vae.device, dtype=vae.dtype)
+            cond = vae.encode(pixels).latent_dist.mode() * vae.config.scaling_factor
+
+        direction = str(params.get("direction", "left"))
+        prompt = ", ".join(p for p in (str(params.get("prompt") or ""), self.QUALITY) if p)
+        steps = self.STEPS
+        runs = steps if direction == "front" else max(1, int(steps * self.DENOISE))
+
+        def on_step(_pipe: Any, step: int, _t: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+            progress(0.1 + 0.85 * (step + 1) / runs, "Relighting")
+            return kwargs
+
+        common: dict[str, Any] = {
+            "prompt": prompt,
+            "negative_prompt": self.NEGATIVE,
+            "num_inference_steps": steps,
+            "guidance_scale": 2.0,
+            "generator": torch.Generator(device="cpu").manual_seed(int(params.get("seed", 0))),
+            "cross_attention_kwargs": {"concat_conds": cond},
+            "callback_on_step_end": on_step,
+        }
+        progress(0.1, "Relighting")
+        gradient = _light_gradient(direction, (gh, gw))
+        if gradient is None:
+            result = t2i(width=gw, height=gh, **common).images[0]
+        else:
+            start = Image.fromarray((gradient * 255 + 0.5).astype(np.uint8), "RGB")
+            result = i2i(image=start, strength=self.DENOISE, **common).images[0]
+        out = (np.asarray(result.convert("RGB")) / 255.0).astype(np.float32)
+        return _resize(out, (h, w))
+
+
+def _light_gradient(direction: str, shape: tuple[int, int]) -> Array | None:
+    """IC-Light's starting image for light from `direction`: bright on that side, dark on the
+    other. None for light from the front, which starts from noise alone."""
+    h, w = shape
+    xs = np.linspace(0.0, 1.0, w, dtype=np.float32)
+    ys = np.linspace(0.0, 1.0, h, dtype=np.float32)
+    ramps = {
+        "left": np.tile(1 - xs, (h, 1)),
+        "right": np.tile(xs, (h, 1)),
+        "top": np.tile((1 - ys)[:, None], (1, w)),
+        "bottom": np.tile(ys[:, None], (1, w)),
+    }
+    if direction == "back":
+        v, u = np.mgrid[0:h, 0:w].astype(np.float32)
+        r = np.hypot(u / w - 0.5, v / h - 0.5) * 2
+        ramp = np.clip(r, 0, 1)
+    elif direction in ramps:
+        ramp = ramps[direction]
+    else:
+        return None
+    return cast(Array, np.repeat((0.1 + 0.8 * ramp)[..., None], 3, axis=2))
 
 
 def _resize(image: Array, shape: tuple[int, int]) -> Array:

@@ -1188,7 +1188,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"])[];
         };
         /**
          * LensCorrection
@@ -1455,6 +1455,55 @@ export interface components {
             created_at: string;
             /** Layers */
             layers: components["schemas"]["Layer"][];
+        };
+        /**
+         * Relight
+         * @description Change the light: where it comes from and its mood ("warm sunset light", "cool
+         *     moonlight", "neon purple"), as an AI relighting model imagines the scene lit that way.
+         *     Best for portraits and products; give the layer a mask on the subject to relight only
+         *     it. Fine detail stays from the photo. The only operation in its layer.
+         */
+        Relight: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "relight";
+            /**
+             * Direction
+             * @description Where the light comes from; back is a rim light from behind.
+             * @default left
+             * @enum {string}
+             */
+            direction: "left" | "right" | "top" | "bottom" | "front" | "back";
+            /**
+             * Prompt
+             * @description The light's color and mood; empty is soft daylight.
+             * @default
+             */
+            prompt: string;
+            /**
+             * Amount
+             * @description How much of the new light to use.
+             * @default 60
+             */
+            amount: number;
         };
         /**
          * Remove

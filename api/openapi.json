@@ -2440,6 +2440,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ReplaceBackground"
+                },
+                {
+                  "$ref": "#/components/schemas/Relight"
                 }
               ],
               "discriminator": {
@@ -2456,6 +2459,7 @@
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
                   "replace_background": "#/components/schemas/ReplaceBackground",
                   "saturation": "#/components/schemas/Saturation",
@@ -2965,6 +2969,75 @@
           "layers"
         ],
         "title": "Recipe"
+      },
+      "Relight": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "op": {
+            "type": "string",
+            "const": "relight",
+            "title": "Op",
+            "default": "relight"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "top",
+              "bottom",
+              "front",
+              "back"
+            ],
+            "title": "Direction",
+            "description": "Where the light comes from; back is a rim light from behind.",
+            "default": "left"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "title": "Prompt",
+            "description": "The light's color and mood; empty is soft daylight.",
+            "default": ""
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How much of the new light to use.",
+            "default": 60
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Relight",
+        "description": "Change the light: where it comes from and its mood (\"warm sunset light\", \"cool\nmoonlight\", \"neon purple\"), as an AI relighting model imagines the scene lit that way.\nBest for portraits and products; give the layer a mask on the subject to relight only\nit. Fine detail stays from the photo. The only operation in its layer."
       },
       "Remove": {
         "properties": {

@@ -17,7 +17,13 @@ from photo_agent.generative import job_params, stamp
 from photo_agent.layers import EditState, Layer
 from photo_agent.masks import RadialGradientMask
 from photo_agent.recipes import portable
-from photo_agent.render import expand_box, extend_canvas, render_layer_mask, render_state
+from photo_agent.render import (
+    expand_box,
+    extend_canvas,
+    render_layer_mask,
+    render_state,
+    transfer_light,
+)
 from photo_agent.routes import get_store
 from photo_agent.settings import Settings
 from photo_agent.vision import classical
@@ -283,3 +289,54 @@ def test_the_agent_replaces_the_background_in_a_layer_of_its_own() -> None:
     assert warm.name == "Warmer" and len(warm.operations) == 1
     assert scene.is_content and scene.mask is None
     assert scene.name == "Replace background “a misty forest”"
+
+
+def test_classical_relight_lights_the_chosen_side() -> None:
+    image = np.full((60, 80, 3), 0.5, np.float32)
+    lit = classical.relight(image, direction="left", prompt="")
+    assert lit[:, :20].mean() > lit[:, -20:].mean() + 0.05
+    warm = classical.relight(image, direction="front", prompt="warm sunset light")
+    assert warm[..., 0].mean() > warm[..., 2].mean() + 0.05
+    assert classical.light_color("cool moonlight")[2] == 1.0
+
+
+def test_transfer_light_keeps_the_photos_detail() -> None:
+    rng = np.random.default_rng(0)
+    photo = np.clip(0.5 + 0.1 * rng.standard_normal((80, 80, 3)), 0, 1).astype(np.float32)
+    lit = np.full_like(photo, 0.25)  # same scene, half the light, no detail
+    out = transfer_light(photo, lit)
+    assert abs(out.mean() - 0.26) < 0.03
+    assert np.corrcoef(out[..., 0].ravel(), photo[..., 0].ravel())[0, 1] > 0.9
+
+
+def relighting(**op: Any) -> Layer:
+    return Layer(
+        id="Llight",
+        name="Sunset",
+        operations=[ops.Relight(direction="right", prompt="warm sunset", seed=5, **op)],
+    )
+
+
+def test_relighting_changes_the_light(settings: Settings, upload: Upload) -> None:
+    doc = upload("portrait.jpg")
+    loaded = get_store(settings).image(doc["id"])
+    ctx = loaded.proxy_context
+    before = render_state(loaded.proxy, EditState(), ctx)
+    after = render_state(loaded.proxy, EditState(layers=[relighting(amount=100)]), ctx)
+    w = before.shape[1]
+    gain = after.mean(axis=2) - before.mean(axis=2)
+    assert gain[:, -w // 4 :].mean() > gain[:, : w // 4].mean() + 0.03
+    assert (after[..., 0] - after[..., 2]).mean() > (before[..., 0] - before[..., 2]).mean()
+    half = render_state(loaded.proxy, EditState(layers=[relighting(amount=50)]), ctx)
+    assert np.abs(half - (before + after) / 2).mean() < 0.01
+    assert loaded.vision is not None
+    assert [j.task for j in loaded.vision.worker.jobs(doc["id"])] == ["relight"]
+
+
+def test_the_agent_relights_in_a_layer_of_its_own() -> None:
+    editor = Editor(EditState())
+    editor.call("relight", {"direction": "top", "prompt": "soft window light"})
+    (layer,) = editor.state.layers
+    assert layer.is_content and layer.mask is None
+    op = layer.operations[0]
+    assert isinstance(op, ops.Relight) and op.seed is not None
