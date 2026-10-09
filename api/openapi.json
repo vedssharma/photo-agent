@@ -1676,6 +1676,16 @@
             ],
             "title": "Step Id"
           },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -2219,6 +2229,16 @@
             },
             "type": "array",
             "title": "Chat"
+          },
+          "pending_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3625,6 +3645,56 @@
         "title": "Perspective",
         "description": "Fix lines that converge because the camera was tilted: buildings that lean in toward\nthe top, or a wall that shrinks toward one side. The narrow side is stretched out to the\nframe, so nothing is left empty."
       },
+      "Plan": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "steps"
+        ],
+        "title": "Plan",
+        "description": "What the agent means to do for a multi-step request, shown before the slow or\ngenerative steps run, so the person can approve or change it."
+      },
+      "PlanStep": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "description": "What this step does."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "adjust",
+              "ai",
+              "generative"
+            ],
+            "title": "Kind",
+            "description": "adjust: quick slider-style edits; ai: runs an AI model to select, remove, or retouch; generative: paints new pixels with an image generation model.",
+            "default": "adjust"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "PlanStep"
+      },
       "RadialGradientMask": {
         "properties": {
           "invert": {
@@ -4979,6 +5049,12 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "approve_plan": {
+            "default": false,
+            "description": "Go ahead with the plan the agent proposed in its last reply.",
+            "title": "Approve Plan",
+            "type": "boolean"
           }
         },
         "required": [

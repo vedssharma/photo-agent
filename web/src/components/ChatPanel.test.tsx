@@ -129,3 +129,50 @@ describe('ChatPanel', () => {
     expect(box).toHaveValue('line one\nline two')
   })
 })
+
+describe('ChatPanel plans', () => {
+  it('shows a proposed plan and sends the go-ahead', async () => {
+    const plan = {
+      id: 'p1',
+      steps: [
+        { text: 'Replace the sky', kind: 'generative' as const },
+        { text: 'Warm it up', kind: 'adjust' as const },
+      ],
+    }
+    const doc = makeDoc({
+      chat: [
+        { role: 'user', text: 'sunset and warmer', created_at: '' },
+        {
+          role: 'assistant',
+          text: 'Here is my plan.',
+          plan,
+          created_at: '',
+        },
+      ],
+      pending_plan: plan,
+    })
+    render(<Harness initial={doc} />)
+    expect(screen.getByText('Replace the sky')).toBeVisible()
+    expect(screen.getByText('Generates new pixels')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Go ahead' }))
+    act(() => FakeSocket.last!.open())
+    expect(FakeSocket.last!.sent).toEqual([
+      { type: 'message', text: 'Go ahead', approve_plan: true },
+    ])
+  })
+
+  it('drops the button once the plan is no longer pending', () => {
+    const plan = { id: 'p1', steps: [{ text: 'Sky', kind: 'ai' as const }] }
+    const doc = makeDoc({
+      chat: [
+        { role: 'assistant', text: 'Plan.', plan, created_at: '' },
+        { role: 'user', text: 'no thanks', created_at: '' },
+      ],
+    })
+    render(<Harness initial={doc} />)
+    expect(screen.getByText('Sky')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Go ahead' }),
+    ).not.toBeInTheDocument()
+  })
+})

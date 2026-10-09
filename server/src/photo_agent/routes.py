@@ -732,6 +732,7 @@ async def chat(
         while True:
             incoming = await ws.receive_json()
             text = str(incoming.get("text", "")).strip() if isinstance(incoming, dict) else ""
+            approve = isinstance(incoming, dict) and incoming.get("approve_plan") is True
             if not text:
                 await emit(AgentError(message="Type what you would like to change."))
                 continue
@@ -744,7 +745,7 @@ async def chat(
                 )
                 continue
             try:
-                await agent.run_turn(doc_id, text, emit)
+                await agent.run_turn(doc_id, text, emit, approve_plan=approve)
             except WebSocketDisconnect:
                 raise
             except Exception as exc:  # Report, keep the socket open for the next message.

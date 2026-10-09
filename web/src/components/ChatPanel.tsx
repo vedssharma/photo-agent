@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from 'react'
 
 import type { DocumentView } from '../api/documents'
 import type { Chat } from '../hooks/useChat'
+import { PlanCard } from './PlanCard'
 import { SuggestionPicker } from './SuggestionPicker'
 
 const SUGGESTIONS = [
@@ -82,6 +83,14 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
               {entry.text}
               {entry.step_id && !active.has(entry.step_id) && (
                 <span className="tag">not in effect</span>
+              )}
+              {entry.plan && (
+                <PlanCard
+                  plan={entry.plan}
+                  pending={doc.pending_plan?.id === entry.plan.id}
+                  disabled={chat.busy}
+                  onApprove={() => chat.send('Go ahead', { approvePlan: true })}
+                />
               )}
             </li>
           ),

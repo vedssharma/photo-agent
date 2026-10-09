@@ -40,7 +40,8 @@ export interface Chat {
   pending: PendingTurn | null
   error: string | null
   busy: boolean
-  send: (text: string) => void
+  /** Send a message; with `approvePlan`, it goes ahead with the plan just proposed. */
+  send: (text: string, options?: { approvePlan?: boolean }) => void
 }
 
 /**
@@ -117,13 +118,15 @@ export function useChat(
   }, [docId, handle])
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, options: { approvePlan?: boolean } = {}) => {
       const request = text.trim()
       if (!request) return
       setError(null)
       waiting.current = true
       setPending({ request, reply: '', operations: [] })
-      const message: ChatMessage = { type: 'message', text: request }
+      // approve_plan defaults to false on the server, so leave it out unless set.
+      const message: Partial<ChatMessage> = { type: 'message', text: request }
+      if (options.approvePlan) message.approve_plan = true
       const payload = JSON.stringify(message)
       const ws = socket.current ?? connect()
       if (ws.readyState === OPEN) ws.send(payload)

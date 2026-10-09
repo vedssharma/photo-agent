@@ -753,6 +753,7 @@ export interface components {
             text: string;
             /** Step Id */
             step_id?: string | null;
+            plan?: components["schemas"]["Plan"] | null;
             /**
              * Created At
              * Format: date-time
@@ -1055,6 +1056,7 @@ export interface components {
             history: components["schemas"]["StepView"][];
             /** Chat */
             chat: components["schemas"]["ChatEntry"][];
+            pending_plan?: components["schemas"]["Plan"] | null;
         };
         /**
          * EditState
@@ -1693,6 +1695,32 @@ export interface components {
              * @default 0
              */
             horizontal: number;
+        };
+        /**
+         * Plan
+         * @description What the agent means to do for a multi-step request, shown before the slow or
+         *     generative steps run, so the person can approve or change it.
+         */
+        Plan: {
+            /** Id */
+            id?: string;
+            /** Steps */
+            steps: components["schemas"]["PlanStep"][];
+        };
+        /** PlanStep */
+        PlanStep: {
+            /**
+             * Text
+             * @description What this step does.
+             */
+            text: string;
+            /**
+             * Kind
+             * @description adjust: quick slider-style edits; ai: runs an AI model to select, remove, or retouch; generative: paints new pixels with an image generation model.
+             * @default adjust
+             * @enum {string}
+             */
+            kind: "adjust" | "ai" | "generative";
         };
         /**
          * RadialGradientMask
@@ -2507,6 +2535,12 @@ export interface components {
             type: "message";
             /** Text */
             text: string;
+            /**
+             * Approve Plan
+             * @description Go ahead with the plan the agent proposed in its last reply.
+             * @default false
+             */
+            approve_plan: boolean;
         };
     };
     responses: never;

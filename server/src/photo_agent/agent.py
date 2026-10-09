@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 from photo_agent import diagnostics, imaging, looks, safety, variants
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
-from photo_agent.graph import ChatEntry, Document, DocumentView, Step
+from photo_agent.graph import ChatEntry, Document, DocumentView, Plan, Step
 from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
 from photo_agent.masks import SemanticMask, describe_mask
 from photo_agent.operations import (
@@ -35,10 +35,15 @@ from photo_agent.operations import (
     MASKED_TYPES,
     MAX_OPTIONS,
     OPERATIONS_BY_NAME,
+    Expand,
+    Generate,
     GenerativeBase,
     OpBase,
     Operation,
     OperationAdapter,
+    Relight,
+    ReplaceBackground,
+    Restyle,
 )
 from photo_agent.portrait import Retouch, retouch_layers
 from photo_agent.render import RenderCache, render
@@ -141,6 +146,13 @@ set straighten yourself. Use lens_correction for lines that bow (wide-angle barr
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
+- Before a multi-step request that includes slow or generative steps ("remove the people, \
+replace the sky, and make it warmer"; anything needing two or more of generate, expand, \
+replace_background, relight, and restyle), call \
+propose_plan with the steps in order, marking each as adjust, ai (selections, removals, \
+retouching), or generative, and stop: the person sees the plan and approves or changes it \
+before anything slow runs. Do not call it for quick slider edits or a single generative \
+edit the person asked for directly. Once a plan is approved, carry it out in full.
 - With each request you get the current rendered photo and the current framing and layers. \
 The person may have tweaked, hidden, or removed things by hand; respect those choices.
 - Crop boxes are fractions of the frame as it is at that point in the framing list, after \
@@ -205,6 +217,9 @@ class ChatMessage(BaseModel):
 
     type: Literal["message"] = "message"
     text: str
+    approve_plan: bool = Field(
+        False, description="Go ahead with the plan the agent proposed in its last reply."
+    )
 
 
 Emit = Callable[[AgentEvent], Awaitable[None]]
@@ -477,6 +492,23 @@ def tool_definitions() -> list[BetaToolParam]:
             "eager_input_streaming": True,
         }
     )
+    plan_schema = Plan.model_json_schema()
+    tools.append(
+        {
+            "name": "propose_plan",
+            "description": "Show the person your plan for a multi-step request before running "
+            "slow or generative steps, and end your turn. They approve it or tell you what to "
+            "change; on approval you carry it out.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"steps": plan_schema["properties"]["steps"]},
+                "required": ["steps"],
+                "additionalProperties": False,
+                "$defs": plan_schema["$defs"],
+            },
+            "eager_input_streaming": True,
+        }
+    )
     tools.append(
         {
             "name": "restore_background",
@@ -551,11 +583,25 @@ class Editor:
         """Images the last tool call shows Claude along with its text result."""
         self.target: str | None = None
         """The layer that operation tools add to: the one added most recently."""
+        self.plan: Plan | None = None
+        """A plan proposed in this turn; the turn ends to wait for the go-ahead."""
+        self.plan_approved = False
+        """Whether the person approved a plan for this turn, so it may run several
+        generative steps."""
+        self._generative_before = _generative_ids(state)
 
     def call(self, name: str, args: object) -> tuple[str, OperationEvent]:
         self.images = []
         before = self.state.model_copy(deep=True)
         result = self._call(name, args)
+        added = _generative_ids(self.state) - self._generative_before
+        if len(added) > 1 and not self.plan_approved:
+            self.state = before
+            raise ToolError(
+                "This would be a second slow generative edit (fill, expand, background, "
+                "relight, or restyle) in one request. Call propose_plan "
+                "with every step first and wait for the person's go-ahead; nothing changed."
+            )
         verdict = (self.screen or safety.Screen()).check_new(before, self.state)
         if not verdict.allowed:
             self.state = before
@@ -581,6 +627,7 @@ class Editor:
             "auto_straighten": self._auto_straighten,
             "apply_look": self._apply_look,
             "show_options": self._show_options,
+            "propose_plan": self._propose_plan,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
@@ -770,6 +817,17 @@ class Editor:
             action="updated", summary=f"Options for {op.summary()}"
         )
 
+    def _propose_plan(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            plan = Plan.model_validate({"steps": args.get("steps")})
+        except ValidationError as exc:
+            raise ToolError(f"Invalid plan: {_problems(exc)}") from None
+        self.plan = plan
+        return (
+            "The plan is shown to the person. End your turn now.",
+            OperationEvent(action="added", summary=f"Plan with {len(plan.steps)} steps"),
+        )
+
     def _auto_straighten(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
         try:
             options = AutoStraighten.model_validate(args)
@@ -817,6 +875,15 @@ class Editor:
             return Layer.model_validate(data)
         except ValidationError as exc:
             raise ToolError(f"Invalid layer: {_problems(exc)}") from None
+
+
+SLOW_TYPES = (Generate, Expand, ReplaceBackground, Relight, Restyle)
+"""Generative operations that run a diffusion model: slow, and worth a plan when a request
+needs more than one. Face restoration and colorizing are quick by comparison."""
+
+
+def _generative_ids(state: EditState) -> set[str]:
+    return {op.id for op in state.all_operations() if isinstance(op, SLOW_TYPES)}
 
 
 def layer_name(request: str) -> str:
@@ -898,6 +965,8 @@ def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam],
             pending_events.append(entry.text)
             continue
         text = entry.text
+        if entry.plan is not None:
+            text = f"{text}\n\nProposed plan:\n{entry.plan.describe()}"
         if entry.role == "user" and pending_events:
             text = events_note(pending_events) + text
             pending_events = []
@@ -929,11 +998,17 @@ class AgentService:
         self.screen = screen or safety.Screen()
         self._locks: dict[str, asyncio.Lock] = {}
 
-    async def run_turn(self, doc_id: str, request: str, emit: Emit) -> Document:
-        """Handle one chat message: let Claude edit, then record the turn and its reply."""
+    async def run_turn(
+        self, doc_id: str, request: str, emit: Emit, approve_plan: bool = False
+    ) -> Document:
+        """Handle one chat message: let Claude edit, then record the turn and its reply.
+
+        With `approve_plan`, the person went ahead with the plan in the agent's last reply.
+        """
         lock = self._locks.setdefault(doc_id, asyncio.Lock())
         async with lock:
             doc = self.store.get(doc_id)
+            plan = doc.pending_plan if approve_plan else None
             await emit(TurnStarted())
             loaded = self.store.image(doc_id)
             editor = Editor(
@@ -946,7 +1021,9 @@ class AgentService:
                     doc_id, loaded.proxy, state, loaded.proxy_context
                 ),
             )
-            reply = await self._converse(doc, request, editor, emit)
+            editor.plan_approved = plan is not None
+            asked = request if plan is None else f"Approved plan:\n{plan.describe()}\n\n{request}"
+            reply = await self._converse(doc, asked, editor, emit)
 
             doc.chat.append(ChatEntry(role="user", text=request))
             step_id = None
@@ -960,7 +1037,9 @@ class AgentService:
                 )
                 doc.commit(step)
                 step_id = step.id
-            doc.chat.append(ChatEntry(role="assistant", text=reply, step_id=step_id))
+            doc.chat.append(
+                ChatEntry(role="assistant", text=reply, step_id=step_id, plan=editor.plan)
+            )
             self.store.save(doc)
             await emit(TurnDone(document=DocumentView.of(doc)))
             return doc
@@ -1057,6 +1136,9 @@ class AgentService:
                 if editor.images:
                     content = [{"type": "text", "text": text}, *map(image_block, editor.images)]
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
+            if editor.plan is not None:
+                # Wait for the person's go-ahead before anything else.
+                break
             if editor.state != state_seen:
                 state_seen = editor.state.model_copy(deep=True)
                 await self._attach_self_check(doc, editor, results, baseline)
@@ -1066,5 +1148,8 @@ class AgentService:
             await on_text("I stopped here to keep things quick; tell me if you want more changes.")
 
         if not "".join(reply_parts).strip():
-            await on_text("Done." if editor.state != doc.state else "OK.")
+            if editor.plan is not None:
+                await on_text("Here is my plan. Shall I go ahead?")
+            else:
+                await on_text("Done." if editor.state != doc.state else "OK.")
         return "".join(reply_parts).strip()
