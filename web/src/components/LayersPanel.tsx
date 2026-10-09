@@ -901,6 +901,7 @@ export function LayersPanel({
                       label="Add adjustment"
                       specs={allSpecs.filter(
                         (s) =>
+                          s.addable &&
                           !s.framing &&
                           s.group !== 'retouch' &&
                           s.group !== 'generative',

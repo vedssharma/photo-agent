@@ -4,6 +4,12 @@ import type { FormEvent, KeyboardEvent } from 'react'
 import type { DocumentView } from '../api/documents'
 import type { Chat } from '../hooks/useChat'
 import { critiquePhoto } from '../api/advice'
+import { PHOTO_TYPES } from '../api/documents'
+import {
+  type Reference,
+  referenceUrl,
+  uploadReference,
+} from '../api/references'
 import { CritiqueCard } from './CritiqueCard'
 import { PlanCard } from './PlanCard'
 import { SuggestionPicker } from './SuggestionPicker'
@@ -26,6 +32,9 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
   const [draft, setDraft] = useState('')
   const [critiquing, setCritiquing] = useState(false)
   const [critiqueError, setCritiqueError] = useState<string | null>(null)
+  const [attached, setAttached] = useState<Reference[]>([])
+  const [attaching, setAttaching] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
   const log = useRef<HTMLOListElement>(null)
   const active = new Set(doc.history.filter((s) => s.active).map((s) => s.id))
 
@@ -41,8 +50,22 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
   function submit(e?: FormEvent) {
     e?.preventDefault()
     if (chat.busy || !draft.trim()) return
-    chat.send(draft)
+    chat.send(draft, { references: attached.map((r) => r.id) })
     setDraft('')
+    setAttached([])
+  }
+
+  async function attach(file: File) {
+    setAttaching(true)
+    setCritiqueError(null)
+    try {
+      const ref = await uploadReference(doc.id, file)
+      setAttached((all) => [...all, ref].slice(-4))
+    } catch (err) {
+      setCritiqueError(`Could not add ${file.name}: ${(err as Error).message}`)
+    } finally {
+      setAttaching(false)
+    }
   }
 
   async function critique() {
@@ -97,6 +120,17 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
             </li>
           ) : (
             <li key={i} className={`bubble ${entry.role}`}>
+              {entry.references && entry.references.length > 0 && (
+                <span className="bubble-refs">
+                  {entry.references.map((id) => (
+                    <img
+                      key={id}
+                      src={referenceUrl(doc.id, id)}
+                      alt="Reference photo"
+                    />
+                  ))}
+                </span>
+              )}
               {entry.text}
               {entry.step_id && !active.has(entry.step_id) && (
                 <span className="tag">not in effect</span>
@@ -147,8 +181,8 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
           {chat.error ?? critiqueError}
         </p>
       )}
-      {onDocument && (
-        <div className="chat-tools">
+      <div className="chat-tools">
+        {onDocument && (
           <button
             type="button"
             disabled={chat.busy || critiquing}
@@ -157,14 +191,58 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
           >
             Get feedback
           </button>
-        </div>
+        )}
+        <button
+          type="button"
+          disabled={chat.busy || attaching}
+          onClick={() => picker.current?.click()}
+          title="Share another photo, then ask to make this one look like it"
+        >
+          {attaching ? 'Adding…' : 'Add a reference photo'}
+        </button>
+        <input
+          ref={picker}
+          type="file"
+          accept={PHOTO_TYPES}
+          hidden
+          aria-label="Reference photo file"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void attach(file)
+          }}
+        />
+      </div>
+      {attached.length > 0 && (
+        <ul className="attached" aria-label="Reference photos to send">
+          {attached.map((ref) => (
+            <li key={ref.id}>
+              <img src={referenceUrl(doc.id, ref.id)} alt="" />
+              {ref.filename}
+              <button
+                type="button"
+                className="icon"
+                aria-label={`Remove ${ref.filename}`}
+                onClick={() =>
+                  setAttached((all) => all.filter((r) => r.id !== ref.id))
+                }
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
       <form className="chat-input" onSubmit={submit}>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Describe a change, e.g. “brighter, and warmer skin tones”"
+          placeholder={
+            attached.length
+              ? 'Say what to take from it, e.g. “make mine look like this”'
+              : 'Describe a change, e.g. “brighter, and warmer skin tones”'
+          }
           aria-label="Message"
           rows={3}
         />

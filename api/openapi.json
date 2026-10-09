@@ -1265,6 +1265,171 @@
         }
       }
     },
+    "/api/documents/{doc_id}/references": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Add Reference",
+        "description": "Share another photo to match this one to (\"make it look like this\"). Send its id\nwith a chat message, or match it directly.",
+        "operationId": "addReference",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_addReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reference"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large"
+          },
+          "415": {
+            "description": "Not a photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/references/{ref_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Reference",
+        "description": "A shared reference photo, small.",
+        "operationId": "getReference",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "ref_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ref Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such reference"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/references/{ref_id}/match": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Match Reference",
+        "description": "Add a layer that matches the photo's color and tone to a shared reference, as one\nstep in the history.",
+        "operationId": "matchReference",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "ref_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ref Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or reference"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/style/usual-look": {
       "post": {
         "tags": [
@@ -1644,6 +1809,20 @@
         "title": "Blacks",
         "description": "Move the black point: negative makes blacks deeper, positive lifts them (matte look)."
       },
+      "Body_addReference": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_addReference"
+      },
       "Body_createDocument": {
         "properties": {
           "file": {
@@ -1822,6 +2001,13 @@
                 "type": "null"
               }
             ]
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "References"
           },
           "created_at": {
             "type": "string",
@@ -3237,6 +3423,9 @@
                   "$ref": "#/components/schemas/ToneCurve"
                 },
                 {
+                  "$ref": "#/components/schemas/MatchReference"
+                },
+                {
                   "$ref": "#/components/schemas/Remove"
                 },
                 {
@@ -3279,6 +3468,7 @@
                   "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
+                  "match_reference": "#/components/schemas/MatchReference",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
                   "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
@@ -3458,6 +3648,9 @@
                   "$ref": "#/components/schemas/ToneCurve"
                 },
                 {
+                  "$ref": "#/components/schemas/MatchReference"
+                },
+                {
                   "$ref": "#/components/schemas/Remove"
                 },
                 {
@@ -3500,6 +3693,7 @@
                   "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
+                  "match_reference": "#/components/schemas/MatchReference",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
                   "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
@@ -3622,6 +3816,70 @@
         ],
         "title": "ManualEdit"
       },
+      "MatchReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "match_reference",
+            "title": "Op",
+            "default": "match_reference"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Reference",
+            "description": "Id of the reference photo to match."
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How far to go toward the reference.",
+            "default": 100
+          },
+          "color": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Color",
+            "description": "How much of its color palette and cast.",
+            "default": 100
+          },
+          "tone": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Tone",
+            "description": "How much of its brightness and contrast.",
+            "default": 100
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReferenceStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded by the app."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reference"
+        ],
+        "title": "MatchReference",
+        "description": "Make the photo's color and tone look like a reference photo the person shared (\"make\nthis look like that one\"): its palette, color cast, brightness, and contrast. Not its\ncontent or framing. Lower color or tone to transfer only one of them."
+      },
       "NewRecipe": {
         "properties": {
           "name": {
@@ -3712,6 +3970,11 @@
           "framing": {
             "type": "boolean",
             "title": "Framing"
+          },
+          "addable": {
+            "type": "boolean",
+            "title": "Addable",
+            "default": true
           },
           "params": {
             "items": {
@@ -4016,6 +4279,70 @@
           "layers"
         ],
         "title": "Recipe"
+      },
+      "Reference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "The shared file's name, for display."
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ReferenceStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "stats"
+        ],
+        "title": "Reference"
+      },
+      "ReferenceStats": {
+        "properties": {
+          "lab_mean": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Lab Mean"
+          },
+          "lab_std": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Lab Std"
+          },
+          "tone": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 17,
+            "minItems": 17,
+            "title": "Tone",
+            "description": "Brightness (0..1) at evenly spaced quantiles, darkest to brightest."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lab_mean",
+          "lab_std",
+          "tone"
+        ],
+        "title": "ReferenceStats",
+        "description": "The color and tone of a reference photo, measured once when it is shared, so the\noperation renders anywhere (including on other photos, as part of a recipe)."
       },
       "Relight": {
         "properties": {
@@ -5353,6 +5680,16 @@
             "description": "Go ahead with the plan the agent proposed in its last reply.",
             "title": "Approve Plan",
             "type": "boolean"
+          },
+          "references": {
+            "default": [],
+            "description": "Ids of reference photos shared with this message.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "References",
+            "type": "array"
           }
         },
         "required": [

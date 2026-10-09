@@ -243,3 +243,30 @@ describe('ChatPanel feedback', () => {
     ])
   })
 })
+
+describe('ChatPanel reference photos', () => {
+  it('shares a reference photo with the next message', async () => {
+    stubApi({
+      'POST /api/documents/abc123abc123/references': () =>
+        Response.json(
+          {
+            id: 'r1',
+            filename: 'sunset.jpg',
+            stats: { lab_mean: [], lab_std: [], tone: [] },
+          },
+          { status: 201 },
+        ),
+    })
+    render(<Harness initial={makeDoc({ head: 'x' })} />)
+    await userEvent.upload(
+      screen.getByLabelText('Reference photo file'),
+      new File(['x'], 'sunset.jpg', { type: 'image/jpeg' }),
+    )
+    expect(await screen.findByText('sunset.jpg')).toBeVisible()
+    const socket = await sendMessage('make it look like this')
+    expect(socket.sent).toEqual([
+      { type: 'message', text: 'make it look like this', references: ['r1'] },
+    ])
+    expect(screen.queryByText('sunset.jpg')).not.toBeInTheDocument()
+  })
+})

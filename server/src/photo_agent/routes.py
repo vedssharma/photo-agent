@@ -31,6 +31,7 @@ from photo_agent import (
     portrait,
     projects,
     recipes,
+    references,
     safety,
     style,
     suggestions,
@@ -48,8 +49,8 @@ from photo_agent.agent import (
 from photo_agent.diagnostics import measure
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
-from photo_agent.layers import EditState, Layer
-from photo_agent.operations import MAX_OPTIONS, GenerativeBase
+from photo_agent.layers import EditState, Layer, new_layer_id
+from photo_agent.operations import MAX_OPTIONS, GenerativeBase, MatchReference
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
@@ -298,7 +299,13 @@ def edit_by_hand(
     verdict = screen.check_new(doc.state, edit.state)
     if not verdict.allowed:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, verdict.reason)
-    state = generative.stamp(edit.state, store.model_for)
+    try:
+        state = references.fill_stats(edit.state, store.folder(doc_id))
+    except references.ReferenceNotFoundError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "No such reference photo."
+        ) from None
+    state = generative.stamp(state, store.model_for)
     if doc.edit_by_hand(edit.label, state, edit.coalesce):
         store.save(doc)
         if taste is not None:
@@ -762,6 +769,72 @@ async def critique_photo(doc_id: str, store: Store, advisor: AdvisorDep) -> Docu
     return DocumentView.of(doc)
 
 
+@router.post(
+    "/{doc_id}/references",
+    operation_id="addReference",
+    status_code=status.HTTP_201_CREATED,
+    responses={413: {"description": "File too large"}, 415: {"description": "Not a photo"}},
+)
+async def add_reference(doc_id: str, file: UploadFile, store: Store) -> references.Reference:
+    """Share another photo to match this one to ("make it look like this"). Send its id
+    with a chat message, or match it directly."""
+    load(store, doc_id)
+    data = await _read_limited(file, MAX_UPLOAD_BYTES)
+    try:
+        return await asyncio.to_thread(
+            references.add, store.folder(doc_id), file.filename or "reference", data
+        )
+    except imaging.UnsupportedImageError as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from None
+
+
+@router.get(
+    "/{doc_id}/references/{ref_id}",
+    operation_id="getReference",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "No such reference"}},
+)
+def get_reference(doc_id: str, ref_id: str, store: Store) -> Response:
+    """A shared reference photo, small."""
+    load(store, doc_id)
+    try:
+        path = references.image_file(store.folder(doc_id), ref_id)
+    except references.ReferenceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such reference.") from None
+    return Response(
+        path.read_bytes(),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
+@router.post(
+    "/{doc_id}/references/{ref_id}/match",
+    operation_id="matchReference",
+    responses={404: {"description": "No such document or reference"}},
+)
+def match_reference(doc_id: str, ref_id: str, store: Store) -> DocumentView:
+    """Add a layer that matches the photo's color and tone to a shared reference, as one
+    step in the history."""
+    doc = load(store, doc_id)
+    try:
+        found = references.get(store.folder(doc_id), ref_id)
+    except references.ReferenceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such reference.") from None
+    name = f"Match {found.filename}"[:80]
+    layer = Layer(
+        id=new_layer_id(),
+        name=name,
+        operations=[MatchReference(reference=found.id, stats=found.stats)],
+    )
+    state = doc.state
+    state.layers.append(layer)
+    if doc.edit_by_hand(name, state):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
 @router.websocket("/{doc_id}/chat")
 async def chat(
     ws: WebSocket,
@@ -793,6 +866,8 @@ async def chat(
             incoming = await ws.receive_json()
             text = str(incoming.get("text", "")).strip() if isinstance(incoming, dict) else ""
             approve = isinstance(incoming, dict) and incoming.get("approve_plan") is True
+            shared = incoming.get("references") if isinstance(incoming, dict) else None
+            shared = [str(r) for r in shared][:4] if isinstance(shared, list) else []
             if not text:
                 await emit(AgentError(message="Type what you would like to change."))
                 continue
@@ -805,7 +880,7 @@ async def chat(
                 )
                 continue
             try:
-                await agent.run_turn(doc_id, text, emit, approve_plan=approve)
+                await agent.run_turn(doc_id, text, emit, approve_plan=approve, shared=shared)
             except WebSocketDisconnect:
                 raise
             except Exception as exc:  # Report, keep the socket open for the next message.

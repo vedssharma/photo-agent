@@ -84,6 +84,7 @@ export const SPECS = new Map<string, OperationSpec>(
         description: '',
         group: 'light',
         framing: false,
+        addable: true,
         params: [amount('stops', -5, 5, 0.05)],
       },
       {
@@ -92,6 +93,7 @@ export const SPECS = new Map<string, OperationSpec>(
         description: '',
         group: 'light',
         framing: false,
+        addable: true,
         params: [amount('amount')],
       },
       {
@@ -100,6 +102,7 @@ export const SPECS = new Map<string, OperationSpec>(
         description: '',
         group: 'color',
         framing: false,
+        addable: true,
         params: [amount('temperature'), amount('tint')],
       },
       {
@@ -108,6 +111,7 @@ export const SPECS = new Map<string, OperationSpec>(
         description: '',
         group: 'framing',
         framing: true,
+        addable: true,
         params: [
           { ...amount('left', 0, 1, 0.01) },
           { ...amount('top', 0, 1, 0.01) },

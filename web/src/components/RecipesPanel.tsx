@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
-import type { DocumentView } from '../api/documents'
+import { type DocumentView, PHOTO_TYPES } from '../api/documents'
+import { matchReference, uploadReference } from '../api/references'
 import {
   type Look,
   type Recipe,
@@ -115,6 +116,27 @@ export function RecipesPanel({ doc, onDocument, disabled = false }: Props) {
           </select>
         </label>
       )}
+      <label
+        className="look-picker"
+        title="Make this photo's colors and tone look like another photo's"
+      >
+        Match a photo{' '}
+        <input
+          type="file"
+          accept={PHOTO_TYPES}
+          disabled={locked}
+          aria-label="Photo to match"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file)
+              void run(async () => {
+                const ref = await uploadReference(doc.id, file)
+                onDocument(await matchReference(doc.id, ref.id))
+              })
+          }}
+        />
+      </label>
       {naming && (
         <form className="recipe-form" onSubmit={save}>
           <input

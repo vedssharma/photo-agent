@@ -22,7 +22,7 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import diagnostics, imaging, looks, safety, style, variants
+from photo_agent import diagnostics, imaging, looks, references, safety, style, variants
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Plan, Step
@@ -38,9 +38,11 @@ from photo_agent.operations import (
     Expand,
     Generate,
     GenerativeBase,
+    MatchReference,
     OpBase,
     Operation,
     OperationAdapter,
+    ReferenceStats,
     Relight,
     ReplaceBackground,
     Restyle,
@@ -153,6 +155,12 @@ propose_plan with the steps in order, marking each as adjust, ai (selections, re
 retouching), or generative, and stop: the person sees the plan and approves or changes it \
 before anything slow runs. Do not call it for quick slider edits or a single generative \
 edit the person asked for directly. Once a plan is approved, carry it out in full.
+- When the person shares a reference photo (you see it labeled with its id) and wants \
+theirs to look like it ("make this look like that", "same colors as this one"), add a \
+layer named for it and call match_reference with the reference's id: it transfers the \
+reference's color palette and its brightness and contrast. Lower color or tone to take \
+only one, and amount to go part of the way. Check the result: if skin or the subject \
+looks off, mask the layer or lower amount, and fix what it overshoots with other tools.
 - When the person's taste is known (from edits they kept, set by hand, or undid), it comes \
 with the request. Lean toward it for open-ended requests ("make it nice"); what they ask \
 for now always wins. When they ask for "my usual look" or "my style", call \
@@ -223,6 +231,9 @@ class ChatMessage(BaseModel):
     text: str
     approve_plan: bool = Field(
         False, description="Go ahead with the plan the agent proposed in its last reply."
+    )
+    references: list[str] = Field(
+        [], max_length=4, description="Ids of reference photos shared with this message."
     )
 
 
@@ -582,8 +593,11 @@ class Editor:
         render_state: Callable[[EditState], imaging.Array] | None = None,
         screen: safety.Screen | None = None,
         taste: style.Profile | None = None,
+        reference_stats: Callable[[str], ReferenceStats | None] | None = None,
     ) -> None:
         self.state = state.model_copy(deep=True)
+        self.reference_stats = reference_stats
+        """Looks up the measurements of a shared reference photo by id."""
         self.taste = taste
         """What is known of the person's taste, for "my usual look"."""
         self.default_layer_name = default_layer_name
@@ -651,7 +665,7 @@ class Editor:
             return handler(args)
         if name not in OPERATIONS_BY_NAME:
             raise ToolError(f"Unknown tool {name!r}.")
-        op = self._validate({**args, "op": name})
+        op = self._with_stats(self._validate({**args, "op": name}))
         if isinstance(op, GEOMETRY_TYPES):
             self.state.framing.append(op)  # type: ignore[arg-type]
             where = "the framing"
@@ -680,6 +694,14 @@ class Editor:
         if isinstance(op, GenerativeBase):
             text += self._generative_note(op)
         return text, OperationEvent(action="added", summary=summary)
+
+    def _with_stats(self, op: Operation) -> Operation:
+        if not isinstance(op, MatchReference) or op.stats is not None:
+            return op
+        stats = self.reference_stats(op.reference) if self.reference_stats else None
+        if stats is None:
+            raise ToolError(f"No reference photo with id {op.reference!r}.")
+        return op.model_copy(update={"stats": stats})
 
     def _generative_note(self, op: GenerativeBase) -> str:
         if self.model_for is None or self.model_for(task_for(op)) != "classical":
@@ -727,7 +749,9 @@ class Editor:
             raise ToolError("changes must be an object of parameter names to values.")
         current = ops[index]
         changes = {k: v for k, v in changes.items() if k not in ("id", "op")}
-        op = self._validate({**current.model_dump(), **changes})
+        if "reference" in changes:
+            changes["stats"] = None
+        op = self._with_stats(self._validate({**current.model_dump(), **changes}))
         ops[index] = op
         summary = op.summary()
         return f"Updated operation {op.id}: {summary}.", OperationEvent(
@@ -940,7 +964,8 @@ def describe_layer(layer: Layer) -> str:
 
 
 def _op_json(op: OpBase) -> str:
-    return json.dumps(op.model_dump(), separators=(",", ":"))
+    # Reference statistics are numbers for the renderer, not for Claude.
+    return json.dumps(op.model_dump(exclude={"stats"}), separators=(",", ":"))
 
 
 def describe_state(state: EditState) -> str:
@@ -997,6 +1022,8 @@ def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam],
         text = entry.text
         if entry.plan is not None:
             text = f"{text}\n\nProposed plan:\n{entry.plan.describe()}"
+        if entry.references:
+            text = f"{text}\n(Shared reference photos: {', '.join(entry.references)}.)"
         if entry.critique is not None:
             text = f"(Feedback on the photo.)\n{entry.critique.describe()}"
         if entry.role == "user" and pending_events:
@@ -1033,16 +1060,36 @@ class AgentService:
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def run_turn(
-        self, doc_id: str, request: str, emit: Emit, approve_plan: bool = False
+        self,
+        doc_id: str,
+        request: str,
+        emit: Emit,
+        approve_plan: bool = False,
+        shared: Sequence[str] = (),
     ) -> Document:
         """Handle one chat message: let Claude edit, then record the turn and its reply.
 
         With `approve_plan`, the person went ahead with the plan in the agent's last reply.
+        `shared` are ids of reference photos sent with the message.
         """
         lock = self._locks.setdefault(doc_id, asyncio.Lock())
         async with lock:
             doc = self.store.get(doc_id)
             plan = doc.pending_plan if approve_plan else None
+            folder = self.store.folder(doc_id)
+            found: list[references.Reference] = []
+            for ref_id in dict.fromkeys(shared):
+                try:
+                    found.append(references.get(folder, ref_id))
+                except references.ReferenceNotFoundError:
+                    continue
+
+            def stats_of(ref_id: str) -> ReferenceStats | None:
+                try:
+                    return references.get(folder, ref_id).stats
+                except references.ReferenceNotFoundError:
+                    return None
+
             await emit(TurnStarted())
             loaded = self.store.image(doc_id)
             profile = self.taste.load() if self.taste else None
@@ -1053,15 +1100,26 @@ class AgentService:
                 model_for=self.store.model_for,
                 screen=self.screen,
                 taste=profile,
+                reference_stats=stats_of,
                 render_state=lambda state: self.renders.get_or_render(
                     doc_id, loaded.proxy, state, loaded.proxy_context
                 ),
             )
             editor.plan_approved = plan is not None
             asked = request if plan is None else f"Approved plan:\n{plan.describe()}\n\n{request}"
-            reply = await self._converse(doc, asked, editor, emit)
+            shown = [
+                block
+                for ref in found
+                for block in (
+                    {"type": "text", "text": f"Reference photo {ref.id} ({ref.filename}):"},
+                    image_block(references.pixels(folder, ref.id)),
+                )
+            ]
+            reply = await self._converse(doc, asked, editor, emit, shown)
 
-            doc.chat.append(ChatEntry(role="user", text=request))
+            doc.chat.append(
+                ChatEntry(role="user", text=request, references=[ref.id for ref in found])
+            )
             step_id = None
             if editor.state != doc.state:
                 step = Step(
@@ -1105,7 +1163,14 @@ class AgentService:
             image_block(rendered),
         ]
 
-    async def _converse(self, doc: Document, request: str, editor: Editor, emit: Emit) -> str:
+    async def _converse(
+        self,
+        doc: Document,
+        request: str,
+        editor: Editor,
+        emit: Emit,
+        shown: Sequence[Any] = (),
+    ) -> str:
         history, events = history_messages(doc.chat)
         preview = await self._render(doc, editor.state)
         baseline = diagnostics.measure(await self._render(doc, EditState()))
@@ -1120,6 +1185,7 @@ class AgentService:
                 "role": "user",
                 "content": [
                     image_block(preview),
+                    *shown,
                     {
                         "type": "text",
                         "text": f"{describe_state(editor.state)}\n\n{intro}Request: {request}",

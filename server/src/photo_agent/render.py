@@ -27,7 +27,7 @@ import numpy.typing as npt
 from photo_agent import operations as ops
 from photo_agent.compositing import harmonize
 from photo_agent.generative import cache_identity, job_params, task_for
-from photo_agent.imaging import Array
+from photo_agent.imaging import Array, resize_long_edge
 from photo_agent.layers import BlendMode, EditState, Layer
 from photo_agent.masks import Mask, SemanticMask, render_mask
 from photo_agent.vision.classical import guided_filter
@@ -807,6 +807,49 @@ def hue_tint(hue: float) -> npt.NDArray[np.float32]:
     return np.asarray(rgb - float(rgb @ LUMA), np.float32)
 
 
+STATS_LONG_EDGE = 256
+"""Photos are measured for reference matching at this size: plenty for averages."""
+MAX_STD_RATIO = 2.0
+"""Reference matching never stretches or squeezes a color channel's spread by more than
+this, so a flat reference cannot erase color and a vivid one cannot make it garish."""
+
+
+def reference_stats(pixels: Array) -> ops.ReferenceStats:
+    """The color and tone of a photo, as reference matching compares them."""
+    small = resize_long_edge(np.clip(pixels, 0.0, 1.0), STATS_LONG_EDGE)
+    lab = cv2.cvtColor(small.astype(np.float32), cv2.COLOR_RGB2LAB).reshape(-1, 3)
+    quantiles = np.linspace(0.0, 1.0, ops.TONE_POINTS)
+    tone = np.quantile(lab[:, 0] / 100.0, quantiles)
+    return ops.ReferenceStats(
+        lab_mean=[round(float(v), 4) for v in lab.mean(axis=0)],
+        lab_std=[round(float(v), 4) for v in lab.std(axis=0)],
+        tone=[round(float(v), 5) for v in np.maximum.accumulate(tone)],
+    )
+
+
+def _match_reference(x: Array, op: ops.MatchReference, ctx: RenderContext) -> Array:
+    target = op.stats
+    if target is None or op.amount == 0:
+        return x
+    source = reference_stats(x)
+    lab = cv2.cvtColor(np.clip(x, 0.0, 1.0).astype(np.float32), cv2.COLOR_RGB2LAB)
+    out = lab.copy()
+    if op.tone > 0:
+        # Map each brightness to the reference's at the same quantile.
+        src = np.asarray(source.tone, np.float32) * 100
+        src = src + np.arange(len(src), dtype=np.float32) * 1e-4  # strictly increasing
+        mapped = np.interp(lab[..., 0], src, np.asarray(target.tone, np.float32) * 100)
+        out[..., 0] = lab[..., 0] + (mapped - lab[..., 0]) * (op.tone / 100)
+    if op.color > 0:
+        for c in (1, 2):
+            ratio = target.lab_std[c] / max(source.lab_std[c], 1e-3)
+            ratio = min(MAX_STD_RATIO, max(1 / MAX_STD_RATIO, ratio))
+            moved = (lab[..., c] - source.lab_mean[c]) * ratio + target.lab_mean[c]
+            out[..., c] = lab[..., c] + (moved - lab[..., c]) * (op.color / 100)
+    matched = cv2.cvtColor(out, cv2.COLOR_LAB2RGB)
+    return cast(Array, x + (matched - x) * (op.amount / 100))
+
+
 GRADE_STRENGTH = 0.22
 """How far a full-strength grade moves a tone toward its hue."""
 
@@ -966,6 +1009,7 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Colorize: lambda x, op, ctx: x,
     ops.Restyle: lambda x, op, ctx: x,
     ops.ColorGrade: _color_grade,
+    ops.MatchReference: _match_reference,
     # Expanding needs the framing before it, so `apply_operations` handles it.
     ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,

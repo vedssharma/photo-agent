@@ -102,6 +102,8 @@ class ChatEntry(BaseModel):
     """For assistant replies that propose a plan instead of carrying it out yet."""
     critique: Critique | None = None
     """For assistant replies that critique the photo, with a fix for each point."""
+    references: list[str] = Field(default_factory=list)
+    """For user messages, ids of reference photos shared with it."""
     created_at: datetime = Field(default_factory=now)
 
     @model_validator(mode="before")

@@ -1103,3 +1103,31 @@ button.link {
   text-decoration: underline;
   cursor: pointer;
 }
+
+.bubble-refs {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.bubble-refs img,
+.attached img {
+  height: 48px;
+  border-radius: 4px;
+}
+
+.attached {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.attached li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}

@@ -516,6 +516,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Reference
+         * @description Share another photo to match this one to ("make it look like this"). Send its id
+         *     with a chat message, or match it directly.
+         */
+        post: operations["addReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/references/{ref_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reference
+         * @description A shared reference photo, small.
+         */
+        get: operations["getReference"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/references/{ref_id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match Reference
+         * @description Add a layer that matches the photo's color and tone to a shared reference, as one
+         *     step in the history.
+         */
+        post: operations["matchReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/style/usual-look": {
         parameters: {
             query?: never;
@@ -746,6 +808,11 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** Body_addReference */
+        Body_addReference: {
+            /** File */
+            file: string;
+        };
         /** Body_createDocument */
         Body_createDocument: {
             /** File */
@@ -823,6 +890,8 @@ export interface components {
             step_id?: string | null;
             plan?: components["schemas"]["Plan"] | null;
             critique?: components["schemas"]["Critique"] | null;
+            /** References */
+            references?: string[];
             /**
              * Created At
              * Format: date-time
@@ -1565,7 +1634,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["MatchReference"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
         };
         /**
          * LensCorrection
@@ -1627,7 +1696,7 @@ export interface components {
             /** Description */
             description: string;
             /** Operations */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["MatchReference"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
         };
         /** LookStrength */
         LookStrength: {
@@ -1687,6 +1756,49 @@ export interface components {
              */
             coalesce?: string | null;
         };
+        /**
+         * MatchReference
+         * @description Make the photo's color and tone look like a reference photo the person shared ("make
+         *     this look like that one"): its palette, color cast, brightness, and contrast. Not its
+         *     content or framing. Lower color or tone to transfer only one of them.
+         */
+        MatchReference: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "match_reference";
+            /**
+             * Reference
+             * @description Id of the reference photo to match.
+             */
+            reference: string;
+            /**
+             * Amount
+             * @description How far to go toward the reference.
+             * @default 100
+             */
+            amount: number;
+            /**
+             * Color
+             * @description How much of its color palette and cast.
+             * @default 100
+             */
+            color: number;
+            /**
+             * Tone
+             * @description How much of its brightness and contrast.
+             * @default 100
+             */
+            tone: number;
+            /** @description Recorded by the app. */
+            stats?: components["schemas"]["ReferenceStats"] | null;
+        };
         /** NewRecipe */
         NewRecipe: {
             /** Name */
@@ -1740,6 +1852,11 @@ export interface components {
             group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch" | "generative";
             /** Framing */
             framing: boolean;
+            /**
+             * Addable
+             * @default true
+             */
+            addable: boolean;
             /** Params */
             params: components["schemas"]["ParamSpec"][];
         };
@@ -1887,6 +2004,33 @@ export interface components {
             created_at: string;
             /** Layers */
             layers: components["schemas"]["Layer"][];
+        };
+        /** Reference */
+        Reference: {
+            /** Id */
+            id: string;
+            /**
+             * Filename
+             * @description The shared file's name, for display.
+             */
+            filename: string;
+            stats: components["schemas"]["ReferenceStats"];
+        };
+        /**
+         * ReferenceStats
+         * @description The color and tone of a reference photo, measured once when it is shared, so the
+         *     operation renders anywhere (including on other photos, as part of a recipe).
+         */
+        ReferenceStats: {
+            /** Lab Mean */
+            lab_mean: number[];
+            /** Lab Std */
+            lab_std: number[];
+            /**
+             * Tone
+             * @description Brightness (0..1) at evenly spaced quantiles, darkest to brightest.
+             */
+            tone: number[];
         };
         /**
          * Relight
@@ -2691,6 +2835,12 @@ export interface components {
              * @default false
              */
             approve_plan: boolean;
+            /**
+             * References
+             * @description Ids of reference photos shared with this message.
+             * @default []
+             */
+            references: string[];
         };
     };
     responses: never;
@@ -3600,6 +3750,133 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    addReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_addReference"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reference"];
+                };
+            };
+            /** @description File too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a photo */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                ref_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such reference */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    matchReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                ref_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or reference */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

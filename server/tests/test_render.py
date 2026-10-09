@@ -253,6 +253,17 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
     "smooth_skin": [ops.SmoothSkin(amount=70, texture=40)],
     "heal_blemishes": [ops.HealBlemishes(amount=80, size=60)],
     "tone_curve": [ops.ToneCurve(points=[(0, 0.05), (0.3, 0.22), (0.7, 0.8), (1, 0.97)])],
+    "match_reference": [
+        ops.MatchReference(
+            reference="sunset",
+            color=80,
+            stats=ops.ReferenceStats(
+                lab_mean=[55, 18, 35],
+                lab_std=[22, 9, 14],
+                tone=[0.03 + 0.9 * (i / 16) ** 1.3 for i in range(17)],
+            ),
+        )
+    ],
 }
 
 
@@ -284,3 +295,37 @@ def test_golden_image(name: str, landscape: imaging.Array) -> None:
     # Tolerate tiny differences between OpenCV/NumPy builds, not visible changes.
     assert float(diff.mean()) < 0.5, f"{name} looks different (mean diff {diff.mean():.2f})"
     assert int(diff.max()) <= 8
+
+
+def test_match_reference_moves_color_and_tone_toward_the_reference(
+    landscape: imaging.Array,
+) -> None:
+    from photo_agent.render import reference_stats
+
+    itself = ops.MatchReference(reference="r", stats=reference_stats(landscape))
+    same = render(landscape, [itself], CTX)
+    assert np.abs(same - landscape).mean() < 0.01
+
+    warm = np.zeros((40, 60, 3), np.float32)
+    warm[..., 0] = np.linspace(0.3, 1.0, 60)
+    warm[..., 1] = np.linspace(0.2, 0.75, 60)
+    warm[..., 2] = np.linspace(0.05, 0.4, 60)
+    target = reference_stats(warm)
+    out = render(landscape, [ops.MatchReference(reference="r", stats=target)], CTX)
+    after = reference_stats(out)
+    before = reference_stats(landscape)
+    assert abs(after.lab_mean[2] - target.lab_mean[2]) < abs(
+        before.lab_mean[2] - target.lab_mean[2]
+    )
+    assert abs(after.lab_mean[0] - target.lab_mean[0]) < abs(
+        before.lab_mean[0] - target.lab_mean[0]
+    )
+    # Tone only leaves the color alone; amount 0 changes nothing.
+    tone_only = render(landscape, [ops.MatchReference(reference="r", color=0, stats=target)], CTX)
+    assert abs(reference_stats(tone_only).lab_mean[2] - before.lab_mean[2]) < 3
+    none = render(landscape, [ops.MatchReference(reference="r", amount=0, stats=target)], CTX)
+    np.testing.assert_allclose(none, landscape, atol=1e-6)
+    # Without measurements (not yet filled in) it is a no-op rather than an error.
+    np.testing.assert_allclose(
+        render(landscape, [ops.MatchReference(reference="r")], CTX), landscape, atol=1e-6
+    )
