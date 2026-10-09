@@ -700,6 +700,7 @@ select {
 }
 
 .guide line,
+.guide rect,
 .guide ellipse {
   fill: none;
   stroke: white;
@@ -717,6 +718,18 @@ select {
   stroke: white;
   stroke-width: 1.5px;
   vector-effect: non-scaling-stroke;
+}
+
+.guide .handle.include {
+  fill: #3ecf8e;
+}
+
+.guide .handle.exclude {
+  fill: #ff5a5a;
+}
+
+.mask-overlay.semantic {
+  cursor: crosshair;
 }
 
 .stroke-preview {
@@ -844,4 +857,12 @@ select {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.badge.working {
+  top: auto;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }

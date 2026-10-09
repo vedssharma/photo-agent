@@ -146,8 +146,11 @@ def encode_jpeg(pixels: Array, quality: int = 90, exif: bytes | None = None) -> 
     return buf.getvalue()
 
 
-def encode_png(pixels: Array, exif: bytes | None = None) -> bytes:
+def encode_png(pixels: Array, exif: bytes | None = None, alpha: Array | None = None) -> bytes:
+    """Encode RGB pixels as PNG, with transparency when `alpha` (0..1) is given."""
     img = Image.fromarray(to_uint8(pixels), mode="RGB")
+    if alpha is not None:
+        img.putalpha(Image.fromarray(to_uint8(alpha), mode="L"))
     buf = io.BytesIO()
     kwargs: dict[str, object] = {"icc_profile": SRGB_ICC}
     if exif:

@@ -4,6 +4,7 @@ import type { components } from './schema'
 export type DocumentView = components['schemas']['DocumentView']
 export type EditState = components['schemas']['EditState']
 export type Layer = components['schemas']['Layer']
+export type Cutout = components['schemas']['Cutout']
 export type BlendMode = Layer['blend_mode']
 export type Mask = NonNullable<Layer['mask']>
 export type MaskKind = Mask['kind']
@@ -12,6 +13,7 @@ export type AdjustmentOperation = Layer['operations'][number]
 export type Operation = FramingOperation | AdjustmentOperation
 export type StepView = DocumentView['history'][number]
 export type ManualEdit = components['schemas']['ManualEdit']
+export type JobStatus = components['schemas']['JobStatus']
 
 /** Photo types the backend can decode. HEIC often has no MIME type in browsers. */
 export const PHOTO_TYPES =
@@ -159,6 +161,16 @@ export function previewUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/preview?revision=${doc.revision}`
 }
 
+/** AI model jobs running (or just finished) for a document. */
+export async function fetchJobs(docId: string): Promise<JobStatus[]> {
+  const { data, error, response } = await api.GET(
+    '/api/documents/{doc_id}/jobs',
+    { params: { path: { doc_id: docId } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
 export async function undo(docId: string): Promise<DocumentView> {
   const { data, error, response } = await api.POST(
     '/api/documents/{doc_id}/undo',
@@ -173,6 +185,30 @@ export async function undo(docId: string): Promise<DocumentView> {
 export async function redo(docId: string): Promise<DocumentView> {
   const { data, error, response } = await api.POST(
     '/api/documents/{doc_id}/redo',
+    {
+      params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Add the portrait retouch layers (skin, eyes, teeth) as one step in the history. */
+export async function retouchPortrait(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/retouch',
+    {
+      params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Level the photo and square up converging verticals, as one step in the history. */
+export async function autoStraighten(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/straighten',
     {
       params: { path: { doc_id: docId } },
     },

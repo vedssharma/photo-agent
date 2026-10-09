@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     Form,
     HTTPException,
@@ -21,14 +22,16 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import imaging, projects, recipes
+from photo_agent import geometry, imaging, portrait, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.layers import EditState, Layer
-from photo_agent.render import RenderCache, render_layer_mask
+from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
+from photo_agent.vision.backends import BackendMode, WorkerConfig
+from photo_agent.vision.worker import JobStatus, Mode, ModelWorker
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 PREVIEW_QUALITY = 88
@@ -41,12 +44,29 @@ recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
 
 @lru_cache
-def _store_for(data_dir: Path) -> DocumentStore:
-    return DocumentStore(data_dir)
+def _worker_for(config: WorkerConfig, mode: Mode) -> ModelWorker:
+    return ModelWorker(config, mode)
+
+
+def get_worker(settings: Annotated[Settings, Depends(get_settings)]) -> ModelWorker:
+    config = WorkerConfig(
+        backends=settings.model_backends,
+        device=settings.model_device,
+        cache_dir=settings.model_cache_dir,
+    )
+    return _worker_for(config, settings.model_worker)
+
+
+Worker = Annotated[ModelWorker, Depends(get_worker)]
+
+
+@lru_cache
+def _store_for(data_dir: Path, worker: ModelWorker, backends: BackendMode) -> DocumentStore:
+    return DocumentStore(data_dir, worker=worker, backends=backends)
 
 
 def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentStore:
-    return _store_for(settings.data_dir)
+    return _store_for(settings.data_dir, get_worker(settings), settings.model_backends)
 
 
 Store = Annotated[DocumentStore, Depends(get_store)]
@@ -216,6 +236,7 @@ def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
     doc = load(store, doc_id)
     if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
         store.save(doc)
+        warm_preview(store, doc)
     return DocumentView.of(doc)
 
 
@@ -233,6 +254,52 @@ def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> D
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None
     if doc.edit_by_hand(f"Apply recipe “{recipe.name}”", recipes.apply(recipe, doc.state)):
         store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+@router.post("/{doc_id}/retouch", operation_id="retouchPortrait")
+def retouch_portrait(
+    doc_id: str,
+    store: Store,
+    options: Annotated[portrait.Retouch | None, Body()] = None,
+) -> DocumentView:
+    """Add portrait retouch layers (skin, eyes, teeth) on top, as one step in the history;
+    without options, the subtle defaults."""
+    doc = load(store, doc_id)
+    state = doc.state
+    state.layers.extend(portrait.retouch_layers(options or portrait.Retouch()))
+    if doc.edit_by_hand("Retouch portrait", state):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+@router.post("/{doc_id}/straighten", operation_id="autoStraighten")
+def auto_straighten(
+    doc_id: str,
+    store: Store,
+    options: Annotated[geometry.AutoStraighten | None, Body()] = None,
+) -> DocumentView:
+    """Level the photo and square up converging verticals, measured from its straight
+    lines, as one step in the history. 422 when it finds nothing to go by."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    state = doc.state
+    found = geometry.auto_level(
+        state.framing,
+        lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
+        options,
+    )
+    if not found.describe():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "No clear horizon or verticals to go by, or the photo is already straight.",
+        )
+    state.framing = found.framing  # type: ignore[assignment]
+    if doc.edit_by_hand("Auto straighten", state):
+        store.save(doc)
+        warm_preview(store, doc)
     return DocumentView.of(doc)
 
 
@@ -356,9 +423,24 @@ def layer_mask(doc_id: str, layer_id: str, store: Store) -> Response:
     )
 
 
+@router.get("/{doc_id}/jobs", operation_id="listJobs")
+def list_jobs(doc_id: str, store: Store, worker: Worker) -> list[JobStatus]:
+    """AI model jobs running (or just finished) for this document, with their progress.
+    The web app polls this while it waits on a change."""
+    load(store, doc_id)
+    return worker.jobs(doc_id)
+
+
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
     loaded = store.image(doc.id)
     return previews.get_or_render(doc.id, loaded.proxy, doc.state, loaded.proxy_context)
+
+
+def warm_preview(store: DocumentStore, doc: Document) -> None:
+    """Render the new state before answering, so any model jobs it needs (finding the sky,
+    say) run while the change is in flight and show their progress, and the preview the
+    browser asks for next is already cached."""
+    render_preview(store, doc)
 
 
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:

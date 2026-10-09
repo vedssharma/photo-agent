@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from './api/client'
 import {
   type DocumentView,
+  autoStraighten,
   beforeUrl,
   downloadProject,
   fetchDocument,
@@ -11,6 +12,7 @@ import {
   openProjectFile,
   previewUrl,
   restoreProject,
+  retouchPortrait,
   saveFile,
   uploadDocument,
 } from './api/documents'
@@ -23,11 +25,17 @@ import { LivePreview } from './components/LivePreview'
 import { MaskOverlay } from './components/MaskOverlay'
 import { PhotoCanvas } from './components/PhotoCanvas'
 import { type SocketFactory, useChat } from './hooks/useChat'
+import { jobText, useJobs } from './hooks/useJobs'
 import { useManualEdit } from './hooks/useManualEdit'
 import { useOperationSpecs } from './hooks/useOperationSpecs'
-import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
+import {
+  DEFAULT_MASK_TOOL,
+  EMPTY_OBJECT,
+  type MaskTool,
+  isDrawn,
+} from './lib/masks'
 import { liveTarget } from './lib/livePreview'
-import { type Preview, updateLayer } from './lib/state'
+import { CUTOUT, type Preview, setCutout, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
 import { RecentProjects } from './components/RecentProjects'
 import { RecipesPanel } from './components/RecipesPanel'
@@ -80,15 +88,16 @@ function Editor({
 }) {
   const chat = useChat(doc.id, onDocument, createSocket)
   const [exporting, setExporting] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  useAutosave(doc, projectStore, setSaveError)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [acting, setActing] = useState(false)
+  useAutosave(doc, projectStore, setActionError)
 
   async function saveProject() {
-    setSaveError(null)
+    setActionError(null)
     try {
       saveFile(await downloadProject(doc))
     } catch (err) {
-      setSaveError(`Could not save the project: ${(err as Error).message}`)
+      setActionError(`Could not save the project: ${(err as Error).message}`)
     }
   }
 
@@ -96,10 +105,46 @@ function Editor({
   const [maskTool, setMaskTool] = useState<MaskTool>(DEFAULT_MASK_TOOL)
   const manual = useManualEdit(doc, onDocument)
   const specs = useOperationSpecs()
-  const locked = chat.busy
+  const locked = chat.busy || acting
+  const job = useJobs(doc.id, chat.busy || manual.working || acting)
+
+  /** One-click edits the server works out, such as a retouch. */
+  async function act(
+    what: string,
+    run: (docId: string) => Promise<DocumentView>,
+  ) {
+    setActing(true)
+    setActionError(null)
+    try {
+      onDocument(await run(doc.id))
+    } catch (err) {
+      setActionError(`Could not ${what}: ${(err as Error).message}`)
+    } finally {
+      setActing(false)
+    }
+  }
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
-  const mask = layer?.mask ?? null
-  const showOverlay = layer && mask && (isDrawn(mask.kind) || maskTool.show)
+  const cutout = doc.state.cutout ?? null
+  // What the mask tools work on: the selected layer's mask, or the cutout's.
+  const target =
+    selectedLayer === CUTOUT && cutout
+      ? { id: CUTOUT, name: 'the cutout', mask: cutout.mask ?? null }
+      : layer && {
+          id: layer.id,
+          name: `“${layer.name}”`,
+          mask: layer.mask ?? null,
+        }
+  // Picking an object starts from an empty selection that the first click fills in.
+  const picking =
+    maskTool.picking &&
+    !(target?.mask?.kind === 'semantic' && target.mask.target === 'object')
+  const mask = picking ? EMPTY_OBJECT : (target?.mask ?? null)
+  const showOverlay =
+    target && mask && (isDrawn(mask, maskTool) || maskTool.show)
+  const select = (layerId: string | null) => {
+    setSelectedLayer(layerId)
+    setMaskTool((tool) => ({ ...tool, picking: false, refining: false }))
+  }
   // A slider being dragged, shown instantly until the server's render of it arrives.
   const [preview, setPreview] = useState<
     (Preview & { revision: string }) | null
@@ -116,11 +161,13 @@ function Editor({
           onEdit={manual.edit}
           disabled={locked}
           selected={selectedLayer}
-          onSelect={setSelectedLayer}
+          onSelect={select}
           maskTool={maskTool}
           onMaskTool={setMaskTool}
           specs={specs}
           onPreview={(p) => setPreview(p && { ...p, revision: doc.revision })}
+          onRetouch={() => void act('retouch', retouchPortrait)}
+          onStraighten={() => void act('straighten', autoStraighten)}
         />
         <RecipesPanel
           doc={doc}
@@ -140,9 +187,9 @@ function Editor({
             onDocument={onDocument}
             disabled={chat.busy || manual.working}
           />
-          {(manual.error ?? saveError) && (
+          {(manual.error ?? actionError) && (
             <span className="error" role="alert">
-              {manual.error ?? saveError}
+              {manual.error ?? actionError}
             </span>
           )}
           <span className="spacer" />
@@ -167,7 +214,8 @@ function Editor({
           src={previewUrl(doc)}
           beforeSrc={beforeUrl(doc)}
           alt={doc.filename}
-          busy={chat.busy}
+          busy={chat.busy || job !== null}
+          status={job && jobText(job)}
           overlay={
             showOverlay || live
               ? (frame) => (
@@ -186,21 +234,24 @@ function Editor({
                     )}
                     {showOverlay && (
                       <MaskOverlay
-                        key={`${layer.id}:${doc.revision}`}
+                        key={`${target.id}:${doc.revision}`}
                         mask={mask}
                         width={frame.width}
                         height={frame.height}
                         tool={maskTool}
                         maskSrc={
                           maskTool.show
-                            ? layerMaskUrl(doc, layer.id)
+                            ? layerMaskUrl(doc, target.id)
                             : undefined
                         }
                         onChange={(next, label) =>
                           manual.edit(
-                            `${label} on “${layer.name}”`,
-                            (s) => updateLayer(s, layer.id, { mask: next }),
-                            `layer:${layer.id}:mask:draw`,
+                            `${label} on ${target.name}`,
+                            (s) =>
+                              target.id === CUTOUT
+                                ? setCutout(s, (c) => ({ ...c, mask: next }))
+                                : updateLayer(s, target.id, { mask: next }),
+                            `layer:${target.id}:mask:draw`,
                           )
                         }
                       />

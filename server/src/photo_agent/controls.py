@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from photo_agent.operations import GEOMETRY_TYPES, OPERATIONS_BY_NAME, OpBase
 
-Group = Literal["light", "color", "detail", "framing", "finishing"]
+Group = Literal["light", "color", "detail", "framing", "finishing", "retouch"]
 
 GROUPS: dict[str, Group] = {
     "exposure": "light",
@@ -33,9 +33,14 @@ GROUPS: dict[str, Group] = {
     "rotate": "framing",
     "straighten": "framing",
     "flip": "framing",
+    "perspective": "framing",
+    "lens_correction": "framing",
     "vignette": "finishing",
     "grain": "finishing",
     "tone_curve": "finishing",
+    "remove": "retouch",
+    "smooth_skin": "retouch",
+    "heal_blemishes": "retouch",
 }
 
 

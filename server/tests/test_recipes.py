@@ -4,7 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from photo_agent.layers import EditState, Layer
-from photo_agent.masks import BrushMask, BrushStroke, LuminosityMask
+from photo_agent.masks import BrushMask, BrushStroke, LuminosityMask, SemanticMask
 from photo_agent.operations import Contrast, Crop, Exposure
 from photo_agent.recipes import Recipe, apply, portable
 
@@ -32,6 +32,16 @@ def test_portable_drops_brush_masks_only() -> None:
     assert kept[0].operations == brushed.operations
     assert isinstance(kept[1].mask, LuminosityMask)
     assert brushed.mask is not None  # The originals are untouched.
+
+
+def test_portable_keeps_ai_selections_but_not_their_touch_ups() -> None:
+    stroke = BrushStroke(points=[(0.5, 0.5)], size=0.1)
+    sky = Layer(id="La", name="Sky", mask=SemanticMask(target="sky", strokes=[stroke]))
+    dog = Layer(id="Lb", name="Dog", mask=SemanticMask(target="object", box=[0, 0, 1, 1]))
+    kept = portable([sky, dog])
+    assert kept[0].mask == SemanticMask(target="sky")
+    assert kept[1].mask is None
+    assert sky.mask.strokes == [stroke]  # type: ignore[union-attr]
 
 
 def test_apply_adds_layers_on_top_with_fresh_ids() -> None:

@@ -1,8 +1,10 @@
 """Edit state: the framing of the photo plus a stack of adjustment layers.
 
-Framing (crop, rotation, flips) applies first, to the whole photo. Then each visible layer,
+Framing (crop, rotation, flips) applies first, to the whole photo. Then removal layers (which
+fill in what their mask selects) clean up the photo, and each visible adjustment layer,
 bottom to top, applies its operations to the result so far and is blended back in by its
-blend mode, opacity, and mask. That lets each change stay separate: it can be hidden, faded, or
+blend mode, opacity, and mask. Last, a cutout can replace the background with transparency
+or a color. That lets each change stay separate: it can be hidden, faded, or
 removed without touching the others.
 """
 
@@ -13,15 +15,16 @@ import uuid
 from collections.abc import Iterator, Sequence
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from photo_agent.masks import Mask
+from photo_agent.masks import Mask, SemanticMask
 from photo_agent.operations import (
     GEOMETRY_TYPES,
     AdjustmentOperation,
     FramingOperation,
     OpBase,
     Operation,
+    Remove,
 )
 
 BlendMode = Literal["normal", "multiply", "screen", "overlay", "soft_light", "color", "luminosity"]
@@ -52,6 +55,36 @@ class Layer(BaseModel):
     )
     operations: list[AdjustmentOperation] = Field([])
 
+    @model_validator(mode="after")
+    def _removal_stands_alone(self) -> Layer:
+        if self.is_removal and len(self.operations) > 1:
+            raise ValueError("a remove operation must be the only operation in its layer")
+        return self
+
+    @property
+    def is_removal(self) -> bool:
+        """Removes what its mask selects. Removal layers render before all others."""
+        return any(isinstance(op, Remove) for op in self.operations)
+
+
+def _subject() -> Mask:
+    return SemanticMask(target="subject")
+
+
+class Cutout(BaseModel):
+    """Keeps only what the mask selects (the main subject unless told otherwise) and
+    replaces everything else with transparency or a solid color."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    visible: bool = True
+    mask: Mask = Field(default_factory=_subject, description="What to keep.")
+    background: str | None = Field(
+        None,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description='Null for a transparent background (PNG export), or a color like "#ffffff".',
+    )
+
 
 class EditState(BaseModel):
     """Everything needed to render the photo from the original."""
@@ -62,6 +95,8 @@ class EditState(BaseModel):
     """Crop, rotation, and flips, applied in order before any layer."""
     layers: list[Layer] = Field([])
     """Adjustment layers, bottom first."""
+    cutout: Cutout | None = None
+    """Background removal, applied last, after every layer."""
 
     @classmethod
     def from_operations(cls, operations: Sequence[Operation], name: str) -> EditState:
@@ -91,4 +126,4 @@ class EditState(BaseModel):
 
     @property
     def is_empty(self) -> bool:
-        return not self.framing and not self.layers
+        return not self.framing and not self.layers and self.cutout is None

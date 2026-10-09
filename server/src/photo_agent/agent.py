@@ -23,17 +23,20 @@ from anthropic.types.beta import (
 from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging
+from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
-from photo_agent.layers import BLEND_MODE_HELP, EditState, Layer, new_layer_id
-from photo_agent.masks import describe_mask
+from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
+from photo_agent.masks import SemanticMask, describe_mask
 from photo_agent.operations import (
     GEOMETRY_TYPES,
     OPERATIONS_BY_NAME,
     OpBase,
     Operation,
     OperationAdapter,
+    Remove,
 )
-from photo_agent.render import RenderCache
+from photo_agent.portrait import Retouch, retouch_layers
+from photo_agent.render import RenderCache, render
 from photo_agent.store import DocumentStore
 
 MAX_MODEL_CALLS = 8
@@ -59,6 +62,29 @@ or foregrounds, a radial gradient for a subject or a spotlight (invert it to wor
 surroundings), or a luminosity range to target highlights or shadows. Positions are \
 fractions of the framed photo. Brush masks are painted by the person; keep them unless \
 asked to change them.
+- A semantic mask selects things by what they are, found by an AI model: the sky, the \
+main subject, people, or parts of faces (skin, eyes, lips, teeth, hair). Prefer it over \
+gradients whenever the request names a thing ("brighten just the subject", "make the sky \
+more dramatic"); invert it to work on everything else (for example, the background). To \
+pick out one particular thing ("the person on the left", "the red car"), use target \
+object with a box around it, in fractions of the photo as you see it, a point on it when \
+the box holds other things too, and a short description. The render after your edits \
+shows what was selected; if it caught the wrong thing, adjust the box or points.
+- To remove something (a person, power lines, a sign, a photobomber), add a layer named \
+for it ("Remove the person on the left") with a mask selecting it, usually a semantic \
+object with a box, then call remove. It must be the only operation in that layer. Removal \
+layers apply first, before any adjustment, wherever they sit in the stack. Check the \
+render: if traces remain (an outline, a shadow), raise grow or widen the selection.
+- To remove the background or cut out the subject, call cut_out: by default it keeps \
+the main subject on a transparent background (the person downloads a PNG); give a color \
+such as "#ffffff" for a clean product shot, or a different mask to keep something else.
+- For portraits ("make me look good", "fix my skin"), call retouch_portrait. Keep it \
+subtle: people should look like themselves on a good day. Its defaults are a good start; \
+tone them down for close-ups and children.
+- When the horizon is tilted or a building leans ("straighten this", "fix the \
+horizon", "the walls look crooked"), call auto_straighten: it measures the straight lines in \
+the photo and adds a straighten and a perspective fix to the framing. If it finds nothing, \
+set straighten yourself. Use lens_correction for lines that bow (wide-angle barrel).
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -74,7 +100,7 @@ plainly undermines it (for example, warming a photo that is also underexposed).
 - Err on the side of subtle. Typical amounts are 10 to 40 on the -100..100 sliders and \
 -1 to +1 stop of exposure; go further only when the photo clearly needs it.
 - Protect skin tones, keep highlights from blowing out, and avoid oversaturation.
-- If a request needs something the tools cannot do (removing objects, changing the sky, \
+- If a request needs something the tools cannot do (replacing the sky, adding or \
 generating content), say so plainly and offer what you can do instead.
 - If the request is ambiguous in a way that matters, make a reasonable choice and say which.
 
@@ -297,6 +323,64 @@ def tool_definitions() -> list[BetaToolParam]:
             "eager_input_streaming": True,
         }
     )
+    cutout_schema = Cutout.model_json_schema()
+    cutout_props = {k: v for k, v in cutout_schema["properties"].items() if k != "visible"}
+    cut_out_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": cutout_props,
+        "additionalProperties": False,
+    }
+    if "$defs" in cutout_schema:
+        cut_out_schema["$defs"] = _referenced_defs(cutout_props, cutout_schema["$defs"])
+    tools.append(
+        {
+            "name": "cut_out",
+            "description": "Remove the background: keep only what the mask selects (by "
+            "default the main subject, found by an AI model) and make the rest transparent, "
+            "or a solid color. Replaces any earlier cutout.",
+            "input_schema": _plain_unions(cut_out_schema),
+            "eager_input_streaming": True,
+        }
+    )
+    retouch_schema = Retouch.model_json_schema()
+    tools.append(
+        {
+            "name": "retouch_portrait",
+            "description": "Retouch the people in a portrait: heal blemishes, smooth skin "
+            "while keeping its texture, brighten eyes, and whiten teeth. Adds one layer per "
+            "part, each masked to that part of the face, so each can be tuned or hidden. "
+            "The defaults are deliberately subtle; set a part to 0 to leave it out.",
+            "input_schema": {
+                "type": "object",
+                "properties": retouch_schema["properties"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
+            "name": "auto_straighten",
+            "description": "Level the photo and square up converging verticals, measured "
+            "from the straight lines in it (horizon, walls, buildings). Replaces any "
+            "straighten or perspective already in the framing; keeps crops, rotations, and "
+            "flips. Reports what it found, or that the photo gave no clear lines.",
+            "input_schema": {
+                "type": "object",
+                "properties": AutoStraighten.model_json_schema()["properties"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
+            "name": "restore_background",
+            "description": "Undo the cutout and bring the background back.",
+            "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "eager_input_streaming": True,
+        }
+    )
     tools.append(
         {
             "name": "update_operation",
@@ -340,9 +424,16 @@ class ToolError(Exception):
 class Editor:
     """Applies tool calls to a working copy of the edit state."""
 
-    def __init__(self, state: EditState, default_layer_name: str = "Edits") -> None:
+    def __init__(
+        self,
+        state: EditState,
+        default_layer_name: str = "Edits",
+        framed: Framed | None = None,
+    ) -> None:
         self.state = state.model_copy(deep=True)
         self.default_layer_name = default_layer_name
+        self.framed = framed
+        """Renders the photo with a given framing, for tools that measure it."""
         self.target: str | None = None
         """The layer that operation tools add to: the one added most recently."""
 
@@ -355,6 +446,10 @@ class Editor:
             "add_layer": self._add_layer,
             "update_layer": self._update_layer,
             "remove_layer": self._remove_layer,
+            "cut_out": self._cut_out,
+            "retouch_portrait": self._retouch,
+            "auto_straighten": self._auto_straighten,
+            "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
             return handler(args)
@@ -366,6 +461,15 @@ class Editor:
             where = "the framing"
         else:
             layer = self._target_layer()
+            if isinstance(op, Remove) and (layer.operations or layer.mask is None):
+                raise ToolError(
+                    "remove needs its own new layer whose mask selects what to remove: "
+                    "call add_layer with that mask first."
+                )
+            if layer.is_removal:
+                raise ToolError(
+                    f"Layer {layer.id} removes something; add a new layer for adjustments."
+                )
             layer.operations.append(op)  # type: ignore[arg-type]
             where = f"layer {layer.id} ({layer.name})"
         summary = op.summary()
@@ -437,11 +541,75 @@ class Editor:
         if not isinstance(changes, dict):
             raise ToolError("changes must be an object of layer properties to values.")
         changes = {k: v for k, v in changes.items() if k not in ("id", "operations")}
+        mask = changes.get("mask")
+        old = layer.mask
+        if (
+            isinstance(mask, dict)
+            and "strokes" not in mask
+            and isinstance(old, SemanticMask)
+            and old.strokes
+            and mask.get("kind") == "semantic"
+            and mask.get("target") == old.target
+        ):
+            # Keep the person's brush touch-ups on a selection the agent only adjusts.
+            changes["mask"] = {**mask, "strokes": [s.model_dump() for s in old.strokes]}
         updated = self._validate_layer({**layer.model_dump(), **changes})
         index = self.state.layers.index(layer)
         self.state.layers[index] = updated
         return f"Updated layer {layer.id}.", OperationEvent(
             action="updated", summary=f"Layer: {updated.name} ({describe_layer(updated)})"
+        )
+
+    def _cut_out(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            cutout = Cutout.model_validate({k: v for k, v in args.items() if k != "visible"})
+        except ValidationError as exc:
+            raise ToolError(f"Invalid cutout: {_problems(exc)}") from None
+        self.state.cutout = cutout
+        background = cutout.background or "transparent"
+        return f"Cut out with a {background} background.", OperationEvent(
+            action="added", summary=f"Background removed ({background})"
+        )
+
+    def _retouch(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            options = Retouch.model_validate(args)
+        except ValidationError as exc:
+            raise ToolError(f"Invalid retouch: {_problems(exc)}") from None
+        layers = retouch_layers(options)
+        if not layers:
+            raise ToolError("Every part of the retouch was set to 0.")
+        self.state.layers.extend(layers)
+        names = ", ".join(f"{layer.id} ({layer.name})" for layer in layers)
+        return f"Added retouch layers {names}.", OperationEvent(
+            action="added", summary="Portrait retouch: " + ", ".join(lay.name for lay in layers)
+        )
+
+    def _auto_straighten(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            options = AutoStraighten.model_validate(args)
+        except ValidationError as exc:
+            raise ToolError(f"Invalid auto_straighten: {_problems(exc)}") from None
+        if self.framed is None:
+            raise ToolError("The photo is not available to measure.")
+        found = auto_level(self.state.framing, self.framed, options)
+        done = found.describe()
+        if not done:
+            raise ToolError(
+                "Found no clear horizon or verticals to go by, or the photo is already "
+                "straight; nothing changed. Set straighten yourself if it still looks tilted."
+            )
+        self.state.framing = found.framing  # type: ignore[assignment]
+        return f"Added {done} to the framing.", OperationEvent(
+            action="added", summary=f"Auto straighten ({done})"
+        )
+
+    def _restore_background(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        if self.state.cutout is None:
+            raise ToolError("There is no cutout to undo.")
+        self.state.cutout = None
+        return "Restored the background.", OperationEvent(
+            action="removed", summary="Background removal"
         )
 
     def _remove_layer(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
@@ -509,6 +677,14 @@ def describe_state(state: EditState) -> str:
             lines += [f"    {_op_json(op)}" for op in layer.operations] or ["    (empty)"]
     else:
         lines.append("Layers: none.")
+    cutout = state.cutout
+    if cutout is not None:
+        hidden = "" if cutout.visible else " (hidden)"
+        background = cutout.background or "transparent"
+        lines.append(
+            f"Cutout{hidden}, applied last: keeps the {describe_mask(cutout.mask)}, "
+            f"{background} background."
+        )
     return "\n".join(lines)
 
 
@@ -567,7 +743,12 @@ class AgentService:
         async with lock:
             doc = self.store.get(doc_id)
             await emit(TurnStarted())
-            editor = Editor(doc.state, default_layer_name=layer_name(request))
+            loaded = self.store.image(doc_id)
+            editor = Editor(
+                doc.state,
+                default_layer_name=layer_name(request),
+                framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
+            )
             reply = await self._converse(doc, request, editor, emit)
 
             doc.chat.append(ChatEntry(role="user", text=request))

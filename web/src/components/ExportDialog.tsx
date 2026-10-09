@@ -17,7 +17,11 @@ interface Props {
 
 /** Choose a format and quality, then render at full resolution and download. */
 export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
-  const [format, setFormat] = useState<ExportOptions['format']>('jpeg')
+  const cutout = doc.state.cutout
+  const transparent = !!cutout && cutout.visible && !cutout.background
+  const [format, setFormat] = useState<ExportOptions['format']>(
+    transparent ? 'png' : 'jpeg',
+  )
   const [quality, setQuality] = useState(92)
   const [keepLocation, setKeepLocation] = useState(false)
   const [working, setWorking] = useState(false)
@@ -82,9 +86,19 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
               checked={format === 'png'}
               onChange={() => setFormat('png')}
             />
-            PNG <span className="status">lossless, larger file</span>
+            PNG{' '}
+            <span className="status">
+              {transparent
+                ? 'keeps the transparent background'
+                : 'lossless, larger file'}
+            </span>
           </label>
         </fieldset>
+        {transparent && format === 'jpeg' && (
+          <p className="hint">
+            JPEG cannot be transparent, so the background will be white.
+          </p>
+        )}
 
         {format === 'jpeg' && (
           <label className="quality">

@@ -6,7 +6,31 @@ import { dispositionFilename } from '../api/documents'
 import { makeDoc, stubApi } from '../test/fixtures'
 import { ExportDialog } from './ExportDialog'
 
+const SUBJECT = {
+  kind: 'semantic' as const,
+  target: 'subject' as const,
+  points: [],
+  strokes: [],
+  description: '',
+  invert: false,
+}
+
 describe('ExportDialog', () => {
+  it('picks PNG for a transparent cutout and warns about JPEG', async () => {
+    const doc = makeDoc({
+      state: {
+        framing: [],
+        layers: [],
+        cutout: { visible: true, background: null, mask: SUBJECT },
+      },
+    })
+    render(<ExportDialog doc={doc} onClose={vi.fn()} save={vi.fn()} />)
+    expect(screen.getByRole('radio', { name: /PNG/ })).toBeChecked()
+    expect(screen.getByText(/keeps the transparent background/)).toBeVisible()
+    await userEvent.click(screen.getByRole('radio', { name: /JPEG/ }))
+    expect(screen.getByText(/background will be white/)).toBeVisible()
+  })
+
   it('downloads a JPEG with the chosen quality and no location by default', async () => {
     const fetchMock = stubApi({
       'POST /api/documents/abc123abc123/export': () =>

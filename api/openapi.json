@@ -412,6 +412,126 @@
         }
       }
     },
+    "/api/documents/{doc_id}/retouch": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Retouch Portrait",
+        "description": "Add portrait retouch layers (skin, eyes, teeth) on top, as one step in the history;\nwithout options, the subtle defaults.",
+        "operationId": "retouchPortrait",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Retouch"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Options"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/straighten": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Auto Straighten",
+        "description": "Level the photo and square up converging verticals, measured from its straight\nlines, as one step in the history. 422 when it finds nothing to go by.",
+        "operationId": "autoStraighten",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AutoStraighten"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Options"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/checkout": {
       "post": {
         "tags": [
@@ -686,6 +806,53 @@
         }
       }
     },
+    "/api/documents/{doc_id}/jobs": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "List Jobs",
+        "description": "AI model jobs running (or just finished) for this document, with their progress.\nThe web app polls this while it waits on a change.",
+        "operationId": "listJobs",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobStatus"
+                  },
+                  "title": "Response Listjobs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "post": {
         "tags": [
@@ -884,10 +1051,52 @@
           }
         }
       }
+    },
+    "/api/models": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Models",
+        "description": "Which model (or classical fallback) runs each AI task, and on what device.",
+        "operationId": "getModels",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AutoStraighten": {
+        "properties": {
+          "level": {
+            "type": "boolean",
+            "title": "Level",
+            "description": "Level a tilted horizon or tilted verticals.",
+            "default": true
+          },
+          "perspective": {
+            "type": "boolean",
+            "title": "Perspective",
+            "description": "Make converging verticals (buildings, walls) parallel.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AutoStraighten",
+        "description": "What to fix automatically."
+      },
       "Blacks": {
         "properties": {
           "id": {
@@ -1233,6 +1442,63 @@
         "title": "Crop",
         "description": "Crop to a region of the current frame, optionally locked to an aspect ratio.\n\nThe box is given as fractions of the current width and height (0 = left/top edge,\n1 = right/bottom edge). With an aspect ratio, the result is the largest rectangle of that\nratio centered inside the box, so a full-frame box plus \"4:5\" is a centered Instagram crop."
       },
+      "Cutout": {
+        "properties": {
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "mask": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BrushMask"
+              },
+              {
+                "$ref": "#/components/schemas/LinearGradientMask"
+              },
+              {
+                "$ref": "#/components/schemas/RadialGradientMask"
+              },
+              {
+                "$ref": "#/components/schemas/LuminosityMask"
+              },
+              {
+                "$ref": "#/components/schemas/SemanticMask"
+              }
+            ],
+            "title": "Mask",
+            "description": "What to keep.",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "brush": "#/components/schemas/BrushMask",
+                "linear": "#/components/schemas/LinearGradientMask",
+                "luminosity": "#/components/schemas/LuminosityMask",
+                "radial": "#/components/schemas/RadialGradientMask",
+                "semantic": "#/components/schemas/SemanticMask"
+              }
+            }
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background",
+            "description": "Null for a transparent background (PNG export), or a color like \"#ffffff\"."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Cutout",
+        "description": "Keeps only what the mask selects (the main subject unless told otherwise) and\nreplaces everything else with transparency or a solid color."
+      },
       "Dehaze": {
         "properties": {
           "id": {
@@ -1468,6 +1734,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/Flip"
+                },
+                {
+                  "$ref": "#/components/schemas/Perspective"
+                },
+                {
+                  "$ref": "#/components/schemas/LensCorrection"
                 }
               ],
               "discriminator": {
@@ -1475,6 +1747,8 @@
                 "mapping": {
                   "crop": "#/components/schemas/Crop",
                   "flip": "#/components/schemas/Flip",
+                  "lens_correction": "#/components/schemas/LensCorrection",
+                  "perspective": "#/components/schemas/Perspective",
                   "rotate": "#/components/schemas/Rotate",
                   "straighten": "#/components/schemas/Straighten"
                 }
@@ -1491,6 +1765,16 @@
             "type": "array",
             "title": "Layers",
             "default": []
+          },
+          "cutout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cutout"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -1691,6 +1975,41 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HealBlemishes": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "heal_blemishes",
+            "title": "Op",
+            "default": "heal_blemishes"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How readily spots are healed; higher finds more.",
+            "default": 50
+          },
+          "size": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Size",
+            "description": "Largest spot to heal; higher heals bigger spots.",
+            "default": 40
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HealBlemishes",
+        "description": "Find small spots (blemishes, pimples, dust) and heal them from the skin around them.\nUse on a layer masked to skin."
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -1741,6 +2060,79 @@
         ],
         "title": "Highlights",
         "description": "Recover (negative) or boost (positive) the brightest areas without touching shadows."
+      },
+      "JobStatus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "doc_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "doc_id",
+          "task",
+          "label",
+          "state"
+        ],
+        "title": "JobStatus"
       },
       "Layer": {
         "properties": {
@@ -1798,6 +2190,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/LuminosityMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SemanticMask"
                   }
                 ],
                 "discriminator": {
@@ -1806,7 +2201,8 @@
                     "brush": "#/components/schemas/BrushMask",
                     "linear": "#/components/schemas/LinearGradientMask",
                     "luminosity": "#/components/schemas/LuminosityMask",
-                    "radial": "#/components/schemas/RadialGradientMask"
+                    "radial": "#/components/schemas/RadialGradientMask",
+                    "semantic": "#/components/schemas/SemanticMask"
                   }
                 }
               },
@@ -1870,6 +2266,15 @@
                 },
                 {
                   "$ref": "#/components/schemas/ToneCurve"
+                },
+                {
+                  "$ref": "#/components/schemas/Remove"
+                },
+                {
+                  "$ref": "#/components/schemas/SmoothSkin"
+                },
+                {
+                  "$ref": "#/components/schemas/HealBlemishes"
                 }
               ],
               "discriminator": {
@@ -1881,12 +2286,15 @@
                   "dehaze": "#/components/schemas/Dehaze",
                   "exposure": "#/components/schemas/Exposure",
                   "grain": "#/components/schemas/Grain",
+                  "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
+                  "remove": "#/components/schemas/Remove",
                   "saturation": "#/components/schemas/Saturation",
                   "shadows": "#/components/schemas/Shadows",
                   "sharpen": "#/components/schemas/Sharpen",
+                  "smooth_skin": "#/components/schemas/SmoothSkin",
                   "tone_curve": "#/components/schemas/ToneCurve",
                   "vibrance": "#/components/schemas/Vibrance",
                   "vignette": "#/components/schemas/Vignette",
@@ -1908,6 +2316,33 @@
         ],
         "title": "Layer",
         "description": "A named group of adjustments with its own visibility, opacity, and blend mode."
+      },
+      "LensCorrection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "lens_correction",
+            "title": "Op",
+            "default": "lens_correction"
+          },
+          "distortion": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Distortion",
+            "description": "Positive straightens lines that bow outward (barrel); negative straightens lines that bow inward (pincushion).",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LensCorrection",
+        "description": "Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward\n(pincushion, telephoto). Scales up just enough that no edge is left empty."
       },
       "LinearGradientMask": {
         "properties": {
@@ -2114,7 +2549,8 @@
               "color",
               "detail",
               "framing",
-              "finishing"
+              "finishing",
+              "retouch"
             ],
             "title": "Group"
           },
@@ -2231,6 +2667,41 @@
         ],
         "title": "ParamSpec"
       },
+      "Perspective": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "perspective",
+            "title": "Op",
+            "default": "perspective"
+          },
+          "vertical": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Vertical",
+            "description": "Positive widens the top, for verticals that lean in toward the top (camera tilted up); negative widens the bottom.",
+            "default": 0
+          },
+          "horizontal": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Horizontal",
+            "description": "Positive widens the right side, for lines that converge toward the right; negative widens the left.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Perspective",
+        "description": "Fix lines that converge because the camera was tilted: buildings that lean in toward\nthe top, or a wall that shrinks toward one side. The narrow side is stretched out to the\nframe, so nothing is left empty."
+      },
       "RadialGradientMask": {
         "properties": {
           "invert": {
@@ -2325,6 +2796,71 @@
         ],
         "title": "Recipe"
       },
+      "Remove": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "remove",
+            "title": "Op",
+            "default": "remove"
+          },
+          "grow": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Grow",
+            "description": "How far past the selection's edge to fill, so outlines and halos go.",
+            "default": 20
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Remove",
+        "description": "Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap\nwith plausible surroundings, using an AI inpainting model. Needs a mask; it is the only\noperation in its layer. Removal layers apply first, before any adjustment layer."
+      },
+      "Retouch": {
+        "properties": {
+          "smooth_skin": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Smooth Skin",
+            "description": "Soften skin, keeping texture.",
+            "default": 35
+          },
+          "remove_blemishes": {
+            "type": "boolean",
+            "title": "Remove Blemishes",
+            "description": "Heal small spots on the skin.",
+            "default": true
+          },
+          "brighten_eyes": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Brighten Eyes",
+            "description": "Brighten and clarify eyes.",
+            "default": 25
+          },
+          "whiten_teeth": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Whiten Teeth",
+            "description": "Take the yellow out of teeth.",
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Retouch",
+        "description": "How much of each retouch to do; 0 leaves that part out."
+      },
       "Rotate": {
         "properties": {
           "id": {
@@ -2383,6 +2919,121 @@
         ],
         "title": "Saturation",
         "description": "Uniformly increase or decrease color intensity; -100 makes black and white."
+      },
+      "SelectPoint": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "include": {
+            "type": "boolean",
+            "title": "Include",
+            "description": "False marks a spot that is not part of it.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "SelectPoint"
+      },
+      "SemanticMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "semantic",
+            "title": "Kind",
+            "default": "semantic"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "subject",
+              "people",
+              "sky",
+              "object",
+              "skin",
+              "face",
+              "eyes",
+              "lips",
+              "teeth",
+              "hair"
+            ],
+            "title": "Target",
+            "description": "subject: the main subject, as a cutout would keep it; people: every person; sky; object: one thing you point at with `box` and/or `points` (a particular person, a dog, a car); and parts of faces for portraits: skin (face and visible skin), face, eyes, lips, teeth, hair."
+          },
+          "box": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number",
+                  "maximum": 1.0,
+                  "minimum": 0.0
+                },
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box",
+            "description": "For object: [left, top, right, bottom] around it, fractions of the photo."
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SelectPoint"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Points",
+            "description": "For object: spots on it (or, with include false, not).",
+            "default": []
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Description",
+            "description": "What is selected, in plain words: \"the dog\".",
+            "default": ""
+          },
+          "strokes": {
+            "items": {
+              "$ref": "#/components/schemas/BrushStroke"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Strokes",
+            "description": "Brush touch-ups painted by the person over what the model found: added where painted, taken away where erased. Keep them when changing the mask.",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "title": "SemanticMask",
+        "description": "Selects something by what it is, found by an AI model: the sky, the main subject,\npeople, a particular object, or parts of a face. For `object`, give a `box` around it\n(and optionally `points` on it), in fractions of the photo as you see it."
       },
       "Shadows": {
         "properties": {
@@ -2448,6 +3099,41 @@
         ],
         "title": "Sharpen",
         "description": "Sharpen edges and fine detail."
+      },
+      "SmoothSkin": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "smooth_skin",
+            "title": "Op",
+            "default": "smooth_skin"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How much to smooth.",
+            "default": 35
+          },
+          "texture": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Texture",
+            "description": "How much fine skin texture to keep.",
+            "default": 60
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SmoothSkin",
+        "description": "Soften skin while keeping its natural texture (pores, fine lines stay, blotches and\nuneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."
       },
       "Step": {
         "properties": {
@@ -2594,6 +3280,39 @@
         ],
         "title": "Straighten",
         "description": "Rotate by a small angle to level a tilted horizon, cropping away the empty corners."
+      },
+      "TaskStatus": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "backend": {
+            "type": "string",
+            "title": "Backend"
+          },
+          "license": {
+            "type": "string",
+            "title": "License"
+          },
+          "uses_weights": {
+            "type": "boolean",
+            "title": "Uses Weights"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task",
+          "label",
+          "backend",
+          "license",
+          "uses_weights"
+        ],
+        "title": "TaskStatus"
       },
       "ToneCurve": {
         "properties": {
@@ -2811,6 +3530,36 @@
         ],
         "title": "Whites",
         "description": "Move the white point: positive makes the brightest tones brighter, negative dims them."
+      },
+      "WorkerStatus": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "process",
+              "inline"
+            ],
+            "title": "Mode"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskStatus"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "device",
+          "tasks"
+        ],
+        "title": "WorkerStatus"
       },
       "AgentError": {
         "properties": {

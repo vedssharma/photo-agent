@@ -208,6 +208,42 @@ class Flip(OpBase):
     axis: Literal["horizontal", "vertical"] = "horizontal"
 
 
+class Perspective(OpBase):
+    """Fix lines that converge because the camera was tilted: buildings that lean in toward
+    the top, or a wall that shrinks toward one side. The narrow side is stretched out to the
+    frame, so nothing is left empty."""
+
+    op: Literal["perspective"] = "perspective"
+    vertical: float = Field(
+        0,
+        ge=-100,
+        le=100,
+        description="Positive widens the top, for verticals that lean in toward the top "
+        "(camera tilted up); negative widens the bottom.",
+    )
+    horizontal: float = Field(
+        0,
+        ge=-100,
+        le=100,
+        description="Positive widens the right side, for lines that converge toward the "
+        "right; negative widens the left.",
+    )
+
+
+class LensCorrection(OpBase):
+    """Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward
+    (pincushion, telephoto). Scales up just enough that no edge is left empty."""
+
+    op: Literal["lens_correction"] = "lens_correction"
+    distortion: float = Field(
+        0,
+        ge=-100,
+        le=100,
+        description="Positive straightens lines that bow outward (barrel); negative "
+        "straightens lines that bow inward (pincushion).",
+    )
+
+
 # Finishing
 
 
@@ -225,6 +261,38 @@ class Grain(OpBase):
     op: Literal["grain"] = "grain"
     amount: Strength
     size: Strength = Field(25, description="Grain size; larger is coarser.")
+
+
+# Retouching
+
+
+class Remove(OpBase):
+    """Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap
+    with plausible surroundings, using an AI inpainting model. Needs a mask; it is the only
+    operation in its layer. Removal layers apply first, before any adjustment layer."""
+
+    op: Literal["remove"] = "remove"
+    grow: Strength = Field(
+        20, description="How far past the selection's edge to fill, so outlines and halos go."
+    )
+
+
+class SmoothSkin(OpBase):
+    """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
+    uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
+
+    op: Literal["smooth_skin"] = "smooth_skin"
+    amount: Strength = Field(35, description="How much to smooth.")
+    texture: Strength = Field(60, description="How much fine skin texture to keep.")
+
+
+class HealBlemishes(OpBase):
+    """Find small spots (blemishes, pimples, dust) and heal them from the skin around them.
+    Use on a layer masked to skin."""
+
+    op: Literal["heal_blemishes"] = "heal_blemishes"
+    amount: Strength = Field(50, description="How readily spots are healed; higher finds more.")
+    size: Strength = Field(40, description="Largest spot to heal; higher heals bigger spots.")
 
 
 class ToneCurve(OpBase):
@@ -260,9 +328,14 @@ Operation = Annotated[
     | Rotate
     | Straighten
     | Flip
+    | Perspective
+    | LensCorrection
     | Vignette
     | Grain
-    | ToneCurve,
+    | ToneCurve
+    | Remove
+    | SmoothSkin
+    | HealBlemishes,
     Field(discriminator="op"),
 ]
 
@@ -285,18 +358,33 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Rotate,
     Straighten,
     Flip,
+    Perspective,
+    LensCorrection,
     Vignette,
     Grain,
     ToneCurve,
+    Remove,
+    SmoothSkin,
+    HealBlemishes,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
 
-GEOMETRY_TYPES: tuple[type[OpBase], ...] = (Crop, Rotate, Straighten, Flip)
+GEOMETRY_TYPES: tuple[type[OpBase], ...] = (
+    Crop,
+    Rotate,
+    Straighten,
+    Flip,
+    Perspective,
+    LensCorrection,
+)
 """Operations that change framing rather than look."""
 
-FramingOperation = Annotated[Crop | Rotate | Straighten | Flip, Field(discriminator="op")]
-"""Crop, rotation, and flips. They apply to the whole photo, before any layer."""
+FramingOperation = Annotated[
+    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection, Field(discriminator="op")
+]
+"""Crop, rotation, flips, and perspective and lens fixes. They apply to the whole photo,
+before any layer."""
 
 AdjustmentOperation = Annotated[
     Exposure
@@ -315,7 +403,10 @@ AdjustmentOperation = Annotated[
     | Dehaze
     | Vignette
     | Grain
-    | ToneCurve,
+    | ToneCurve
+    | Remove
+    | SmoothSkin
+    | HealBlemishes,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""

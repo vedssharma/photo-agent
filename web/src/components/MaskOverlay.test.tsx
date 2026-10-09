@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Mask } from '../api/documents'
-import { DEFAULT_MASK_TOOL } from '../lib/masks'
+import { DEFAULT_MASK_TOOL, EMPTY_OBJECT, semanticMask } from '../lib/masks'
 import { MaskOverlay } from './MaskOverlay'
 
 function place(el: HTMLElement) {
@@ -36,6 +36,34 @@ const drag = (el: HTMLElement, points: [number, number][]) => {
 }
 
 describe('MaskOverlay', () => {
+  it('selects an object with clicks, leaving parts out with Shift', () => {
+    const { overlay, onChange } = setup({
+      ...EMPTY_OBJECT,
+      points: [{ x: 0.1, y: 0.1, include: true }],
+    })
+    fireEvent.pointerDown(overlay, { button: 0, clientX: 100, clientY: 50 })
+    fireEvent.pointerUp(overlay, { clientX: 100, clientY: 50, shiftKey: true })
+    const [mask, label] = onChange.mock.calls[0]
+    expect(label).toBe('Leave out of selection')
+    expect(mask.points).toEqual([
+      { x: 0.1, y: 0.1, include: true },
+      { x: 0.5, y: 0.5, include: false },
+    ])
+  })
+
+  it('selects an object by dragging a box around it', () => {
+    const { overlay, onChange } = setup(EMPTY_OBJECT)
+    drag(overlay, [
+      [150, 80],
+      [100, 50],
+      [40, 10],
+    ])
+    const [mask, label] = onChange.mock.calls[0]
+    expect(label).toBe('Select object')
+    expect(mask.box).toEqual([0.2, 0.1, 0.75, 0.8])
+    expect(mask.points).toEqual([])
+  })
+
   it('paints a brush stroke in photo fractions', () => {
     const { overlay, onChange } = setup(
       { kind: 'brush', strokes: [], invert: false },
@@ -58,6 +86,31 @@ describe('MaskOverlay', () => {
         size: 0.05,
         hardness: 50,
         erase: true,
+      },
+    ])
+  })
+
+  it('touches up an AI selection with the brush', () => {
+    const { overlay, onChange } = setup(semanticMask('sky'), {
+      ...DEFAULT_MASK_TOOL,
+      refining: true,
+    })
+    drag(overlay, [
+      [20, 20],
+      [60, 20],
+    ])
+    const [mask, label] = onChange.mock.calls[0]
+    expect(label).toBe('Add to selection')
+    expect(mask).toMatchObject({ kind: 'semantic', target: 'sky' })
+    expect(mask.strokes).toEqual([
+      {
+        points: [
+          [0.1, 0.2],
+          [0.3, 0.2],
+        ],
+        size: 0.04,
+        hardness: 50,
+        erase: false,
       },
     ])
   })

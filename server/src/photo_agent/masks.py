@@ -4,16 +4,21 @@ A mask is data, like an operation. Positions are fractions of the framed photo (
 and rotation; 0 is the left or top edge, 1 the right or bottom), so a mask renders the same
 on the preview proxy and at full resolution. Rendering a mask gives a per-pixel weight from
 0 (layer has no effect) to 1 (full effect).
+
+Semantic masks ("the sky", "the person on the left") are data too: what to select, not the
+pixels. A model finds it in the framed original (see `photo_agent.vision.selection`), and the
+result is cached, so the mask stays small, editable, and re-renders at any resolution.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
 import numpy.typing as npt
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from photo_agent.imaging import Array
 
@@ -83,17 +88,86 @@ class LuminosityMask(MaskBase):
     feather: float = Field(0.1, ge=0, le=0.5, description="Softness of the range edges.")
 
 
+SemanticTarget = Literal[
+    "subject", "people", "sky", "object", "skin", "face", "eyes", "lips", "teeth", "hair"
+]
+
+TARGET_HELP = (
+    "subject: the main subject, as a cutout would keep it; people: every person; sky; "
+    "object: one thing you point at with `box` and/or `points` (a particular person, a dog, "
+    "a car); and parts of faces for portraits: skin (face and visible skin), face, eyes, "
+    "lips, teeth, hair."
+)
+
+
+class SelectPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: Unit
+    y: Unit
+    include: bool = Field(True, description="False marks a spot that is not part of it.")
+
+
+class SemanticMask(MaskBase):
+    """Selects something by what it is, found by an AI model: the sky, the main subject,
+    people, a particular object, or parts of a face. For `object`, give a `box` around it
+    (and optionally `points` on it), in fractions of the photo as you see it."""
+
+    kind: Literal["semantic"] = "semantic"
+    target: SemanticTarget = Field(description=TARGET_HELP)
+    box: list[Unit] | None = Field(
+        None,
+        min_length=4,
+        max_length=4,
+        description="For object: [left, top, right, bottom] around it, fractions of the photo.",
+    )
+    points: list[SelectPoint] = Field(
+        [], max_length=50, description="For object: spots on it (or, with include false, not)."
+    )
+    description: str = Field(
+        "", max_length=120, description='What is selected, in plain words: "the dog".'
+    )
+    strokes: list[BrushStroke] = Field(
+        [],
+        max_length=1000,
+        description="Brush touch-ups painted by the person over what the model found: "
+        "added where painted, taken away where erased. Keep them when changing the mask.",
+    )
+
+    @model_validator(mode="after")
+    def _check_object(self) -> SemanticMask:
+        if self.target == "object" and self.box is None and not self.points:
+            raise ValueError("an object selection needs a box or points on the object")
+        if self.box is not None and (self.box[2] <= self.box[0] or self.box[3] <= self.box[1]):
+            raise ValueError("box must have right > left and bottom > top")
+        return self
+
+
 Mask = Annotated[
-    BrushMask | LinearGradientMask | RadialGradientMask | LuminosityMask,
+    BrushMask | LinearGradientMask | RadialGradientMask | LuminosityMask | SemanticMask,
     Field(discriminator="kind"),
 ]
 
+SemanticResolver = Callable[[SemanticMask, tuple[int, int]], Array]
+"""Finds a semantic mask's selection at a given (height, width) of the framed photo."""
 
-def render_mask(mask: Mask, x: Array) -> Array:
+
+class MaskUnavailableError(RuntimeError):
+    """A semantic mask was rendered without a way to run the model that finds it."""
+
+
+def render_mask(mask: Mask, x: Array, semantic: SemanticResolver | None = None) -> Array:
     """The mask's weight for every pixel of `x` (the pixels the layer applies to)."""
     h, w = x.shape[:2]
-    if isinstance(mask, BrushMask):
-        alpha = _brush(mask, w, h)
+    if isinstance(mask, SemanticMask):
+        if semantic is None:
+            raise MaskUnavailableError("Semantic masks need the model worker.")
+        alpha = np.asarray(semantic(mask, (h, w)), np.float32)
+        if mask.strokes:
+            keep, added = _paint(mask.strokes, w, h)
+            alpha = np.maximum(alpha * keep, added)
+    elif isinstance(mask, BrushMask):
+        alpha = _paint(mask.strokes, w, h)[1]
     elif isinstance(mask, LinearGradientMask):
         alpha = _linear(mask, w, h)
     elif isinstance(mask, RadialGradientMask):
@@ -143,12 +217,15 @@ def _luminosity(mask: LuminosityMask, x: Array) -> Array:
     return cast(Array, np.asarray(rise * fall, np.float32) * np.ones_like(lum))
 
 
-def _brush(mask: BrushMask, w: int, h: int) -> Array:
+def _paint(strokes: list[BrushStroke], w: int, h: int) -> tuple[Array, Array]:
+    """What a series of strokes does to any mask under them, as (keep, added): the result
+    is max(mask * keep, added). Painting raises `added`; erasing scales both down."""
     scale = min(1.0, BRUSH_RENDER_LONG_EDGE / max(w, h))
     sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
     long_edge = max(sw, sh)
-    alpha = np.zeros((sh, sw), np.float32)
-    for stroke in mask.strokes:
+    keep = np.ones((sh, sw), np.float32)
+    added = np.zeros((sh, sw), np.float32)
+    for stroke in strokes:
         radius = stroke.size * long_edge
         # Full strength out to `core`, fading to nothing at `radius`: draw a hard shape
         # halfway through the fade and blur it across the fade's width.
@@ -159,12 +236,16 @@ def _brush(mask: BrushMask, w: int, h: int) -> Array:
         if sigma > 0.3:
             dab = np.asarray(cv2.GaussianBlur(dab, (0, 0), sigmaX=sigma), np.float32)
         if stroke.erase:
-            alpha *= 1.0 - dab
+            keep *= 1.0 - dab
+            added *= 1.0 - dab
         else:
-            alpha = np.maximum(alpha, dab)
+            added = np.maximum(added, dab)
     if (sw, sh) != (w, h):
-        alpha = np.asarray(cv2.resize(alpha, (w, h), interpolation=cv2.INTER_LINEAR), np.float32)
-    return cast(Array, alpha.astype(np.float32))
+        keep, added = (
+            np.asarray(cv2.resize(a, (w, h), interpolation=cv2.INTER_LINEAR), np.float32)
+            for a in (keep, added)
+        )
+    return cast(Array, keep), cast(Array, added)
 
 
 SUBPIXEL = 4
@@ -195,6 +276,13 @@ def describe_mask(mask: Mask) -> str:
             f"radial gradient mask at {_pt(mask.center)}, radius "
             f"{mask.radius_x:.2f}x{mask.radius_y:.2f}, feather {mask.feather:g}"
         )
+    elif isinstance(mask, SemanticMask):
+        what = mask.description or mask.target
+        text = f"semantic mask selecting {what}"
+        if mask.target == "object" and mask.box is not None:
+            text += f" in box {_pt(mask.box[:2])}-{_pt(mask.box[2:])}"
+        if mask.strokes:
+            text += f", touched up with {len(mask.strokes)} brush strokes"
     else:
         text = f"luminosity mask {mask.low:.2f}-{mask.high:.2f}"
     return f"inverted {text}" if mask.invert else text

@@ -243,15 +243,23 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
     "rotate": [ops.Rotate(degrees=270)],
     "straighten": [ops.Straighten(angle=-4)],
     "flip": [ops.Flip(axis="vertical")],
+    "perspective": [ops.Perspective(vertical=40, horizontal=-20)],
+    "lens_correction": [ops.LensCorrection(distortion=50)],
     "vignette": [ops.Vignette(amount=-60, midpoint=40)],
     "grain": [ops.Grain(amount=60, size=50, id="golden01")],
+    "smooth_skin": [ops.SmoothSkin(amount=70, texture=40)],
+    "heal_blemishes": [ops.HealBlemishes(amount=80, size=60)],
     "tone_curve": [ops.ToneCurve(points=[(0, 0.05), (0.3, 0.22), (0.7, 0.8), (1, 0.97)])],
 }
 
 
+MODEL_OPERATIONS = {"remove"}
+"""Operations whose result comes from an AI model (tested in their own modules)."""
+
+
 def test_golden_cases_cover_every_operation() -> None:
     covered = {op.op for case in GOLDEN_CASES.values() for op in case}  # type: ignore[attr-defined]
-    assert covered == set(ops.OPERATIONS_BY_NAME)
+    assert covered == set(ops.OPERATIONS_BY_NAME) - MODEL_OPERATIONS
 
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_CASES))

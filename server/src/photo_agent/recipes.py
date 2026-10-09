@@ -1,9 +1,10 @@
 """Edit recipes: a set of layers saved under a name, to apply to other photos.
 
 A recipe keeps the look (adjustment layers with their opacity, blend mode, and masks) and
-leaves out what only fits the photo it was made on: framing, and brush masks, which were
-painted on that photo's content. Gradient and brightness-range masks carry over, since they
-are relative to the frame or to the photo's own tones.
+leaves out what only fits the photo it was made on: framing, brush masks, which were
+painted on that photo's content, and selections of one particular object. Gradient and
+brightness-range masks carry over, since they are relative to the frame or to the photo's
+own tones, and so do selections like "the sky" or "skin", which are found anew in each photo.
 
 Recipes live in one JSON file, `<data_dir>/recipes.json`, shared by every document.
 """
@@ -19,7 +20,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, TypeAdapter
 
 from photo_agent.layers import EditState, Layer, new_layer_id
-from photo_agent.masks import BrushMask
+from photo_agent.masks import BrushMask, Mask, SemanticMask
 from photo_agent.operations import new_op_id
 
 MAX_RECIPES = 200
@@ -37,14 +38,22 @@ class Recipe(BaseModel):
 
 
 def portable(layers: Sequence[Layer]) -> list[Layer]:
-    """Copies of the layers that make sense on any photo (brush masks dropped)."""
+    """Copies of the layers that make sense on any photo (photo-specific masks dropped)."""
     out = []
     for layer in layers:
         copy = layer.model_copy(deep=True)
-        if isinstance(copy.mask, BrushMask):
+        if copy.mask is not None and not is_portable(copy.mask):
             copy.mask = None
+        if isinstance(copy.mask, SemanticMask):
+            copy.mask.strokes = []  # painted for this photo
         out.append(copy)
     return out
+
+
+def is_portable(mask: Mask) -> bool:
+    if isinstance(mask, BrushMask):
+        return False
+    return not (isinstance(mask, SemanticMask) and mask.target == "object")
 
 
 def apply(recipe: Recipe, state: EditState) -> EditState:

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { EditState, Layer } from '../api/documents'
 import type { StateUpdate } from '../hooks/useManualEdit'
-import { DEFAULT_MASK_TOOL } from '../lib/masks'
+import { DEFAULT_MASK_TOOL, semanticMask } from '../lib/masks'
 import { SPECS, makeDoc } from '../test/fixtures'
 import { LayersPanel } from './LayersPanel'
 
@@ -56,6 +56,8 @@ function setup(selected: string | null = null) {
   )
   const onSelect = vi.fn()
   const onMaskTool = vi.fn()
+  const onRetouch = vi.fn()
+  const onStraighten = vi.fn()
   render(
     <LayersPanel
       doc={doc}
@@ -65,9 +67,11 @@ function setup(selected: string | null = null) {
       maskTool={DEFAULT_MASK_TOOL}
       onMaskTool={onMaskTool}
       specs={SPECS}
+      onRetouch={onRetouch}
+      onStraighten={onStraighten}
     />,
   )
-  return { sent, onSelect, onMaskTool }
+  return { sent, onSelect, onMaskTool, onRetouch, onStraighten }
 }
 
 describe('LayersPanel', () => {
@@ -121,6 +125,36 @@ describe('LayersPanel', () => {
 })
 
 describe('LayersPanel masks', () => {
+  it('selects the sky with AI', async () => {
+    const { sent } = setup('Lwarm')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Mask' }),
+      'Sky',
+    )
+    expect(sent[0].label).toBe('Select sky for “Warmer”')
+    expect(sent[0].state.layers[0].mask).toEqual({
+      kind: 'semantic',
+      target: 'sky',
+      points: [],
+      strokes: [],
+      description: '',
+      invert: false,
+    })
+  })
+
+  it('waits for a click on the photo to select an object', async () => {
+    const { sent, onMaskTool } = setup('Lwarm')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Mask' }),
+      'An object (click it)',
+    )
+    expect(sent).toEqual([])
+    expect(onMaskTool).toHaveBeenLastCalledWith({
+      ...DEFAULT_MASK_TOOL,
+      picking: true,
+    })
+  })
+
   it('adds a mask to the selected layer and tunes it', async () => {
     const { sent } = setup('Lwarm')
     await userEvent.selectOptions(
@@ -172,6 +206,53 @@ describe('LayersPanel masks', () => {
       expect.any(Function),
       'layer:Lwarm:mask:invert',
     )
+  })
+})
+
+describe('LayersPanel touch-ups', () => {
+  const sky = makeDoc({
+    state: {
+      framing: [],
+      layers: [{ ...warm, mask: semanticMask('sky') }],
+    },
+  })
+
+  function renderSky(tool = DEFAULT_MASK_TOOL) {
+    const onEdit = vi.fn(async () => {})
+    const onMaskTool = vi.fn()
+    render(
+      <LayersPanel
+        doc={sky}
+        onEdit={onEdit}
+        selected="Lwarm"
+        onSelect={vi.fn()}
+        maskTool={tool}
+        onMaskTool={onMaskTool}
+        specs={SPECS}
+      />,
+    )
+    return { onEdit, onMaskTool }
+  }
+
+  it('turns on the brush for touching up an AI selection', async () => {
+    const { onMaskTool } = renderSky()
+    expect(screen.queryByRole('slider', { name: 'Brush size' })).toBeNull()
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /Touch up with brush/ }),
+    )
+    expect(onMaskTool).toHaveBeenCalledWith({
+      ...DEFAULT_MASK_TOOL,
+      refining: true,
+    })
+  })
+
+  it('shows brush controls while touching up', () => {
+    renderSky({ ...DEFAULT_MASK_TOOL, refining: true })
+    expect(screen.getByText(/add what the AI missed/)).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Brush size' })).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Clear touch-ups' }),
+    ).toBeDisabled()
   })
 })
 
@@ -228,5 +309,55 @@ describe('LayersPanel manual controls', () => {
     const added = sent[0].state.layers[2]
     expect(added).toMatchObject({ name: 'Layer 3', operations: [] })
     expect(onSelect).toHaveBeenCalledWith(added.id)
+  })
+})
+
+describe('LayersPanel removal', () => {
+  it('adds a removal layer and waits for a click on what to remove', async () => {
+    const { sent, onSelect, onMaskTool } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+    expect(sent[0].label).toBe('Remove an object')
+    const added = sent[0].state.layers[2]
+    expect(added).toMatchObject({ name: 'Remove object', mask: null })
+    expect(added.operations).toMatchObject([{ op: 'remove', grow: 20 }])
+    expect(onSelect).toHaveBeenCalledWith(added.id)
+    expect(onMaskTool).toHaveBeenCalledWith({
+      ...DEFAULT_MASK_TOOL,
+      picking: true,
+    })
+  })
+})
+
+describe('LayersPanel cutout', () => {
+  it('removes the background, keeping the main subject', async () => {
+    const { sent, onSelect } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Cut out' }))
+    expect(sent[0].label).toBe('Remove the background')
+    expect(sent[0].state.cutout).toMatchObject({
+      visible: true,
+      background: null,
+      mask: { kind: 'semantic', target: 'subject' },
+    })
+    expect(onSelect).toHaveBeenCalledWith('cutout')
+  })
+})
+
+describe('LayersPanel retouch', () => {
+  it('asks for the portrait retouch layers', async () => {
+    const { sent, onRetouch } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Retouch' }))
+    expect(onRetouch).toHaveBeenCalledOnce()
+    expect(sent).toEqual([])
+  })
+})
+
+describe('LayersPanel framing', () => {
+  it('straightens automatically from the framing section', async () => {
+    const { sent, onStraighten } = setup('framing')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Auto straighten' }),
+    )
+    expect(onStraighten).toHaveBeenCalledOnce()
+    expect(sent).toEqual([])
   })
 })

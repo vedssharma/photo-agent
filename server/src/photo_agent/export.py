@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from photo_agent import imaging
 from photo_agent.graph import Document
-from photo_agent.render import render_state
+from photo_agent.render import render_cutout, render_state
 from photo_agent.store import LoadedImage
 
 EXIF_ORIENTATION = 0x0112
@@ -27,11 +27,24 @@ class ExportOptions(BaseModel):
     )
 
 
+TRANSPARENT_JPEG_BACKGROUND = "#ffffff"
+"""JPEG has no transparency, so a transparent cutout exported as JPEG goes on white."""
+
+
 def export_bytes(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes:
-    pixels = render_state(loaded.source.pixels, doc.state, loaded.full_context)
+    state, ctx = doc.state, loaded.full_context
+    cutout = state.cutout
+    transparent = cutout is not None and cutout.visible and cutout.background is None
+    if transparent and options.format == "png":
+        pixels, alpha = render_cutout(loaded.source.pixels, state, ctx)
+    else:
+        if transparent and cutout is not None:
+            white = cutout.model_copy(update={"background": TRANSPARENT_JPEG_BACKGROUND})
+            state = state.model_copy(update={"cutout": white})
+        pixels, alpha = render_state(loaded.source.pixels, state, ctx), None
     exif = export_exif(loaded.source.exif, pixels.shape[1], pixels.shape[0], options.keep_location)
     if options.format == "png":
-        return imaging.encode_png(pixels, exif=exif)
+        return imaging.encode_png(pixels, exif=exif, alpha=alpha)
     return imaging.encode_jpeg(pixels, quality=options.quality, exif=exif)
 
 

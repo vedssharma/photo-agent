@@ -19,8 +19,15 @@ def photos() -> Path:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Iterator[Settings]:
-    """App settings with no API key and a throwaway data directory."""
-    test_settings = Settings(_env_file=None, anthropic_api_key=None, data_dir=tmp_path / "data")
+    """App settings with no API key, a throwaway data directory, and models replaced by
+    their classical fallbacks on a thread."""
+    test_settings = Settings(
+        _env_file=None,
+        anthropic_api_key=None,
+        data_dir=tmp_path / "data",
+        model_worker="inline",
+        model_backends="classical",
+    )
     app.dependency_overrides[get_settings] = lambda: test_settings
     yield test_settings
     app.dependency_overrides.clear()

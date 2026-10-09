@@ -12,22 +12,39 @@ of the same graph look the same apart from resolution.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from typing import Any, cast
+from dataclasses import dataclass, field, replace
+from typing import Any, Protocol, cast
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 
 from photo_agent import operations as ops
 from photo_agent.imaging import Array
 from photo_agent.layers import BlendMode, EditState, Layer
-from photo_agent.masks import render_mask
+from photo_agent.masks import Mask, SemanticMask, render_mask
+from photo_agent.vision.classical import guided_filter
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+
+
+class Vision(Protocol):
+    """Runs AI models for a document (see `photo_agent.vision.selection`)."""
+
+    def mask(
+        self, mask: SemanticMask, framing: Sequence[ops.OpBase], shape: tuple[int, int]
+    ) -> Array:
+        """A semantic mask's selection, at `shape` (height, width) of the framed photo."""
+        ...
+
+    def fill(self, image: Array, hole: npt.NDArray[np.bool_], key: str) -> Array:
+        """`image` with the `hole` filled in by inpainting; cached under `key`."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -36,6 +53,17 @@ class RenderContext:
     """Pixels in this render per pixel of the original (1.0 for export, <1 for previews)."""
     source_aspect: float = 1.0
     """Width / height of the original photo, for the "original" crop ratio."""
+    vision: Vision | None = field(default=None, compare=False)
+    """Runs the models behind semantic masks; without it they cannot render."""
+    framing: tuple[ops.OpBase, ...] = field(default=(), compare=False)
+    """The framing of the state being rendered, which semantic masks are found in."""
+
+    def mask(self, mask: Mask, x: Array) -> Array:
+        """Render a layer mask for the pixels `x`."""
+        vision = self.vision
+        if vision is None:
+            return render_mask(mask, x)
+        return render_mask(mask, x, lambda m, shape: vision.mask(m, self.framing, shape))
 
 
 def render(pixels: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
@@ -45,34 +73,118 @@ def render(pixels: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) 
 
 
 def render_state(pixels: Array, state: EditState, ctx: RenderContext) -> Array:
-    """Apply the framing, then blend in each visible layer from the bottom up."""
+    """Apply the framing, then the removal layers, then blend in each visible adjustment
+    layer from the bottom up. A cutout's background shows as its color, or as a
+    checkerboard where it is transparent."""
+    rgb, alpha = render_cutout(pixels, state, ctx)
+    if alpha is None or state.cutout is None:
+        return rgb
+    backdrop = _backdrop(rgb.shape[:2], state.cutout.background)
+    return cast(Array, backdrop + (rgb - backdrop) * alpha[..., None])
+
+
+def render_cutout(
+    pixels: Array, state: EditState, ctx: RenderContext
+) -> tuple[Array, Array | None]:
+    """The rendered photo and, when a visible cutout is set, its alpha (1 keeps a pixel)."""
+    ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
+    out = _apply_removals(out, state.layers, ctx)
     for layer in state.layers:
         out = _apply_layer(out, layer, ctx)
-    return np.clip(out, 0.0, 1.0, out=out)
+    out = np.clip(out, 0.0, 1.0, out=out)
+    if state.cutout is None or not state.cutout.visible:
+        return out, None
+    return out, np.clip(ctx.mask(state.cutout.mask, out), 0.0, 1.0)
+
+
+CHECKER = (0.8, 0.6)
+"""Light and dark squares behind a transparent background in previews."""
+
+
+def _backdrop(shape: tuple[int, int], color: str | None) -> Array:
+    h, w = shape
+    if color is not None:
+        rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        return np.broadcast_to(np.array(rgb, np.float32), (h, w, 3)).astype(np.float32)
+    cell = max(4, round(max(h, w) * 0.015))
+    ys, xs = np.mgrid[0:h, 0:w]
+    dark = ((ys // cell + xs // cell) % 2).astype(bool)
+    gray = np.where(dark, CHECKER[1], CHECKER[0]).astype(np.float32)
+    return np.repeat(gray[..., None], 3, axis=2)
 
 
 def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
-    if not layer.visible or layer.opacity <= 0 or not layer.operations:
+    if not layer.visible or layer.opacity <= 0 or not layer.operations or layer.is_removal:
         return x
     adjusted = blend(x, apply_operations(x, layer.operations, ctx), layer.blend_mode)
     weight: Array | float = layer.opacity / 100
     if layer.mask is not None:
-        weight = render_mask(layer.mask, x)[..., None] * weight
+        weight = ctx.mask(layer.mask, x)[..., None] * weight
     return cast(Array, x + (adjusted - x) * weight)
 
 
+CUTOUT_ID = "cutout"
+"""Stands for the cutout where a layer id is expected (layer ids start with "L")."""
+
+REMOVAL_THRESHOLD = 0.35
+"""Where a removal layer's mask is at least this strong, the photo is filled in."""
+
+
+def _apply_removals(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Array:
+    """Fill in what each visible removal layer selects, in stack order.
+
+    Removals come before every adjustment, whatever their place in the stack, so the
+    filled-in area takes each adjustment just like the photo around it. Each fill is found
+    from the photo as earlier removals left it, and is cached by everything it depends on.
+    """
+    chain: list[object] = [[op.model_dump(exclude={"id"}) for op in ctx.framing], x.shape]
+    for layer in layers:
+        if not layer.is_removal or not layer.visible or layer.opacity <= 0:
+            continue
+        if layer.mask is None or ctx.vision is None:
+            continue
+        op = layer.operations[0]
+        assert isinstance(op, ops.Remove)
+        chain.append([layer.mask.model_dump(), op.grow])
+        region = ctx.mask(layer.mask, x)
+        radius = max(1, round(op.grow / 100 * 0.02 * long_edge(x)))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
+        hole = cv2.dilate((region > REMOVAL_THRESHOLD).astype(np.uint8), kernel).astype(bool)
+        if not hole.any():
+            continue
+        key = hashlib.sha256(json.dumps(chain, default=str).encode()).hexdigest()[:24]
+        filled = ctx.vision.fill(np.clip(x, 0.0, 1.0), hole, key)
+        weight = blur(hole.astype(np.float32), max(1.0, radius / 2)) * (layer.opacity / 100)
+        x = x + (filled - x) * weight[..., None]
+    return x
+
+
 def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
-    """Where a layer applies (0..1 per pixel), for showing its mask. Raises KeyError."""
+    """Where a layer applies (0..1 per pixel), for showing its mask. The id "cutout" shows
+    what the cutout keeps. Raises KeyError."""
+    if layer_id == CUTOUT_ID:
+        if state.cutout is None:
+            raise KeyError(layer_id)
+        _, alpha = render_cutout(
+            pixels,
+            state.model_copy(update={"cutout": state.cutout.model_copy(update={"visible": True})}),
+            ctx,
+        )
+        assert alpha is not None
+        return alpha
     target = state.layer(layer_id)
+    ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
     if target.mask is None:
         return np.ones(out.shape[:2], np.float32)
+    if not target.is_removal:
+        out = _apply_removals(out, state.layers, ctx)
     for layer in state.layers:
         if layer.id == layer_id:
             break
         out = _apply_layer(out, layer, ctx)
-    return render_mask(target.mask, out)
+    return ctx.mask(target.mask, out)
 
 
 def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
@@ -411,6 +523,57 @@ def _straighten(x: Array, op: ops.Straighten, ctx: RenderContext) -> Array:
     return cast(Array, np.ascontiguousarray(rotated[y0:y1, x0:x1]))
 
 
+# How far the strongest perspective and lens corrections go.
+PERSPECTIVE_MAX = 0.3
+"""Fraction of the width (or height) the narrow side is stretched by at 100."""
+DISTORTION_MAX = 0.25
+"""Radial coefficient at 100, with the radius measured to the corners."""
+
+
+def perspective_quad(op: ops.Perspective, w: int, h: int) -> Array:
+    """The corners (top-left, top-right, bottom-right, bottom-left) of the region that gets
+    stretched to fill the frame."""
+    quad = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    kv, kh = PERSPECTIVE_MAX * op.vertical / 100, PERSPECTIVE_MAX * op.horizontal / 100
+    top, bottom = (0, 1) if kv > 0 else (3, 2)
+    quad[top, 0] += abs(kv) * w / 2
+    quad[bottom, 0] -= abs(kv) * w / 2
+    right, left = (1, 2) if kh > 0 else (0, 3)
+    quad[right, 1] += abs(kh) * h / 2
+    quad[left, 1] -= abs(kh) * h / 2
+    return quad
+
+
+def _perspective(x: Array, op: ops.Perspective, ctx: RenderContext) -> Array:
+    if abs(op.vertical) < 1e-3 and abs(op.horizontal) < 1e-3:
+        return x
+    h, w = x.shape[:2]
+    frame = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    matrix = cv2.getPerspectiveTransform(perspective_quad(op, w, h), frame)
+    out = cv2.warpPerspective(
+        x, matrix, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+    )
+    return cast(Array, out)
+
+
+def _lens_correction(x: Array, op: ops.LensCorrection, ctx: RenderContext) -> Array:
+    if abs(op.distortion) < 1e-3:
+        return x
+    h, w = x.shape[:2]
+    k = -DISTORTION_MAX * op.distortion / 100
+    reach = math.hypot(w, h) / 2
+    # Scale so the edge point that samples farthest out still lands inside the photo.
+    nearest_edge = min(w, h) / 2 / reach
+    scale = 1 / max(1 + k * nearest_edge**2, 1 + k)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    dx, dy = (xs - (w - 1) / 2) / reach, (ys - (h - 1) / 2) / reach
+    factor = (1 + k * (dx * dx + dy * dy)) * scale
+    map_x = (dx * factor * reach + (w - 1) / 2).astype(np.float32)
+    map_y = (dy * factor * reach + (h - 1) / 2).astype(np.float32)
+    out = cv2.remap(x, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    return cast(Array, out)
+
+
 # Finishing
 
 
@@ -440,6 +603,59 @@ def _grain(x: Array, op: ops.Grain, ctx: RenderContext) -> Array:
     lum = np.clip(luma(x), 0.0, 1.0)
     weight = 1.0 - 0.6 * (2.0 * lum - 1.0) ** 2
     return x + ((op.amount / 100) * 0.07 * noise * weight)[..., None]
+
+
+# Retouching
+
+
+def _smooth_skin(x: Array, op: ops.SmoothSkin, ctx: RenderContext) -> Array:
+    """Edge-preserving smoothing (a guided filter, so edges like eyes and lips stay sharp)
+    with the finest texture added back, so skin does not turn to plastic."""
+    edge = long_edge(x)
+    c = np.clip(x, 0.0, 1.0)
+    radius = max(1, round(edge * 0.01))
+    smooth = np.stack(
+        [guided_filter(c[..., i], c[..., i], radius, eps=0.004) for i in range(3)], axis=2
+    )
+    fine = c - blur(c, max(0.5, edge * 0.0012))
+    target = smooth + (op.texture / 100) * fine
+    return cast(Array, x + (op.amount / 100) * (target - c))
+
+
+def _heal_blemishes(x: Array, op: ops.HealBlemishes, ctx: RenderContext) -> Array:
+    """Spots darker or redder than the skin around them, up to `size`, filled from their
+    surroundings."""
+    edge = long_edge(x)
+    c = np.clip(x, 0.0, 1.0)
+    max_radius = edge * (0.002 + 0.008 * op.size / 100)
+    lum = luma(c)
+    around = blur(lum, max_radius * 1.5)
+    darker = around - blur(lum, max(0.5, max_radius * 0.25))
+    red = c[..., 0] - 0.5 * (c[..., 1] + c[..., 2])
+    redder = blur(red, max(0.5, max_radius * 0.25)) - blur(red, max_radius * 1.5)
+    threshold = 0.06 - 0.045 * op.amount / 100
+    spots = (darker > threshold) | (redder > threshold * 1.2)
+    # Only small, round-ish spots: eyes, nostrils, and brows are bigger or longer. Thin
+    # bridges are opened first so a blemish touching a crease still counts on its own.
+    spots8 = spots.astype(np.uint8)
+    if max_radius >= 2:
+        cross = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        spots8 = cv2.morphologyEx(spots8, cv2.MORPH_OPEN, cross).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(spots8, connectivity=4)
+    longest = stats[:, cv2.CC_STAT_WIDTH].clip(min=stats[:, cv2.CC_STAT_HEIGHT])
+    keep = (longest <= 2 * max_radius + 1) & (
+        stats[:, cv2.CC_STAT_AREA] <= math.pi * max_radius * max_radius
+    )
+    keep[0] = False
+    small = keep[labels].astype(np.uint8)
+    if count <= 1 or not small.any():
+        return x
+    grow = max(1, round(max_radius * 0.4))
+    hole = cv2.dilate(small, np.ones((2 * grow + 1, 2 * grow + 1), np.uint8))
+    img8 = (c * 255 + 0.5).astype(np.uint8)
+    healed = cv2.inpaint(img8, hole, max(2.0, max_radius), cv2.INPAINT_TELEA).astype(np.float32)
+    weight = blur(hole.astype(np.float32), max(0.5, grow / 2))[..., None]
+    return cast(Array, x + (healed / 255 - c) * weight)
 
 
 def monotone_curve(points: Sequence[Sequence[float]], samples: int = LUT_SIZE) -> Array:
@@ -499,10 +715,16 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Crop: _crop,
     ops.Rotate: _rotate,
     ops.Straighten: _straighten,
+    ops.Perspective: _perspective,
+    ops.LensCorrection: _lens_correction,
     ops.Flip: _flip,
     ops.Vignette: _vignette,
     ops.Grain: _grain,
     ops.ToneCurve: _tone_curve,
+    # Removal needs the layer's mask, so removal layers render separately (see above).
+    ops.Remove: lambda x, op, ctx: x,
+    ops.SmoothSkin: _smooth_skin,
+    ops.HealBlemishes: _heal_blemishes,
 }
 
 

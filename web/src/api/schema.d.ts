@@ -181,6 +181,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/retouch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retouch Portrait
+         * @description Add portrait retouch layers (skin, eyes, teeth) on top, as one step in the history;
+         *     without options, the subtle defaults.
+         */
+        post: operations["retouchPortrait"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/straighten": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Straighten
+         * @description Level the photo and square up converging verticals, measured from its straight
+         *     lines, as one step in the history. 422 when it finds nothing to go by.
+         */
+        post: operations["autoStraighten"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/checkout": {
         parameters: {
             query?: never;
@@ -307,6 +349,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description AI model jobs running (or just finished) for this document, with their progress.
+         *     The web app polls this while it waits on a change.
+         */
+        get: operations["listJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -411,10 +474,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Models
+         * @description Which model (or classical fallback) runs each AI task, and on what device.
+         */
+        get: operations["getModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AutoStraighten
+         * @description What to fix automatically.
+         */
+        AutoStraighten: {
+            /**
+             * Level
+             * @description Level a tilted horizon or tilted verticals.
+             * @default true
+             */
+            level: boolean;
+            /**
+             * Perspective
+             * @description Make converging verticals (buildings, walls) parallel.
+             * @default true
+             */
+            perspective: boolean;
+        };
         /**
          * Blacks
          * @description Move the black point: negative makes blacks deeper, positive lifts them (matte look).
@@ -609,6 +710,28 @@ export interface components {
             aspect: "free" | "original" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
         };
         /**
+         * Cutout
+         * @description Keeps only what the mask selects (the main subject unless told otherwise) and
+         *     replaces everything else with transparency or a solid color.
+         */
+        Cutout: {
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Mask
+             * @description What to keep.
+             */
+            mask?: components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"] | components["schemas"]["SemanticMask"];
+            /**
+             * Background
+             * @description Null for a transparent background (PNG export), or a color like "#ffffff".
+             */
+            background?: string | null;
+        };
+        /**
          * Dehaze
          * @description Cut through haze or fog (positive), or add atmosphere (negative).
          */
@@ -699,12 +822,13 @@ export interface components {
              * Framing
              * @default []
              */
-            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"])[];
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"])[];
             /**
              * Layers
              * @default []
              */
             layers: components["schemas"]["Layer"][];
+            cutout?: components["schemas"]["Cutout"] | null;
         };
         /** ExportOptions */
         ExportOptions: {
@@ -836,6 +960,35 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HealBlemishes
+         * @description Find small spots (blemishes, pimples, dust) and heal them from the skin around them.
+         *     Use on a layer masked to skin.
+         */
+        HealBlemishes: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "heal_blemishes";
+            /**
+             * Amount
+             * @description How readily spots are healed; higher finds more.
+             * @default 50
+             */
+            amount: number;
+            /**
+             * Size
+             * @description Largest spot to heal; higher heals bigger spots.
+             * @default 40
+             */
+            size: number;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -862,6 +1015,31 @@ export interface components {
             op: "highlights";
             /** Amount */
             amount: number;
+        };
+        /** JobStatus */
+        JobStatus: {
+            /** Id */
+            id: string;
+            /** Doc Id */
+            doc_id: string | null;
+            /** Task */
+            task: string;
+            /** Label */
+            label: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "failed";
+            /** Fraction */
+            fraction?: number | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Backend */
+            backend?: string | null;
         };
         /**
          * Layer
@@ -897,12 +1075,35 @@ export interface components {
              * Mask
              * @description Limits the layer to part of the photo; null applies it everywhere.
              */
-            mask?: (components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"]) | null;
+            mask?: (components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"] | components["schemas"]["SemanticMask"]) | null;
             /**
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"])[];
+        };
+        /**
+         * LensCorrection
+         * @description Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward
+         *     (pincushion, telephoto). Scales up just enough that no edge is left empty.
+         */
+        LensCorrection: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "lens_correction";
+            /**
+             * Distortion
+             * @description Positive straightens lines that bow outward (barrel); negative straightens lines that bow inward (pincushion).
+             * @default 0
+             */
+            distortion: number;
         };
         /**
          * LinearGradientMask
@@ -1031,7 +1232,7 @@ export interface components {
              * Group
              * @enum {string}
              */
-            group: "light" | "color" | "detail" | "framing" | "finishing";
+            group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch";
             /** Framing */
             framing: boolean;
             /** Params */
@@ -1063,6 +1264,36 @@ export interface components {
             choices?: (string | number)[] | null;
             /** Default */
             default?: unknown;
+        };
+        /**
+         * Perspective
+         * @description Fix lines that converge because the camera was tilted: buildings that lean in toward
+         *     the top, or a wall that shrinks toward one side. The narrow side is stretched out to the
+         *     frame, so nothing is left empty.
+         */
+        Perspective: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "perspective";
+            /**
+             * Vertical
+             * @description Positive widens the top, for verticals that lean in toward the top (camera tilted up); negative widens the bottom.
+             * @default 0
+             */
+            vertical: number;
+            /**
+             * Horizontal
+             * @description Positive widens the right side, for lines that converge toward the right; negative widens the left.
+             * @default 0
+             */
+            horizontal: number;
         };
         /**
          * RadialGradientMask
@@ -1118,6 +1349,60 @@ export interface components {
             layers: components["schemas"]["Layer"][];
         };
         /**
+         * Remove
+         * @description Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap
+         *     with plausible surroundings, using an AI inpainting model. Needs a mask; it is the only
+         *     operation in its layer. Removal layers apply first, before any adjustment layer.
+         */
+        Remove: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "remove";
+            /**
+             * Grow
+             * @description How far past the selection's edge to fill, so outlines and halos go.
+             * @default 20
+             */
+            grow: number;
+        };
+        /**
+         * Retouch
+         * @description How much of each retouch to do; 0 leaves that part out.
+         */
+        Retouch: {
+            /**
+             * Smooth Skin
+             * @description Soften skin, keeping texture.
+             * @default 35
+             */
+            smooth_skin: number;
+            /**
+             * Remove Blemishes
+             * @description Heal small spots on the skin.
+             * @default true
+             */
+            remove_blemishes: boolean;
+            /**
+             * Brighten Eyes
+             * @description Brighten and clarify eyes.
+             * @default 25
+             */
+            brighten_eyes: number;
+            /**
+             * Whiten Teeth
+             * @description Take the yellow out of teeth.
+             * @default 25
+             */
+            whiten_teeth: number;
+        };
+        /**
          * Rotate
          * @description Rotate the photo clockwise by a quarter, half, or three-quarter turn.
          */
@@ -1155,6 +1440,67 @@ export interface components {
             op: "saturation";
             /** Amount */
             amount: number;
+        };
+        /** SelectPoint */
+        SelectPoint: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /**
+             * Include
+             * @description False marks a spot that is not part of it.
+             * @default true
+             */
+            include: boolean;
+        };
+        /**
+         * SemanticMask
+         * @description Selects something by what it is, found by an AI model: the sky, the main subject,
+         *     people, a particular object, or parts of a face. For `object`, give a `box` around it
+         *     (and optionally `points` on it), in fractions of the photo as you see it.
+         */
+        SemanticMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "semantic";
+            /**
+             * Target
+             * @description subject: the main subject, as a cutout would keep it; people: every person; sky; object: one thing you point at with `box` and/or `points` (a particular person, a dog, a car); and parts of faces for portraits: skin (face and visible skin), face, eyes, lips, teeth, hair.
+             * @enum {string}
+             */
+            target: "subject" | "people" | "sky" | "object" | "skin" | "face" | "eyes" | "lips" | "teeth" | "hair";
+            /**
+             * Box
+             * @description For object: [left, top, right, bottom] around it, fractions of the photo.
+             */
+            box?: number[] | null;
+            /**
+             * Points
+             * @description For object: spots on it (or, with include false, not).
+             * @default []
+             */
+            points: components["schemas"]["SelectPoint"][];
+            /**
+             * Description
+             * @description What is selected, in plain words: "the dog".
+             * @default
+             */
+            description: string;
+            /**
+             * Strokes
+             * @description Brush touch-ups painted by the person over what the model found: added where painted, taken away where erased. Keep them when changing the mask.
+             * @default []
+             */
+            strokes: components["schemas"]["BrushStroke"][];
         };
         /**
          * Shadows
@@ -1200,6 +1546,35 @@ export interface components {
              * @default 1
              */
             radius: number;
+        };
+        /**
+         * SmoothSkin
+         * @description Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
+         *     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural.
+         */
+        SmoothSkin: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "smooth_skin";
+            /**
+             * Amount
+             * @description How much to smooth.
+             * @default 35
+             */
+            amount: number;
+            /**
+             * Texture
+             * @description How much fine skin texture to keep.
+             * @default 60
+             */
+            texture: number;
         };
         /**
          * Step
@@ -1278,6 +1653,19 @@ export interface components {
              * @description Degrees; positive turns clockwise.
              */
             angle: number;
+        };
+        /** TaskStatus */
+        TaskStatus: {
+            /** Task */
+            task: string;
+            /** Label */
+            label: string;
+            /** Backend */
+            backend: string;
+            /** License */
+            license: string;
+            /** Uses Weights */
+            uses_weights: boolean;
         };
         /**
          * ToneCurve
@@ -1409,6 +1797,18 @@ export interface components {
             op: "whites";
             /** Amount */
             amount: number;
+        };
+        /** WorkerStatus */
+        WorkerStatus: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "process" | "inline";
+            /** Device */
+            device: string;
+            /** Tasks */
+            tasks: components["schemas"]["TaskStatus"][];
         };
         /** AgentError */
         AgentError: {
@@ -1795,6 +2195,76 @@ export interface operations {
             };
         };
     };
+    retouchPortrait: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Retouch"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    autoStraighten: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AutoStraighten"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     checkout: {
         parameters: {
             query?: never;
@@ -2005,6 +2475,37 @@ export interface operations {
             };
         };
     };
+    listJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     openProject: {
         parameters: {
             query?: never;
@@ -2177,6 +2678,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperationSpec"][];
+                };
+            };
+        };
+    };
+    getModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerStatus"];
                 };
             };
         };
