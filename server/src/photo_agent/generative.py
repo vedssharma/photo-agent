@@ -80,7 +80,7 @@ def job_params(op: GenerativeBase) -> dict[str, Any]:
     return params
 
 
-NOT_IN_KEY = {"id", "harmonize", "amount"}
+NOT_IN_KEY = {"id", "harmonize", "amount", "options"}
 """Fields that do not change what a model generates (they apply afterwards, or not at all)."""
 
 

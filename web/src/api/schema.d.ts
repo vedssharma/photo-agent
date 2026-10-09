@@ -181,6 +181,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/operations/{op_id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Offer Options
+         * @description Offer several takes on a generative edit to pick from, as one step in the history.
+         *     Each take is generated now, so showing and picking them is instant.
+         */
+        post: operations["offerOptions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/operations/{op_id}/options/{seed}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Option
+         * @description A preview of the photo with one of the takes on offer.
+         */
+        get: operations["getOption"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/looks/{look_id}": {
         parameters: {
             query?: never;
@@ -763,6 +804,12 @@ export interface components {
              */
             model: string;
             /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -988,6 +1035,12 @@ export interface components {
              */
             model: string;
             /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -1125,6 +1178,12 @@ export interface components {
              * @default
              */
             model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1506,6 +1565,15 @@ export interface components {
             /** Params */
             params: components["schemas"]["ParamSpec"][];
         };
+        /** OptionsRequest */
+        OptionsRequest: {
+            /**
+             * Count
+             * @description How many takes to offer.
+             * @default 3
+             */
+            count: number;
+        };
         /** ParamSpec */
         ParamSpec: {
             /** Name */
@@ -1641,6 +1709,12 @@ export interface components {
              */
             model: string;
             /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -1715,6 +1789,12 @@ export interface components {
              */
             model: string;
             /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -1755,6 +1835,12 @@ export interface components {
              */
             model: string;
             /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -1790,6 +1876,12 @@ export interface components {
              * @default
              */
             model: string;
+            /**
+             * Options
+             * @description Seeds of alternative takes offered to pick from, recorded by the app.
+             * @default []
+             */
+            options: number[];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2613,6 +2705,89 @@ export interface operations {
                 };
             };
             /** @description No such document or recipe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    offerOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                op_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OptionsRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or generative operation */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getOption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                op_id: string;
+                seed: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such document, operation, or take */
             404: {
                 headers: {
                     [name: string]: unknown;

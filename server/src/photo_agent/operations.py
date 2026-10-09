@@ -37,7 +37,9 @@ class OpBase(BaseModel):
 
 
 SEED_MAX = 2**31 - 1
-APP_FIELDS = ("model",)
+MAX_OPTIONS = 4
+"""The most takes offered to pick from at once."""
+APP_FIELDS = ("model", "options")
 """Fields the app fills in on generative operations; tools and sliders leave them out."""
 
 
@@ -54,6 +56,11 @@ class GenerativeBase(OpBase):
     )
     model: str = Field(
         "", max_length=80, description="The model that generates it, recorded by the app."
+    )
+    options: list[Annotated[int, Field(ge=0, le=SEED_MAX)]] = Field(
+        [],
+        max_length=MAX_OPTIONS,
+        description="Seeds of alternative takes offered to pick from, recorded by the app.",
     )
 
     def summary(self) -> str:

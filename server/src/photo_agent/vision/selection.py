@@ -332,7 +332,7 @@ class DocumentVision:
             "v": 1,
             "task": task,
             "backend": choices[0].name if choices else "none",
-            "framing": [op.model_dump(exclude={"id"}) for op in framing],
+            "framing": [op.model_dump(exclude={"id", "options"}) for op in framing],
         }
         if task == "segment_object":
             payload["box"] = mask.box

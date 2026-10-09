@@ -412,6 +412,138 @@
         }
       }
     },
+    "/api/documents/{doc_id}/operations/{op_id}/options": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Offer Options",
+        "description": "Offer several takes on a generative edit to pick from, as one step in the history.\nEach take is generated now, so showing and picking them is instant.",
+        "operationId": "offerOptions",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "op_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Op Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OptionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or generative operation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/operations/{op_id}/options/{seed}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Option",
+        "description": "A preview of the photo with one of the takes on offer.",
+        "operationId": "getOption",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "op_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Op Id"
+            }
+          },
+          {
+            "name": "seed",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Seed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such document, operation, or take"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/looks/{look_id}": {
       "post": {
         "tags": [
@@ -1545,6 +1677,18 @@
             "description": "The model that generates it, recorded by the app.",
             "default": ""
           },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
           "op": {
             "type": "string",
             "const": "colorize",
@@ -2032,6 +2176,18 @@
             "description": "The model that generates it, recorded by the app.",
             "default": ""
           },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
           "op": {
             "type": "string",
             "const": "expand",
@@ -2225,6 +2381,18 @@
             "title": "Model",
             "description": "The model that generates it, recorded by the app.",
             "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
           },
           "op": {
             "type": "string",
@@ -3154,6 +3322,20 @@
         ],
         "title": "OperationSpec"
       },
+      "OptionsRequest": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 2.0,
+            "title": "Count",
+            "description": "How many takes to offer.",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "title": "OptionsRequest"
+      },
       "ParamSpec": {
         "properties": {
           "name": {
@@ -3403,6 +3585,18 @@
             "description": "The model that generates it, recorded by the app.",
             "default": ""
           },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
           "op": {
             "type": "string",
             "const": "relight",
@@ -3499,6 +3693,18 @@
             "description": "The model that generates it, recorded by the app.",
             "default": ""
           },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
           "op": {
             "type": "string",
             "const": "replace_background",
@@ -3557,6 +3763,18 @@
             "description": "The model that generates it, recorded by the app.",
             "default": ""
           },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
+          },
           "op": {
             "type": "string",
             "const": "restore_faces",
@@ -3604,6 +3822,18 @@
             "title": "Model",
             "description": "The model that generates it, recorded by the app.",
             "default": ""
+          },
+          "options": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Options",
+            "description": "Seeds of alternative takes offered to pick from, recorded by the app.",
+            "default": []
           },
           "op": {
             "type": "string",

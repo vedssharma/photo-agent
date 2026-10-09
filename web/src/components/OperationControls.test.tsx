@@ -68,4 +68,31 @@ describe('OperationControls for generative edits', () => {
     expect(changes.seed).not.toBe(42)
     expect(changes.seed).toBeGreaterThanOrEqual(0)
   })
+
+  it('offers takes and picks one', async () => {
+    const onChange = vi.fn()
+    const onOptions = vi.fn()
+    render(
+      <OperationControls
+        op={{ ...op, options: [42, 7, 99] } as Operation}
+        spec={spec}
+        onChange={onChange}
+        onRemove={() => {}}
+        onOptions={onOptions}
+        optionUrl={(seed) => `/take/${seed}`}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Show options' }))
+    expect(onOptions).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Take 1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Take 3' }))
+    expect(onChange).toHaveBeenCalledWith(
+      { seed: 99 },
+      'Generate: take 3',
+      'seed',
+    )
+  })
 })

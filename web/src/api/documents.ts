@@ -156,6 +156,29 @@ export function layerMaskUrl(doc: DocumentView, layerId: string): string {
   return `/api/documents/${doc.id}/layers/${layerId}/mask?revision=${doc.revision}`
 }
 
+/** URL of the preview with one take on a generative operation (see `offerOptions`). */
+export function optionUrl(
+  doc: DocumentView,
+  opId: string,
+  seed: number,
+): string {
+  return `/api/documents/${doc.id}/operations/${opId}/options/${seed}?revision=${doc.revision}`
+}
+
+/** Offer several takes on a generative operation to pick from, as one history step. */
+export async function offerOptions(
+  docId: string,
+  opId: string,
+  count = 3,
+): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/operations/{op_id}/options',
+    { params: { path: { doc_id: docId, op_id: opId } }, body: { count } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
 /** URL of the edited photo at preview size; changes whenever the edits do. */
 export function previewUrl(doc: DocumentView): string {
   return `/api/documents/${doc.id}/preview?revision=${doc.revision}`

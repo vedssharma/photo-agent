@@ -22,7 +22,7 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import diagnostics, imaging, looks
+from photo_agent import diagnostics, imaging, looks, variants
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
@@ -33,6 +33,7 @@ from photo_agent.operations import (
     CONTENT_TYPES,
     GEOMETRY_TYPES,
     MASKED_TYPES,
+    MAX_OPTIONS,
     OPERATIONS_BY_NAME,
     GenerativeBase,
     OpBase,
@@ -105,6 +106,11 @@ Each starts its own layer. Restoration should still look like the same person: k
 amount moderate unless the faces are badly degraded. To make a photo bigger or sharper \
 for printing, tell the person to pick Enlarge in the export dialog: upscaling happens \
 when the file is saved.
+- When the person asks for options or variations ("show me 3 options", "try a few"), or \
+a generative result could reasonably go several ways, call show_options on that \
+operation's id: you see the takes numbered side by side, and so can the person in the \
+layers panel. Say briefly how they differ and which you would pick; set it with \
+update_operation(seed) only if they asked you to choose.
 - To turn a vertical photo into a landscape one, give a tight shot more room, or fit a \
 format without cropping ("make this 16:9 without cutting anything off"), call expand: it \
 extends the canvas with new surroundings painted to match. Prefer an aspect ratio; use \
@@ -443,6 +449,31 @@ def tool_definitions() -> list[BetaToolParam]:
     )
     tools.append(
         {
+            "name": "show_options",
+            "description": "Generate several takes on a generative operation (by id) to "
+            "compare, when the person asks for options or a result could go several ways. "
+            "Returns them side by side, numbered; take 1 is the current one. The person can "
+            "also pick among them in the layers panel. To choose one yourself, set its seed "
+            "with update_operation.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "count": {
+                        "type": "integer",
+                        "minimum": 2,
+                        "maximum": MAX_OPTIONS,
+                        "description": "How many takes, counting the current one (default 3).",
+                    },
+                },
+                "required": ["id"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
             "name": "restore_background",
             "description": "Undo the cutout and bring the background back.",
             "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -498,6 +529,7 @@ class Editor:
         default_layer_name: str = "Edits",
         framed: Framed | None = None,
         model_for: Callable[[str], str] | None = None,
+        render_state: Callable[[EditState], imaging.Array] | None = None,
     ) -> None:
         self.state = state.model_copy(deep=True)
         self.default_layer_name = default_layer_name
@@ -505,10 +537,15 @@ class Editor:
         """Renders the photo with a given framing, for tools that measure it."""
         self.model_for = model_for
         """Names the backend (model or "classical") that runs a model task."""
+        self.render_state = render_state
+        """Renders a preview of a state, for tools that show Claude alternatives."""
+        self.images: list[imaging.Array] = []
+        """Images the last tool call shows Claude along with its text result."""
         self.target: str | None = None
         """The layer that operation tools add to: the one added most recently."""
 
     def call(self, name: str, args: object) -> tuple[str, OperationEvent]:
+        self.images = []
         result = self._call(name, args)
         # Generative edits get their seed and model now, so every render shows the same take.
         self.state = stamp(self.state, self.model_for)
@@ -527,6 +564,7 @@ class Editor:
             "retouch_portrait": self._retouch,
             "auto_straighten": self._auto_straighten,
             "apply_look": self._apply_look,
+            "show_options": self._show_options,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
@@ -697,6 +735,25 @@ class Editor:
             action="added", summary=f"Look: {look.name}"
         )
 
+    def _show_options(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        op_id = str(args.get("id"))
+        count = args.get("count", variants.DEFAULT_COUNT)
+        if not isinstance(count, int) or not 2 <= count <= MAX_OPTIONS:
+            raise ToolError(f"count must be a whole number from 2 to {MAX_OPTIONS}.")
+        try:
+            state = variants.offer(self.state, op_id, count)
+        except variants.NotGenerativeError:
+            raise ToolError(f"{op_id!r} is not a generative operation's id.") from None
+        op = variants.generative_op(state, op_id)
+        self.state = state
+        if self.render_state is not None:
+            takes = [self.render_state(variants.with_seed(state, op_id, s)) for s in op.options]
+            self.images = [variants.contact_sheet(takes)]
+        seeds = ", ".join(f"{i}: seed {seed}" for i, seed in enumerate(op.options, start=1))
+        return f"Offered {count} takes on {op_id} ({seeds}); take 1 is current.", OperationEvent(
+            action="updated", summary=f"Options for {op.summary()}"
+        )
+
     def _auto_straighten(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
         try:
             options = AutoStraighten.model_validate(args)
@@ -861,6 +918,9 @@ class AgentService:
                 default_layer_name=layer_name(request),
                 framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
                 model_for=self.store.model_for,
+                render_state=lambda state: self.renders.get_or_render(
+                    doc_id, loaded.proxy, state, loaded.proxy_context
+                ),
             )
             reply = await self._converse(doc, request, editor, emit)
 
@@ -898,8 +958,9 @@ class AgentService:
         rendered = await self._render(doc, editor.state)
         # Ops changed, so at least one call succeeded; annotate the last successful one.
         last = next(r for r in reversed(results) if not r.get("is_error"))
+        before = last["content"]
         last["content"] = [
-            {"type": "text", "text": str(last["content"])},
+            *(before if isinstance(before, list) else [{"type": "text", "text": str(before)}]),
             {"type": "text", "text": diagnostics.report(baseline, diagnostics.measure(rendered))},
             {"type": "text", "text": describe_state(editor.state)},
             image_block(rendered),
@@ -955,7 +1016,8 @@ class AgentService:
             results: list[dict[str, Any]] = []
             for block in tool_uses:
                 try:
-                    text, event = editor.call(block.name, block.input)
+                    # Tools may render or run models; keep the event loop free meanwhile.
+                    text, event = await asyncio.to_thread(editor.call, block.name, block.input)
                 except ToolError as exc:
                     results.append(
                         {
@@ -967,7 +1029,10 @@ class AgentService:
                     )
                     continue
                 await emit(event)
-                results.append({"type": "tool_result", "tool_use_id": block.id, "content": text})
+                content: str | list[Any] = text
+                if editor.images:
+                    content = [{"type": "text", "text": text}, *map(image_block, editor.images)]
+                results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
             if editor.state != state_seen:
                 state_seen = editor.state.model_copy(deep=True)
                 await self._attach_self_check(doc, editor, results, baseline)

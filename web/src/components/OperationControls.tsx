@@ -18,6 +18,10 @@ interface Props {
   /** Live value while a slider is dragged, for instant previews. */
   onPreview?: (param: string, value: number) => void
   onRemove: () => void
+  /** Offers several takes on a generative operation to pick from. */
+  onOptions?: () => void
+  /** Preview URL of one take, by seed. */
+  optionUrl?: (seed: number) => string
 }
 
 /**
@@ -31,10 +35,15 @@ export function OperationControls({
   onChange,
   onPreview,
   onRemove,
+  onOptions,
+  optionUrl,
 }: Props) {
   const values = op as unknown as Record<string, unknown>
   const title = spec?.label ?? opSummary(op)
   const numeric = spec?.params.filter((p) => p.kind === 'number') ?? []
+  const options = Array.isArray(values.options)
+    ? (values.options as number[])
+    : []
 
   function label(param: ParamSpec, text: string) {
     return numeric.length === 1 && param.kind === 'number'
@@ -118,7 +127,42 @@ export function OperationControls({
                 >
                   New take
                 </button>
+                {onOptions && (
+                  <button
+                    type="button"
+                    className="icon"
+                    disabled={disabled}
+                    title="Generate a few takes to compare"
+                    onClick={onOptions}
+                  >
+                    Show options
+                  </button>
+                )}
               </span>
+              {optionUrl && options.length > 1 && (
+                <div className="options" role="group" aria-label="Takes">
+                  {options.map((seed, i) => (
+                    <button
+                      key={seed}
+                      type="button"
+                      className={seed === value ? 'option picked' : 'option'}
+                      aria-pressed={seed === value}
+                      aria-label={`Take ${i + 1}`}
+                      disabled={disabled}
+                      onClick={() =>
+                        onChange(
+                          { [param.name]: seed },
+                          `${title}: take ${i + 1}`,
+                          param.name,
+                        )
+                      }
+                    >
+                      <img src={optionUrl(seed)} alt="" loading="lazy" />
+                      <span>{i + 1}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )
         if (param.kind === 'choice')

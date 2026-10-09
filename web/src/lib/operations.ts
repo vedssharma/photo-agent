@@ -16,7 +16,7 @@ function format(value: unknown): string {
 }
 
 /** Fields the app records on generative operations, not shown as parameters. */
-const APP_FIELDS = new Set(['id', 'op', 'model'])
+const APP_FIELDS = new Set(['id', 'op', 'model', 'options'])
 
 /** A short description like "Exposure (stops +0.4)", matching the server's wording. */
 export function opSummary(op: Operation): string {

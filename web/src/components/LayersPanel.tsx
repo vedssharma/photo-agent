@@ -1,8 +1,9 @@
-import type {
-  BlendMode,
-  DocumentView,
-  Layer,
-  Operation,
+import {
+  type BlendMode,
+  type DocumentView,
+  type Layer,
+  type Operation,
+  optionUrl,
 } from '../api/documents'
 import type { OperationSpec } from '../api/operations'
 import { useState } from 'react'
@@ -48,6 +49,8 @@ interface Props {
   onRetouch?: () => void
   /** Levels the photo and squares up converging verticals. */
   onStraighten?: () => void
+  /** Offers several takes on a generative operation, by id. */
+  onOptions?: (opId: string) => void
 }
 
 const BLEND_MODES: { value: BlendMode; label: string }[] = [
@@ -200,6 +203,7 @@ export function LayersPanel({
   onPreview,
   onRetouch,
   onStraighten,
+  onOptions,
 }: Props) {
   const state = doc.state
   const locked = disabled
@@ -231,6 +235,10 @@ export function LayersPanel({
             removeOperation(s, opId),
           )
         }
+        onOptions={
+          onOptions && 'seed' in op ? () => onOptions(opId) : undefined
+        }
+        optionUrl={(seed) => optionUrl(doc, opId, seed)}
       />
     )
   }
@@ -298,6 +306,7 @@ export function LayersPanel({
           seed: newSeed(),
           grow: 10,
           model: '',
+          options: [],
         },
       ],
       mask: defaultMask('brush'),
@@ -323,6 +332,7 @@ export function LayersPanel({
           seed: newSeed(),
           harmonize: 50,
           model: '',
+          options: [],
         },
       ],
       mask: null,
@@ -348,6 +358,7 @@ export function LayersPanel({
           seed: newSeed(),
           amount: 60,
           model: '',
+          options: [],
         },
       ],
       mask: null,
@@ -372,6 +383,7 @@ export function LayersPanel({
           seed: newSeed(),
           strength: 50,
           model: '',
+          options: [],
         },
       ],
       mask: null,
@@ -396,6 +408,7 @@ export function LayersPanel({
           seed: newSeed(),
           amount: op === 'colorize' ? 100 : 70,
           model: '',
+          options: [],
         },
       ],
       mask: null,
@@ -417,6 +430,7 @@ export function LayersPanel({
       prompt: '',
       seed: newSeed(),
       model: '',
+      options: [],
     } as Operation
     void apply(`Expand canvas to ${aspect}`, (s) => addOperation(s, null, op))
   }

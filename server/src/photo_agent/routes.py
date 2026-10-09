@@ -22,11 +22,21 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import generative, geometry, imaging, looks, portrait, projects, recipes
+from photo_agent import (
+    generative,
+    geometry,
+    imaging,
+    looks,
+    portrait,
+    projects,
+    recipes,
+    variants,
+)
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
 from photo_agent.layers import EditState, Layer
+from photo_agent.operations import MAX_OPTIONS, GenerativeBase
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
@@ -258,6 +268,68 @@ def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> D
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)
+
+
+class OptionsRequest(BaseModel):
+    count: int = Field(
+        variants.DEFAULT_COUNT, ge=2, le=MAX_OPTIONS, description="How many takes to offer."
+    )
+
+
+def _generative(doc: Document, op_id: str) -> GenerativeBase:
+    try:
+        return variants.generative_op(doc.state, op_id)
+    except variants.NotGenerativeError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such generative operation.") from None
+
+
+@router.post(
+    "/{doc_id}/operations/{op_id}/options",
+    operation_id="offerOptions",
+    responses={404: {"description": "No such document or generative operation"}},
+)
+def offer_options(
+    doc_id: str,
+    op_id: str,
+    store: Store,
+    request: Annotated[OptionsRequest | None, Body()] = None,
+) -> DocumentView:
+    """Offer several takes on a generative edit to pick from, as one step in the history.
+    Each take is generated now, so showing and picking them is instant."""
+    doc = load(store, doc_id)
+    op = _generative(doc, op_id)
+    state = variants.offer(doc.state, op_id, (request or OptionsRequest()).count)
+    if doc.edit_by_hand(f"Options for {op.summary()}", state):
+        store.save(doc)
+    loaded = store.image(doc_id)
+    for seed in variants.generative_op(state, op_id).options:
+        option = variants.with_seed(state, op_id, seed)
+        previews.get_or_render(doc.id, loaded.proxy, option, loaded.proxy_context)
+    return DocumentView.of(doc)
+
+
+@router.get(
+    "/{doc_id}/operations/{op_id}/options/{seed}",
+    operation_id="getOption",
+    response_class=Response,
+    responses={
+        200: {"content": {"image/jpeg": {}}},
+        404: {"description": "No such document, operation, or take"},
+    },
+)
+def get_option(doc_id: str, op_id: str, seed: int, store: Store) -> Response:
+    """A preview of the photo with one of the takes on offer."""
+    doc = load(store, doc_id)
+    if seed not in _generative(doc, op_id).options:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such take.")
+    loaded = store.image(doc_id)
+    option = variants.with_seed(doc.state, op_id, seed)
+    pixels = previews.get_or_render(doc.id, loaded.proxy, option, loaded.proxy_context)
+    return Response(
+        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 class LookStrength(BaseModel):

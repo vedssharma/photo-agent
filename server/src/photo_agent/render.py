@@ -155,7 +155,7 @@ def _apply_content(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Arr
     found from the photo as earlier content layers left it, and is cached by everything it
     depends on.
     """
-    chain: list[object] = [[op.model_dump(exclude={"id"}) for op in ctx.framing]]
+    chain: list[object] = [[op.model_dump(exclude={"id", "options"}) for op in ctx.framing]]
     for layer in layers:
         if not layer.is_content or not layer.visible or layer.opacity <= 0:
             continue
