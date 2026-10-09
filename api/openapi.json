@@ -412,6 +412,66 @@
         }
       }
     },
+    "/api/documents/{doc_id}/retouch": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Retouch Portrait",
+        "description": "Add portrait retouch layers (skin, eyes, teeth) on top, as one step in the history;\nwithout options, the subtle defaults.",
+        "operationId": "retouchPortrait",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Retouch"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Options"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/checkout": {
       "post": {
         "tags": [
@@ -1827,6 +1887,41 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HealBlemishes": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "heal_blemishes",
+            "title": "Op",
+            "default": "heal_blemishes"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How readily spots are healed; higher finds more.",
+            "default": 50
+          },
+          "size": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Size",
+            "description": "Largest spot to heal; higher heals bigger spots.",
+            "default": 40
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HealBlemishes",
+        "description": "Find small spots (blemishes, pimples, dust) and heal them from the skin around them.\nUse on a layer masked to skin."
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -2086,6 +2181,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/Remove"
+                },
+                {
+                  "$ref": "#/components/schemas/SmoothSkin"
+                },
+                {
+                  "$ref": "#/components/schemas/HealBlemishes"
                 }
               ],
               "discriminator": {
@@ -2097,6 +2198,7 @@
                   "dehaze": "#/components/schemas/Dehaze",
                   "exposure": "#/components/schemas/Exposure",
                   "grain": "#/components/schemas/Grain",
+                  "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
@@ -2104,6 +2206,7 @@
                   "saturation": "#/components/schemas/Saturation",
                   "shadows": "#/components/schemas/Shadows",
                   "sharpen": "#/components/schemas/Sharpen",
+                  "smooth_skin": "#/components/schemas/SmoothSkin",
                   "tone_curve": "#/components/schemas/ToneCurve",
                   "vibrance": "#/components/schemas/Vibrance",
                   "vignette": "#/components/schemas/Vignette",
@@ -2570,6 +2673,44 @@
         "title": "Remove",
         "description": "Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap\nwith plausible surroundings, using an AI inpainting model. Needs a mask; it is the only\noperation in its layer. Removal layers apply first, before any adjustment layer."
       },
+      "Retouch": {
+        "properties": {
+          "smooth_skin": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Smooth Skin",
+            "description": "Soften skin, keeping texture.",
+            "default": 35
+          },
+          "remove_blemishes": {
+            "type": "boolean",
+            "title": "Remove Blemishes",
+            "description": "Heal small spots on the skin.",
+            "default": true
+          },
+          "brighten_eyes": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Brighten Eyes",
+            "description": "Brighten and clarify eyes.",
+            "default": 25
+          },
+          "whiten_teeth": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Whiten Teeth",
+            "description": "Take the yellow out of teeth.",
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Retouch",
+        "description": "How much of each retouch to do; 0 leaves that part out."
+      },
       "Rotate": {
         "properties": {
           "id": {
@@ -2798,6 +2939,41 @@
         ],
         "title": "Sharpen",
         "description": "Sharpen edges and fine detail."
+      },
+      "SmoothSkin": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "smooth_skin",
+            "title": "Op",
+            "default": "smooth_skin"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How much to smooth.",
+            "default": 35
+          },
+          "texture": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Texture",
+            "description": "How much fine skin texture to keep.",
+            "default": 60
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SmoothSkin",
+        "description": "Soften skin while keeping its natural texture (pores, fine lines stay, blotches and\nuneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."
       },
       "Step": {
         "properties": {

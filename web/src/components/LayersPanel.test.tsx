@@ -56,6 +56,7 @@ function setup(selected: string | null = null) {
   )
   const onSelect = vi.fn()
   const onMaskTool = vi.fn()
+  const onRetouch = vi.fn()
   render(
     <LayersPanel
       doc={doc}
@@ -65,9 +66,10 @@ function setup(selected: string | null = null) {
       maskTool={DEFAULT_MASK_TOOL}
       onMaskTool={onMaskTool}
       specs={SPECS}
+      onRetouch={onRetouch}
     />,
   )
-  return { sent, onSelect, onMaskTool }
+  return { sent, onSelect, onMaskTool, onRetouch }
 }
 
 describe('LayersPanel', () => {
@@ -287,5 +289,14 @@ describe('LayersPanel cutout', () => {
       mask: { kind: 'semantic', target: 'subject' },
     })
     expect(onSelect).toHaveBeenCalledWith('cutout')
+  })
+})
+
+describe('LayersPanel retouch', () => {
+  it('asks for the portrait retouch layers', async () => {
+    const { sent, onRetouch } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Retouch' }))
+    expect(onRetouch).toHaveBeenCalledOnce()
+    expect(sent).toEqual([])
   })
 })

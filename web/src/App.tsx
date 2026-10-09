@@ -11,6 +11,7 @@ import {
   openProjectFile,
   previewUrl,
   restoreProject,
+  retouchPortrait,
   saveFile,
   uploadDocument,
 } from './api/documents'
@@ -86,15 +87,16 @@ function Editor({
 }) {
   const chat = useChat(doc.id, onDocument, createSocket)
   const [exporting, setExporting] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  useAutosave(doc, projectStore, setSaveError)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [retouching, setRetouching] = useState(false)
+  useAutosave(doc, projectStore, setActionError)
 
   async function saveProject() {
-    setSaveError(null)
+    setActionError(null)
     try {
       saveFile(await downloadProject(doc))
     } catch (err) {
-      setSaveError(`Could not save the project: ${(err as Error).message}`)
+      setActionError(`Could not save the project: ${(err as Error).message}`)
     }
   }
 
@@ -102,8 +104,20 @@ function Editor({
   const [maskTool, setMaskTool] = useState<MaskTool>(DEFAULT_MASK_TOOL)
   const manual = useManualEdit(doc, onDocument)
   const specs = useOperationSpecs()
-  const locked = chat.busy
-  const job = useJobs(doc.id, chat.busy || manual.working)
+  const locked = chat.busy || retouching
+  const job = useJobs(doc.id, chat.busy || manual.working || retouching)
+
+  async function retouch() {
+    setRetouching(true)
+    setActionError(null)
+    try {
+      onDocument(await retouchPortrait(doc.id))
+    } catch (err) {
+      setActionError(`Could not retouch: ${(err as Error).message}`)
+    } finally {
+      setRetouching(false)
+    }
+  }
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
   const cutout = doc.state.cutout ?? null
   // What the mask tools work on: the selected layer's mask, or the cutout's.
@@ -146,6 +160,7 @@ function Editor({
           onMaskTool={setMaskTool}
           specs={specs}
           onPreview={(p) => setPreview(p && { ...p, revision: doc.revision })}
+          onRetouch={() => void retouch()}
         />
         <RecipesPanel
           doc={doc}
@@ -165,9 +180,9 @@ function Editor({
             onDocument={onDocument}
             disabled={chat.busy || manual.working}
           />
-          {(manual.error ?? saveError) && (
+          {(manual.error ?? actionError) && (
             <span className="error" role="alert">
-              {manual.error ?? saveError}
+              {manual.error ?? actionError}
             </span>
           )}
           <span className="spacer" />

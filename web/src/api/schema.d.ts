@@ -181,6 +181,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/retouch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retouch Portrait
+         * @description Add portrait retouch layers (skin, eyes, teeth) on top, as one step in the history;
+         *     without options, the subtle defaults.
+         */
+        post: operations["retouchPortrait"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/checkout": {
         parameters: {
             query?: never;
@@ -900,6 +921,35 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HealBlemishes
+         * @description Find small spots (blemishes, pimples, dust) and heal them from the skin around them.
+         *     Use on a layer masked to skin.
+         */
+        HealBlemishes: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "heal_blemishes";
+            /**
+             * Amount
+             * @description How readily spots are healed; higher finds more.
+             * @default 50
+             */
+            amount: number;
+            /**
+             * Size
+             * @description Largest spot to heal; higher heals bigger spots.
+             * @default 40
+             */
+            size: number;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -991,7 +1041,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"])[];
         };
         /**
          * LinearGradientMask
@@ -1231,6 +1281,36 @@ export interface components {
             grow: number;
         };
         /**
+         * Retouch
+         * @description How much of each retouch to do; 0 leaves that part out.
+         */
+        Retouch: {
+            /**
+             * Smooth Skin
+             * @description Soften skin, keeping texture.
+             * @default 35
+             */
+            smooth_skin: number;
+            /**
+             * Remove Blemishes
+             * @description Heal small spots on the skin.
+             * @default true
+             */
+            remove_blemishes: boolean;
+            /**
+             * Brighten Eyes
+             * @description Brighten and clarify eyes.
+             * @default 25
+             */
+            brighten_eyes: number;
+            /**
+             * Whiten Teeth
+             * @description Take the yellow out of teeth.
+             * @default 25
+             */
+            whiten_teeth: number;
+        };
+        /**
          * Rotate
          * @description Rotate the photo clockwise by a quarter, half, or three-quarter turn.
          */
@@ -1368,6 +1448,35 @@ export interface components {
              * @default 1
              */
             radius: number;
+        };
+        /**
+         * SmoothSkin
+         * @description Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
+         *     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural.
+         */
+        SmoothSkin: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "smooth_skin";
+            /**
+             * Amount
+             * @description How much to smooth.
+             * @default 35
+             */
+            amount: number;
+            /**
+             * Texture
+             * @description How much fine skin texture to keep.
+             * @default 60
+             */
+            texture: number;
         };
         /**
          * Step
@@ -1976,6 +2085,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retouchPortrait: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Retouch"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
             };
             /** @description Validation Error */
             422: {

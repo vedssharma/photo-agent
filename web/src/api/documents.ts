@@ -193,6 +193,18 @@ export async function redo(docId: string): Promise<DocumentView> {
   return data
 }
 
+/** Add the portrait retouch layers (skin, eyes, teeth) as one step in the history. */
+export async function retouchPortrait(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/retouch',
+    {
+      params: { path: { doc_id: docId } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
 /** Record a change made with the manual controls as a step in the history. */
 export async function editByHand(
   docId: string,

@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     Form,
     HTTPException,
@@ -21,7 +22,7 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import imaging, projects, recipes
+from photo_agent import imaging, portrait, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
@@ -252,6 +253,23 @@ def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> D
     except recipes.RecipeNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None
     if doc.edit_by_hand(f"Apply recipe “{recipe.name}”", recipes.apply(recipe, doc.state)):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+@router.post("/{doc_id}/retouch", operation_id="retouchPortrait")
+def retouch_portrait(
+    doc_id: str,
+    store: Store,
+    options: Annotated[portrait.Retouch | None, Body()] = None,
+) -> DocumentView:
+    """Add portrait retouch layers (skin, eyes, teeth) on top, as one step in the history;
+    without options, the subtle defaults."""
+    doc = load(store, doc_id)
+    state = doc.state
+    state.layers.extend(portrait.retouch_layers(options or portrait.Retouch()))
+    if doc.edit_by_hand("Retouch portrait", state):
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)

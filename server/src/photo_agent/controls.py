@@ -37,6 +37,8 @@ GROUPS: dict[str, Group] = {
     "grain": "finishing",
     "tone_curve": "finishing",
     "remove": "retouch",
+    "smooth_skin": "retouch",
+    "heal_blemishes": "retouch",
 }
 
 

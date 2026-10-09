@@ -245,6 +245,8 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
     "flip": [ops.Flip(axis="vertical")],
     "vignette": [ops.Vignette(amount=-60, midpoint=40)],
     "grain": [ops.Grain(amount=60, size=50, id="golden01")],
+    "smooth_skin": [ops.SmoothSkin(amount=70, texture=40)],
+    "heal_blemishes": [ops.HealBlemishes(amount=80, size=60)],
     "tone_curve": [ops.ToneCurve(points=[(0, 0.05), (0.3, 0.22), (0.7, 0.8), (1, 0.97)])],
 }
 

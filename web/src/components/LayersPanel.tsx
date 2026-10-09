@@ -41,6 +41,8 @@ interface Props {
   specs: Map<string, OperationSpec>
   /** A slider is being dragged, for live previews. */
   onPreview?: (preview: Preview) => void
+  /** Adds the portrait retouch layers. */
+  onRetouch?: () => void
 }
 
 const BLEND_MODES: { value: BlendMode; label: string }[] = [
@@ -70,6 +72,7 @@ export function LayersPanel({
   onMaskTool,
   specs,
   onPreview,
+  onRetouch,
 }: Props) {
   const state = doc.state
   const locked = disabled
@@ -201,6 +204,17 @@ export function LayersPanel({
         >
           Remove…
         </button>
+        {onRetouch && (
+          <button
+            type="button"
+            className="icon"
+            disabled={locked}
+            title="Smooth skin, heal blemishes, and brighten eyes and teeth"
+            onClick={onRetouch}
+          >
+            Retouch
+          </button>
+        )}
         <button
           type="button"
           className="icon"

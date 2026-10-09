@@ -28,6 +28,7 @@ from photo_agent import operations as ops
 from photo_agent.imaging import Array
 from photo_agent.layers import BlendMode, EditState, Layer
 from photo_agent.masks import Mask, SemanticMask, render_mask
+from photo_agent.vision.classical import guided_filter
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 
@@ -553,6 +554,59 @@ def _grain(x: Array, op: ops.Grain, ctx: RenderContext) -> Array:
     return x + ((op.amount / 100) * 0.07 * noise * weight)[..., None]
 
 
+# Retouching
+
+
+def _smooth_skin(x: Array, op: ops.SmoothSkin, ctx: RenderContext) -> Array:
+    """Edge-preserving smoothing (a guided filter, so edges like eyes and lips stay sharp)
+    with the finest texture added back, so skin does not turn to plastic."""
+    edge = long_edge(x)
+    c = np.clip(x, 0.0, 1.0)
+    radius = max(1, round(edge * 0.01))
+    smooth = np.stack(
+        [guided_filter(c[..., i], c[..., i], radius, eps=0.004) for i in range(3)], axis=2
+    )
+    fine = c - blur(c, max(0.5, edge * 0.0012))
+    target = smooth + (op.texture / 100) * fine
+    return cast(Array, x + (op.amount / 100) * (target - c))
+
+
+def _heal_blemishes(x: Array, op: ops.HealBlemishes, ctx: RenderContext) -> Array:
+    """Spots darker or redder than the skin around them, up to `size`, filled from their
+    surroundings."""
+    edge = long_edge(x)
+    c = np.clip(x, 0.0, 1.0)
+    max_radius = edge * (0.002 + 0.008 * op.size / 100)
+    lum = luma(c)
+    around = blur(lum, max_radius * 1.5)
+    darker = around - blur(lum, max(0.5, max_radius * 0.25))
+    red = c[..., 0] - 0.5 * (c[..., 1] + c[..., 2])
+    redder = blur(red, max(0.5, max_radius * 0.25)) - blur(red, max_radius * 1.5)
+    threshold = 0.06 - 0.045 * op.amount / 100
+    spots = (darker > threshold) | (redder > threshold * 1.2)
+    # Only small, round-ish spots: eyes, nostrils, and brows are bigger or longer. Thin
+    # bridges are opened first so a blemish touching a crease still counts on its own.
+    spots8 = spots.astype(np.uint8)
+    if max_radius >= 2:
+        cross = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        spots8 = cv2.morphologyEx(spots8, cv2.MORPH_OPEN, cross).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(spots8, connectivity=4)
+    longest = stats[:, cv2.CC_STAT_WIDTH].clip(min=stats[:, cv2.CC_STAT_HEIGHT])
+    keep = (longest <= 2 * max_radius + 1) & (
+        stats[:, cv2.CC_STAT_AREA] <= math.pi * max_radius * max_radius
+    )
+    keep[0] = False
+    small = keep[labels].astype(np.uint8)
+    if count <= 1 or not small.any():
+        return x
+    grow = max(1, round(max_radius * 0.4))
+    hole = cv2.dilate(small, np.ones((2 * grow + 1, 2 * grow + 1), np.uint8))
+    img8 = (c * 255 + 0.5).astype(np.uint8)
+    healed = cv2.inpaint(img8, hole, max(2.0, max_radius), cv2.INPAINT_TELEA).astype(np.float32)
+    weight = blur(hole.astype(np.float32), max(0.5, grow / 2))[..., None]
+    return cast(Array, x + (healed / 255 - c) * weight)
+
+
 def monotone_curve(points: Sequence[Sequence[float]], samples: int = LUT_SIZE) -> Array:
     """Sample a monotone cubic (Fritsch-Carlson) through the points on a 0..1 grid."""
     pts: dict[float, float] = {}
@@ -616,6 +670,8 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.ToneCurve: _tone_curve,
     # Removal needs the layer's mask, so removal layers render separately (see above).
     ops.Remove: lambda x, op, ctx: x,
+    ops.SmoothSkin: _smooth_skin,
+    ops.HealBlemishes: _heal_blemishes,
 }
 
 

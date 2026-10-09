@@ -241,6 +241,24 @@ class Remove(OpBase):
     )
 
 
+class SmoothSkin(OpBase):
+    """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
+    uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
+
+    op: Literal["smooth_skin"] = "smooth_skin"
+    amount: Strength = Field(35, description="How much to smooth.")
+    texture: Strength = Field(60, description="How much fine skin texture to keep.")
+
+
+class HealBlemishes(OpBase):
+    """Find small spots (blemishes, pimples, dust) and heal them from the skin around them.
+    Use on a layer masked to skin."""
+
+    op: Literal["heal_blemishes"] = "heal_blemishes"
+    amount: Strength = Field(50, description="How readily spots are healed; higher finds more.")
+    size: Strength = Field(40, description="Largest spot to heal; higher heals bigger spots.")
+
+
 class ToneCurve(OpBase):
     """Remap tones with a curve through control points (input, output), both 0..1.
 
@@ -277,7 +295,9 @@ Operation = Annotated[
     | Vignette
     | Grain
     | ToneCurve
-    | Remove,
+    | Remove
+    | SmoothSkin
+    | HealBlemishes,
     Field(discriminator="op"),
 ]
 
@@ -304,6 +324,8 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Grain,
     ToneCurve,
     Remove,
+    SmoothSkin,
+    HealBlemishes,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -332,7 +354,9 @@ AdjustmentOperation = Annotated[
     | Vignette
     | Grain
     | ToneCurve
-    | Remove,
+    | Remove
+    | SmoothSkin
+    | HealBlemishes,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""

@@ -34,6 +34,7 @@ from photo_agent.operations import (
     OperationAdapter,
     Remove,
 )
+from photo_agent.portrait import Retouch, retouch_layers
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentStore
 
@@ -76,6 +77,9 @@ render: if traces remain (an outline, a shadow), raise grow or widen the selecti
 - To remove the background or cut out the subject, call cut_out: by default it keeps \
 the main subject on a transparent background (the person downloads a PNG); give a color \
 such as "#ffffff" for a clean product shot, or a different mask to keep something else.
+- For portraits ("make me look good", "fix my skin"), call retouch_portrait. Keep it \
+subtle: people should look like themselves on a good day. Its defaults are a good start; \
+tone them down for close-ups and children.
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -333,6 +337,22 @@ def tool_definitions() -> list[BetaToolParam]:
             "eager_input_streaming": True,
         }
     )
+    retouch_schema = Retouch.model_json_schema()
+    tools.append(
+        {
+            "name": "retouch_portrait",
+            "description": "Retouch the people in a portrait: heal blemishes, smooth skin "
+            "while keeping its texture, brighten eyes, and whiten teeth. Adds one layer per "
+            "part, each masked to that part of the face, so each can be tuned or hidden. "
+            "The defaults are deliberately subtle; set a part to 0 to leave it out.",
+            "input_schema": {
+                "type": "object",
+                "properties": retouch_schema["properties"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
     tools.append(
         {
             "name": "restore_background",
@@ -400,6 +420,7 @@ class Editor:
             "update_layer": self._update_layer,
             "remove_layer": self._remove_layer,
             "cut_out": self._cut_out,
+            "retouch_portrait": self._retouch,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
@@ -508,6 +529,20 @@ class Editor:
         background = cutout.background or "transparent"
         return f"Cut out with a {background} background.", OperationEvent(
             action="added", summary=f"Background removed ({background})"
+        )
+
+    def _retouch(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            options = Retouch.model_validate(args)
+        except ValidationError as exc:
+            raise ToolError(f"Invalid retouch: {_problems(exc)}") from None
+        layers = retouch_layers(options)
+        if not layers:
+            raise ToolError("Every part of the retouch was set to 0.")
+        self.state.layers.extend(layers)
+        names = ", ".join(f"{layer.id} ({layer.name})" for layer in layers)
+        return f"Added retouch layers {names}.", OperationEvent(
+            action="added", summary="Portrait retouch: " + ", ".join(lay.name for lay in layers)
         )
 
     def _restore_background(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
