@@ -272,6 +272,43 @@ class LensCorrection(OpBase):
     )
 
 
+ExpandAspect = Literal["free", "1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9"]
+Extension = Annotated[float, Field(ge=0, le=1.5)]
+
+
+class Expand(GenerativeBase):
+    """Expand the canvas: extend the photo past its edges, with new surroundings painted by
+    a generative model to match (outpainting). Use it to turn a vertical photo into a
+    landscape one, or to give a tight shot more room, without cropping anything away. Masks
+    and later crops refer to the expanded frame."""
+
+    op: Literal["expand"] = "expand"
+    aspect: ExpandAspect = Field(
+        "free",
+        description="Grow the frame to this width:height, centered on the photo; "
+        '"free" adds the side amounts below instead.',
+    )
+    left: Extension = Field(0, description="Add this fraction of the width on the left.")
+    right: Extension = Field(0, description="Add this fraction of the width on the right.")
+    top: Extension = Field(0, description="Add this fraction of the height on top.")
+    bottom: Extension = Field(0, description="Add this fraction of the height at the bottom.")
+    prompt: str = Field(
+        "",
+        max_length=400,
+        description="What the new area should show; empty continues the scene naturally.",
+    )
+
+    def summary(self) -> str:
+        if self.aspect != "free":
+            size = f"to {self.aspect}"
+        else:
+            sides = {"left": self.left, "right": self.right, "top": self.top}
+            sides["bottom"] = self.bottom
+            size = ", ".join(f"{k} +{v:.0%}" for k, v in sides.items() if v) or "by nothing"
+        what = f" with “{self.prompt}”" if self.prompt else ""
+        return f"Expand canvas {size}{what}"
+
+
 # Finishing
 
 
@@ -382,7 +419,8 @@ Operation = Annotated[
     | Remove
     | SmoothSkin
     | HealBlemishes
-    | Generate,
+    | Generate
+    | Expand,
     Field(discriminator="op"),
 ]
 
@@ -414,6 +452,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     SmoothSkin,
     HealBlemishes,
     Generate,
+    Expand,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -425,14 +464,16 @@ GEOMETRY_TYPES: tuple[type[OpBase], ...] = (
     Flip,
     Perspective,
     LensCorrection,
+    Expand,
 )
 """Operations that change framing rather than look."""
 
 FramingOperation = Annotated[
-    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection, Field(discriminator="op")
+    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection | Expand,
+    Field(discriminator="op"),
 ]
-"""Crop, rotation, flips, and perspective and lens fixes. They apply to the whole photo,
-before any layer."""
+"""Crop, rotation, flips, perspective and lens fixes, and canvas expansion. They apply to
+the whole photo, before any layer."""
 
 AdjustmentOperation = Annotated[
     Exposure

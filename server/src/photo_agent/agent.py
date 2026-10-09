@@ -88,6 +88,11 @@ in its layer and applies before adjustments, like a removal. Each generative edi
 its prompt and seed, so it renders the same every time; change the seed with \
 update_operation for a different take. Look at the render: if it does not fit, refine the \
 prompt or the mask.
+- To turn a vertical photo into a landscape one, give a tight shot more room, or fit a \
+format without cropping ("make this 16:9 without cutting anything off"), call expand: it \
+extends the canvas with new surroundings painted to match. Prefer an aspect ratio; use \
+the side amounts to grow one side. A prompt is optional (empty continues the scene). It is \
+part of the framing, so masks and later crops refer to the expanded frame.
 - To remove the background or cut out the subject, call cut_out: by default it keeps \
 the main subject on a transparent background (the person downloads a PNG); give a color \
 such as "#ffffff" for a clean product shot, or a different mask to keep something else.

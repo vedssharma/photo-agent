@@ -822,13 +822,80 @@ export interface components {
              * Framing
              * @default []
              */
-            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"])[];
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"] | components["schemas"]["Expand"])[];
             /**
              * Layers
              * @default []
              */
             layers: components["schemas"]["Layer"][];
             cutout?: components["schemas"]["Cutout"] | null;
+        };
+        /**
+         * Expand
+         * @description Expand the canvas: extend the photo past its edges, with new surroundings painted by
+         *     a generative model to match (outpainting). Use it to turn a vertical photo into a
+         *     landscape one, or to give a tight shot more room, without cropping anything away. Masks
+         *     and later crops refer to the expanded frame.
+         */
+        Expand: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "expand";
+            /**
+             * Aspect
+             * @description Grow the frame to this width:height, centered on the photo; "free" adds the side amounts below instead.
+             * @default free
+             * @enum {string}
+             */
+            aspect: "free" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
+            /**
+             * Left
+             * @description Add this fraction of the width on the left.
+             * @default 0
+             */
+            left: number;
+            /**
+             * Right
+             * @description Add this fraction of the width on the right.
+             * @default 0
+             */
+            right: number;
+            /**
+             * Top
+             * @description Add this fraction of the height on top.
+             * @default 0
+             */
+            top: number;
+            /**
+             * Bottom
+             * @description Add this fraction of the height at the bottom.
+             * @default 0
+             */
+            bottom: number;
+            /**
+             * Prompt
+             * @description What the new area should show; empty continues the scene naturally.
+             * @default
+             */
+            prompt: string;
         };
         /** ExportOptions */
         ExportOptions: {

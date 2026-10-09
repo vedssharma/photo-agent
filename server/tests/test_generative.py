@@ -16,7 +16,7 @@ from photo_agent.generative import job_params, stamp
 from photo_agent.layers import EditState, Layer
 from photo_agent.masks import RadialGradientMask
 from photo_agent.recipes import portable
-from photo_agent.render import render_state
+from photo_agent.render import expand_box, extend_canvas, render_state
 from photo_agent.routes import get_store
 from photo_agent.settings import Settings
 from photo_agent.vision import classical
@@ -171,3 +171,53 @@ def test_the_worker_tries_the_recorded_model_first(
         assert worker.run("two", params={PREFER: "gone"}).value == "a"
     finally:
         worker.close()
+
+
+# Expanding the canvas
+
+
+def test_expand_box_grows_to_an_aspect_or_by_sides() -> None:
+    assert expand_box(ops.Expand(aspect="16:9"), 300, 400) == (711, 400, 205, 0)
+    assert expand_box(ops.Expand(aspect="1:1"), 400, 300) == (400, 400, 0, 50)
+    assert expand_box(ops.Expand(aspect="4:5"), 400, 600) == (480, 600, 40, 0)
+    assert expand_box(ops.Expand(left=0.5, bottom=0.25), 200, 100) == (300, 125, 100, 0)
+
+
+def test_extend_canvas_keeps_the_photo_and_mirrors_softly() -> None:
+    rng = np.random.default_rng(0)
+    photo = rng.random((40, 60, 3)).astype(np.float32)
+    out = extend_canvas(photo, 100, 40, 20, 0)
+    assert out.shape == (40, 100, 3)
+    np.testing.assert_array_equal(out[:, 20:80], photo)
+    # Next to the photo it mirrors the photo; far away it is softened.
+    np.testing.assert_allclose(out[:, 19], photo[:, 0], atol=0.05)
+    assert out[:, :3].std() < photo.std()
+
+
+def test_expanding_the_canvas_paints_new_surroundings(settings: Settings, upload: Upload) -> None:
+    doc = upload("portrait.jpg")
+    loaded = get_store(settings).image(doc["id"])
+    plain = render_state(loaded.proxy, EditState(), loaded.proxy_context)
+    wide = EditState.model_validate({"framing": [ops.Expand(aspect="16:9", seed=1)]})
+    out = render_state(loaded.proxy, wide, loaded.proxy_context)
+    h, w = plain.shape[:2]
+    assert out.shape[0] == h and abs(out.shape[1] / h - 16 / 9) < 0.01
+    x0 = (out.shape[1] - w) // 2
+    middle = out[:, x0 + w // 4 : x0 + 3 * w // 4]
+    np.testing.assert_allclose(middle, plain[:, w // 4 : 3 * w // 4], atol=1e-5)
+    assert loaded.vision is not None
+    tasks = [j.task for j in loaded.vision.worker.jobs(doc["id"])]
+    assert tasks == ["generate"]
+    # The export is the same shape, from the same generated result.
+    full = render_state(loaded.source.pixels, wide, loaded.full_context)
+    assert abs(full.shape[1] / full.shape[0] - 16 / 9) < 0.01
+    assert len(loaded.vision.worker.jobs(doc["id"])) == 1
+
+
+def test_the_agent_expands_the_framing() -> None:
+    editor = Editor(EditState(), model_for=lambda task: "sdxl-inpainting-0.1")
+    text, _ = editor.call("expand", {"aspect": "16:9"})
+    assert "the framing" in text and "no generative model" not in text
+    (op,) = editor.state.framing
+    assert isinstance(op, ops.Expand) and op.seed is not None
+    assert op.model == "sdxl-inpainting-0.1"

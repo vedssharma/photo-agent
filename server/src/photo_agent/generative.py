@@ -13,11 +13,12 @@ from collections.abc import Callable
 from typing import Any
 
 from photo_agent.layers import EditState
-from photo_agent.operations import SEED_MAX, Generate, GenerativeBase, OpBase
+from photo_agent.operations import SEED_MAX, Expand, Generate, GenerativeBase, OpBase
 from photo_agent.vision.worker import PREFER
 
 TASKS: dict[type[OpBase], str] = {
     Generate: "generate",
+    Expand: "generate",
 }
 """The model worker task behind each generative operation."""
 

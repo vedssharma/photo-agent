@@ -1740,12 +1740,16 @@
                 },
                 {
                   "$ref": "#/components/schemas/LensCorrection"
+                },
+                {
+                  "$ref": "#/components/schemas/Expand"
                 }
               ],
               "discriminator": {
                 "propertyName": "op",
                 "mapping": {
                   "crop": "#/components/schemas/Crop",
+                  "expand": "#/components/schemas/Expand",
                   "flip": "#/components/schemas/Flip",
                   "lens_correction": "#/components/schemas/LensCorrection",
                   "perspective": "#/components/schemas/Perspective",
@@ -1781,6 +1785,103 @@
         "type": "object",
         "title": "EditState",
         "description": "Everything needed to render the photo from the original."
+      },
+      "Expand": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "op": {
+            "type": "string",
+            "const": "expand",
+            "title": "Op",
+            "default": "expand"
+          },
+          "aspect": {
+            "type": "string",
+            "enum": [
+              "free",
+              "1:1",
+              "4:5",
+              "5:4",
+              "3:4",
+              "4:3",
+              "2:3",
+              "3:2",
+              "9:16",
+              "16:9"
+            ],
+            "title": "Aspect",
+            "description": "Grow the frame to this width:height, centered on the photo; \"free\" adds the side amounts below instead.",
+            "default": "free"
+          },
+          "left": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Left",
+            "description": "Add this fraction of the width on the left.",
+            "default": 0
+          },
+          "right": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Right",
+            "description": "Add this fraction of the width on the right.",
+            "default": 0
+          },
+          "top": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Top",
+            "description": "Add this fraction of the height on top.",
+            "default": 0
+          },
+          "bottom": {
+            "type": "number",
+            "maximum": 1.5,
+            "minimum": 0.0,
+            "title": "Bottom",
+            "description": "Add this fraction of the height at the bottom.",
+            "default": 0
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "title": "Prompt",
+            "description": "What the new area should show; empty continues the scene naturally.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Expand",
+        "description": "Expand the canvas: extend the photo past its edges, with new surroundings painted by\na generative model to match (outpainting). Use it to turn a vertical photo into a\nlandscape one, or to give a tight shot more room, without cropping anything away. Masks\nand later crops refer to the expanded frame."
       },
       "ExportOptions": {
         "properties": {

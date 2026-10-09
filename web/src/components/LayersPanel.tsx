@@ -62,6 +62,17 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
 
 type GenerativeTool = 'generate'
 
+type ExpandAspect = Extract<Operation, { op: 'expand' }>['aspect']
+
+const EXPAND_ASPECTS: ExpandAspect[] = [
+  '16:9',
+  '3:2',
+  '4:3',
+  '1:1',
+  '4:5',
+  '9:16',
+]
+
 /** What each generative tool asks for. */
 const GENERATIVE_TOOLS: Record<
   GenerativeTool,
@@ -249,6 +260,23 @@ export function LayersPanel({
     onSelect(layer.id)
     onMaskTool({ ...maskTool, picking: false, refining: false, erase: false })
     void apply(`Generate “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
+  /** Extend the canvas to an aspect ratio, painting new surroundings. */
+  function expand(aspect: ExpandAspect) {
+    const op = {
+      id: newOpId(),
+      op: 'expand',
+      aspect,
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      prompt: '',
+      seed: newSeed(),
+      model: '',
+    } as Operation
+    void apply(`Expand canvas to ${aspect}`, (s) => addOperation(s, null, op))
   }
 
   function newLayer() {
@@ -665,6 +693,25 @@ export function LayersPanel({
                   Auto straighten
                 </button>
               )}
+              <label className="field">
+                <span>Expand</span>
+                <select
+                  value=""
+                  disabled={locked}
+                  title="Extend the photo past its edges with new surroundings painted to match"
+                  onChange={(e) => {
+                    const aspect = e.target.value as ExpandAspect
+                    if (aspect) expand(aspect)
+                  }}
+                >
+                  <option value="">Expand canvas to…</option>
+                  {EXPAND_ASPECTS.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {state.framing.map((op) => operationControls(op, null))}
               <AddOperation
                 label="Add crop, rotation, or lens fix"

@@ -326,7 +326,8 @@ class DocumentVision:
         """The original with the framing applied, at the models' working size."""
         from photo_agent.render import RenderContext, apply_operations
 
-        ctx = RenderContext(scale=self.scale, source_aspect=self.source_aspect)
+        # With this vision, so an expanded canvas holds what the preview shows.
+        ctx = RenderContext(scale=self.scale, source_aspect=self.source_aspect, vision=self)
         out = apply_operations(self.proxy.astype(np.float32, copy=True), framing, ctx)
         return np.ascontiguousarray(
             imaging.resize_long_edge(np.clip(out, 0.0, 1.0), WORK_EDGE), np.float32

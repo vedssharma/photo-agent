@@ -382,3 +382,19 @@ describe('LayersPanel generative fill', () => {
     expect(screen.queryByRole('textbox', { name: 'What to add' })).toBeNull()
   })
 })
+
+describe('LayersPanel expand canvas', () => {
+  it('expands the framing to an aspect ratio', async () => {
+    const { sent } = setup('framing')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Expand' }),
+      '16:9',
+    )
+    expect(sent[0].label).toBe('Expand canvas to 16:9')
+    expect(sent[0].state.framing.at(-1)).toMatchObject({
+      op: 'expand',
+      aspect: '16:9',
+      prompt: '',
+    })
+  })
+})

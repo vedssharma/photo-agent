@@ -244,8 +244,12 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
 
 
 def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
-    for op in operations:
-        x = _APPLY[type(op)](x, op, ctx)
+    for i, op in enumerate(operations):
+        if isinstance(op, ops.Expand):
+            # What it paints depends on the framing before it.
+            x = _expand(x, op, ctx, operations[:i])
+        else:
+            x = _APPLY[type(op)](x, op, ctx)
     return x
 
 
@@ -630,6 +634,63 @@ def _lens_correction(x: Array, op: ops.LensCorrection, ctx: RenderContext) -> Ar
     return cast(Array, out)
 
 
+def expand_box(op: ops.Expand, w: int, h: int) -> tuple[int, int, int, int]:
+    """The expanded canvas size and where the photo sits in it: (width, height, x, y)."""
+    if op.aspect != "free":
+        ratio = ASPECTS[op.aspect]
+        if w / h < ratio:
+            new_w, new_h = max(w, round(h * ratio)), h
+        else:
+            new_w, new_h = w, max(h, round(w / ratio))
+        return new_w, new_h, (new_w - w) // 2, (new_h - h) // 2
+    left, right = round(op.left * w), round(op.right * w)
+    top, bottom = round(op.top * h), round(op.bottom * h)
+    return w + left + right, h + top + bottom, left, top
+
+
+EXPAND_OVERLAP = 0.015
+"""How far into the photo (fraction of the long edge) the model may repaint, so the seam
+between the photo and the new area blends."""
+EXPAND_PROMPT = "a natural continuation of the surrounding scene, photograph"
+
+
+def extend_canvas(x: Array, new_w: int, new_h: int, x0: int, y0: int) -> Array:
+    """The photo on a larger canvas, the new area holding a mirror of the photo that softens
+    with distance: a starting point the generative model paints over."""
+    h, w = x.shape[:2]
+    pad = ((y0, new_h - h - y0), (x0, new_w - w - x0), (0, 0))
+    mirrored = np.pad(np.clip(x, 0.0, 1.0), pad, mode="symmetric").astype(np.float32)
+    edge = max(new_w, new_h)
+    soft = blur(mirrored, edge * 0.02)
+    inside = np.zeros((new_h, new_w), np.uint8)
+    inside[y0 : y0 + h, x0 : x0 + w] = 1
+    distance = np.asarray(cv2.distanceTransform(1 - inside, cv2.DIST_L2, 5), np.float32)
+    fade = smoothstep(0.0, edge * 0.12, distance)[..., None]
+    out = mirrored + (soft - mirrored) * fade
+    out[y0 : y0 + h, x0 : x0 + w] = x
+    return cast(Array, out)
+
+
+def _expand(x: Array, op: ops.Expand, ctx: RenderContext, before: Sequence[ops.OpBase]) -> Array:
+    h, w = x.shape[:2]
+    new_w, new_h, x0, y0 = expand_box(op, w, h)
+    if (new_w, new_h) == (w, h):
+        return x
+    canvas = extend_canvas(x, new_w, new_h, x0, y0)
+    if ctx.vision is None:
+        return canvas
+    added = np.ones((new_h, new_w), np.uint8)
+    added[y0 : y0 + h, x0 : x0 + w] = 0
+    overlap = max(1, round(EXPAND_OVERLAP * max(new_w, new_h)))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * overlap + 1, 2 * overlap + 1))
+    hole = cv2.dilate(added, kernel).astype(bool)
+    params = {**job_params(op), "prompt": op.prompt or EXPAND_PROMPT, "extend": True}
+    key = _chain_key([[cache_identity(o) for o in before], cache_identity(op)])
+    made = ctx.vision.generate("generate", canvas, hole, params, key)
+    weight = np.maximum(blur(hole.astype(np.float32), overlap / 2), added.astype(np.float32))
+    return cast(Array, canvas + (made - canvas) * weight[..., None])
+
+
 # Finishing
 
 
@@ -780,6 +841,8 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     # Content operations need their layer's mask, so they render separately (see above).
     ops.Remove: lambda x, op, ctx: x,
     ops.Generate: lambda x, op, ctx: x,
+    # Expanding needs the framing before it, so `apply_operations` handles it.
+    ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,
     ops.HealBlemishes: _heal_blemishes,
 }
