@@ -15,12 +15,14 @@ from typing import Any
 from photo_agent.layers import EditState
 from photo_agent.operations import (
     SEED_MAX,
+    Colorize,
     Expand,
     Generate,
     GenerativeBase,
     OpBase,
     Relight,
     ReplaceBackground,
+    RestoreFaces,
 )
 from photo_agent.vision.worker import PREFER
 
@@ -29,6 +31,8 @@ TASKS: dict[type[OpBase], str] = {
     Expand: "generate",
     ReplaceBackground: "generate",
     Relight: "relight",
+    RestoreFaces: "restore_faces",
+    Colorize: "colorize",
 }
 """The model worker task behind each generative operation."""
 

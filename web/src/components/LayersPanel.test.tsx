@@ -442,4 +442,16 @@ describe('LayersPanel new background', () => {
       amount: 60,
     })
   })
+
+  it('restores faces and colorizes in layers of their own', async () => {
+    const { sent } = setup()
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Restore' }),
+      'colorize',
+    )
+    expect(sent[0].label).toBe('Colorize')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.mask).toBeNull()
+    expect(added?.operations[0]).toMatchObject({ op: 'colorize', amount: 100 })
+  })
 })

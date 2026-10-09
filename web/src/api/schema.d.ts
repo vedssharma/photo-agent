@@ -642,6 +642,40 @@ export interface components {
             amount: number;
         };
         /**
+         * Colorize
+         * @description Colorize a black-and-white photo with an AI colorization model. The photo's own
+         *     brightness and detail stay; only color is added. The only operation in its layer.
+         */
+        Colorize: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "colorize";
+            /**
+             * Amount
+             * @description How strong the new colors are.
+             * @default 100
+             */
+            amount: number;
+        };
+        /**
          * Contrast
          * @description Increase or decrease overall contrast around the midtones.
          */
@@ -917,6 +951,13 @@ export interface components {
              * @default false
              */
             keep_location: boolean;
+            /**
+             * Upscale
+             * @description Enlarge the export with an AI upscaler (up to 8000 pixels across).
+             * @default 1
+             * @enum {integer}
+             */
+            upscale: 1 | 2 | 4;
         };
         /**
          * Exposure
@@ -1188,7 +1229,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"])[];
         };
         /**
          * LensCorrection
@@ -1570,6 +1611,41 @@ export interface components {
              * @default 50
              */
             harmonize: number;
+        };
+        /**
+         * RestoreFaces
+         * @description Restore faces in an old, blurry, or low-resolution photo with an AI face restoration
+         *     model: sharper eyes, skin, and hair that still look like the person. Only faces change.
+         *     The only operation in its layer.
+         */
+        RestoreFaces: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "restore_faces";
+            /**
+             * Amount
+             * @description How much of the restored faces to use; lower keeps more of the original.
+             * @default 70
+             */
+            amount: number;
         };
         /**
          * Retouch

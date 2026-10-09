@@ -412,3 +412,57 @@ def relight(image: Array, direction: str = "left", prompt: str = "", **_: Any) -
     lit = linear * shade[..., None].astype(np.float32) * color / float(color @ LUMA)
     out = np.power(np.clip(lit, 0, 1), 1 / 2.2).astype(np.float32)
     return cast(Array, cv2.resize(out, image.shape[1::-1], interpolation=cv2.INTER_LINEAR))
+
+
+def restore_faces(image: Array, **_: Any) -> Array:
+    """Restore faces without a model: calm noise and blockiness on each face, then bring
+    back its edges. It cannot invent lost detail the way a restoration model does."""
+    out = image.copy()
+    h, w = image.shape[:2]
+    for x0, y0, x1, y1 in find_faces(image):
+        pad = round(0.25 * (x1 - x0))
+        bx0, by0 = max(0, x0 - pad), max(0, y0 - pad)
+        bx1, by1 = min(w, x1 + pad), min(h, y1 + pad)
+        face = np.ascontiguousarray(image[by0:by1, bx0:bx1], np.float32)
+        size = max(face.shape[:2])
+        calm = cv2.bilateralFilter(face, 0, 0.06, max(1.0, size * 0.01))
+        soft = cv2.GaussianBlur(calm, (0, 0), max(1.0, size * 0.006))
+        sharp = np.clip(calm + 0.8 * (calm - soft), 0, 1)
+        fh, fw = face.shape[:2]
+        ys, xs = np.mgrid[0:fh, 0:fw].astype(np.float32)
+        r = np.hypot((xs + 0.5) / fw - 0.5, (ys + 0.5) / fh - 0.5) * 2
+        weight = np.clip((1 - r) * 3, 0, 1)[..., None]
+        out[by0:by1, bx0:bx1] = face + (sharp - face) * weight
+    return out
+
+
+SKY_BLUE = np.array([0.45, 0.62, 0.85], np.float32)
+WARM_MIDS = np.array([0.80, 0.62, 0.50], np.float32)
+COOL_SHADOWS = np.array([0.30, 0.34, 0.40], np.float32)
+
+
+def colorize(image: Array, **_: Any) -> Array:
+    """Colorize without a model: a hand-tinted look, cool in the shadows and warm in the
+    midtones, with a bright, smooth top read as sky. Only color changes."""
+    lum = gray(image)
+    h, w = lum.shape
+    shadow = np.clip(1 - lum * 2, 0, 1)[..., None]
+    tint = COOL_SHADOWS * shadow + WARM_MIDS * (1 - shadow)
+    ys = (np.arange(h, dtype=np.float32)[:, None] + 0.5) / h
+    smooth = cv2.GaussianBlur(np.abs(cv2.Laplacian(lum, cv2.CV_32F)), (0, 0), max(h, w) * 0.01)
+    sky = np.clip((lum - 0.55) * 4, 0, 1) * np.clip(1 - ys * 2.5, 0, 1) * (smooth < 0.02)
+    tint = tint + (SKY_BLUE - tint) * cv2.GaussianBlur(sky.astype(np.float32), (0, 0), 3)[..., None]
+    colored = tint / np.maximum(tint @ LUMA, 1e-3)[..., None] * lum[..., None]
+    return cast(Array, np.clip(colored, 0, 1).astype(np.float32))
+
+
+def upscale(image: npt.NDArray[Any], scale: float = 2.0, **_: Any) -> npt.NDArray[np.uint8]:
+    """Enlarge without a model: Lanczos resampling and a light sharpen. Takes and returns
+    8-bit pixels, which keeps big images small between processes."""
+    h, w = image.shape[:2]
+    size = (max(1, round(w * scale)), max(1, round(h * scale)))
+    x = np.asarray(image, np.float32) / 255.0
+    big = cv2.resize(x, size, interpolation=cv2.INTER_LANCZOS4)
+    soft = cv2.GaussianBlur(big, (0, 0), max(0.8, scale * 0.5))
+    sharp = np.clip(big + 0.35 * (big - soft), 0, 1)
+    return (sharp * 255 + 0.5).astype(np.uint8)

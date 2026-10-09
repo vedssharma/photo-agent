@@ -351,6 +351,30 @@ export function LayersPanel({
     void apply(`Relight: “${prompt}”`, (s) => addLayer(s, layer))
   }
 
+  /** A whole-photo model edit (face restoration, colorizing) in a layer of its own. */
+  function restore(op: 'restore_faces' | 'colorize') {
+    const name = op === 'colorize' ? 'Colorize' : 'Restore faces'
+    const layer: Layer = {
+      id: newLayerId(),
+      name,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op,
+          seed: newSeed(),
+          amount: op === 'colorize' ? 100 : 70,
+          model: '',
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(name, (s) => addLayer(s, layer))
+  }
+
   /** Extend the canvas to an aspect ratio, painting new surroundings. */
   function expand(aspect: ExpandAspect) {
     const op = {
@@ -446,6 +470,21 @@ export function LayersPanel({
         >
           Relight…
         </button>
+        <select
+          className="icon"
+          aria-label="Restore"
+          disabled={locked}
+          value=""
+          title="Fix an old or damaged photo"
+          onChange={(e) => {
+            const op = e.target.value
+            if (op === 'restore_faces' || op === 'colorize') restore(op)
+          }}
+        >
+          <option value="">Restore…</option>
+          <option value="restore_faces">Restore faces</option>
+          <option value="colorize">Colorize black and white</option>
+        </select>
         {onRetouch && (
           <button
             type="button"

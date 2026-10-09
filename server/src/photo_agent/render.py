@@ -55,9 +55,11 @@ class Vision(Protocol):
         hole: npt.NDArray[np.bool_] | None,
         params: dict[str, Any],
         key: str,
+        edge: int = ...,
     ) -> Array:
         """`image` with the region around `hole` (or all of it) generated anew by `task`;
-        cached under `key` at a fixed working size, whatever the render size."""
+        cached under `key` at a fixed working size (long edge `edge`), whatever the render
+        size."""
         ...
 
 
@@ -225,7 +227,36 @@ def _apply_generative(
             _chain_key(chain),
         )
         return _blend_whole(x, transfer_light(x, made), layer, op.amount, ctx)
+    if isinstance(op, ops.RestoreFaces):
+        # Faces need more pixels than other generated results to keep their new detail.
+        made = ctx.vision.generate(
+            task_for(op),
+            np.clip(x, 0.0, 1.0),
+            None,
+            job_params(op),
+            _chain_key(chain),
+            RESTORE_EDGE,
+        )
+        return _blend_whole(x, made, layer, op.amount, ctx)
+    if isinstance(op, ops.Colorize):
+        made = ctx.vision.generate(
+            task_for(op), np.clip(x, 0.0, 1.0), None, job_params(op), _chain_key(chain)
+        )
+        return _blend_whole(x, keep_luminance(x, made), layer, op.amount, ctx)
     return x
+
+
+RESTORE_EDGE = 2048
+"""Working size for face restoration."""
+
+
+def keep_luminance(x: Array, colored: Array) -> Array:
+    """The photo's own brightness and detail with the color of `colored` (a colorized
+    version of it, generated smaller)."""
+    lab = cv2.cvtColor(np.clip(x, 0.0, 1.0).astype(np.float32), cv2.COLOR_RGB2LAB)
+    other = cv2.cvtColor(np.clip(colored, 0.0, 1.0).astype(np.float32), cv2.COLOR_RGB2LAB)
+    lab[..., 1:] = other[..., 1:]
+    return cast(Array, np.clip(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB), 0.0, 1.0))
 
 
 def _blend_whole(x: Array, result: Array, layer: Layer, amount: float, ctx: RenderContext) -> Array:
@@ -896,6 +927,8 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Generate: lambda x, op, ctx: x,
     ops.ReplaceBackground: lambda x, op, ctx: x,
     ops.Relight: lambda x, op, ctx: x,
+    ops.RestoreFaces: lambda x, op, ctx: x,
+    ops.Colorize: lambda x, op, ctx: x,
     # Expanding needs the framing before it, so `apply_operations` handles it.
     ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,

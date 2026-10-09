@@ -26,6 +26,8 @@ models = [
     "huggingface-hub>=0.30",
     "kornia>=0.7",
     "onnxruntime>=1.20",
+    "spandrel>=0.4",
+    "spandrel-extra-arches>=0.2",
     "timm>=1.0",
     "torch>=2.5",
     "transformers>=4.57",
@@ -75,6 +77,8 @@ module = [
     "diffusers",
     "diffusers.*",
     "safetensors",
+    "spandrel",
+    "spandrel_extra_arches",
     "safetensors.*",
 ]
 ignore_missing_imports = true

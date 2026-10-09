@@ -393,6 +393,31 @@ class Relight(GenerativeBase):
     amount: Strength = Field(60, description="How much of the new light to use.")
 
 
+class RestoreFaces(GenerativeBase):
+    """Restore faces in an old, blurry, or low-resolution photo with an AI face restoration
+    model: sharper eyes, skin, and hair that still look like the person. Only faces change.
+    The only operation in its layer."""
+
+    op: Literal["restore_faces"] = "restore_faces"
+    amount: Strength = Field(
+        70, description="How much of the restored faces to use; lower keeps more of the original."
+    )
+
+    def summary(self) -> str:
+        return "Restore faces"
+
+
+class Colorize(GenerativeBase):
+    """Colorize a black-and-white photo with an AI colorization model. The photo's own
+    brightness and detail stay; only color is added. The only operation in its layer."""
+
+    op: Literal["colorize"] = "colorize"
+    amount: Strength = Field(100, description="How strong the new colors are.")
+
+    def summary(self) -> str:
+        return "Colorize"
+
+
 class SmoothSkin(OpBase):
     """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
@@ -455,7 +480,9 @@ Operation = Annotated[
     | Generate
     | Expand
     | ReplaceBackground
-    | Relight,
+    | Relight
+    | RestoreFaces
+    | Colorize,
     Field(discriminator="op"),
 ]
 
@@ -490,6 +517,8 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Expand,
     ReplaceBackground,
     Relight,
+    RestoreFaces,
+    Colorize,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -535,12 +564,21 @@ AdjustmentOperation = Annotated[
     | HealBlemishes
     | Generate
     | ReplaceBackground
-    | Relight,
+    | Relight
+    | RestoreFaces
+    | Colorize,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""
 
-CONTENT_TYPES: tuple[type[OpBase], ...] = (Remove, Generate, ReplaceBackground, Relight)
+CONTENT_TYPES: tuple[type[OpBase], ...] = (
+    Remove,
+    Generate,
+    ReplaceBackground,
+    Relight,
+    RestoreFaces,
+    Colorize,
+)
 """Operations that change what is in the photo rather than how it looks. Each is the only
 operation in its layer, and content layers render before every adjustment layer."""
 

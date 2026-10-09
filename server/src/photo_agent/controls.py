@@ -45,6 +45,8 @@ GROUPS: dict[str, Group] = {
     "generate": "generative",
     "replace_background": "generative",
     "relight": "generative",
+    "restore_faces": "generative",
+    "colorize": "generative",
 }
 
 

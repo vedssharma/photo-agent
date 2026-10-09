@@ -55,6 +55,12 @@ FACE_TASK = "parse_face"
 """Every face part (skin, eyes, ...) comes from one face-parsing job."""
 
 
+def upscale_plainly(image: Array, scale: float) -> Array:
+    h, w = image.shape[:2]
+    size = (max(1, round(w * scale)), max(1, round(h * scale)))
+    return np.asarray(cv2.resize(image, size, interpolation=cv2.INTER_LANCZOS4), np.float32)
+
+
 def task_for(mask: SemanticMask) -> str:
     return TARGET_TASKS.get(mask.target, FACE_TASK)
 
@@ -207,20 +213,22 @@ class DocumentVision:
         hole: npt.NDArray[np.bool_] | None,
         params: dict[str, Any],
         key: str,
+        edge: int = GENERATE_EDGE,
     ) -> Array:
         """`image` with the region around `hole` (the whole image when None) replaced by
         a generative model's result. The caller blends it in where it applies.
 
         `key` identifies everything the result depends on except the render size: the
         result is generated once, at the models' working size, and scaled to whatever
-        resolution renders it, so the preview and the export show the same thing."""
+        resolution renders it, so the preview and the export show the same thing. `edge` is
+        that working size's long edge."""
         name = f"gen-{key}"
         found = self._remembered_patch(name)
         if found is None:
             with self._key_lock(name):
                 found = self._remembered_patch(name)
                 if found is None:
-                    found = self._run_generate(task, image, hole, params, name)
+                    found = self._run_generate(task, image, hole, params, name, edge)
         if found is None:
             return image
         (fx0, fy0, fx1, fy1), patch = found
@@ -240,6 +248,7 @@ class DocumentVision:
         hole: npt.NDArray[np.bool_] | None,
         params: dict[str, Any],
         name: str,
+        edge: int,
     ) -> tuple[FractionBox, Array] | None:
         h, w = image.shape[:2]
         if hole is None:
@@ -254,7 +263,7 @@ class DocumentVision:
             x1, y1 = min(w, int(xs.max()) + 1 + pad), min(h, int(ys.max()) + 1 + pad)
         crop = imaging.resize_long_edge(
             np.ascontiguousarray(np.clip(image[y0:y1, x0:x1], 0.0, 1.0), np.float32),
-            GENERATE_EDGE,
+            edge,
         )
         job = dict(params)
         if hole is not None:
@@ -279,6 +288,17 @@ class DocumentVision:
         stored = (box, patch.astype(np.float32) / 255.0)
         self._remember_patch(name, stored)
         return stored
+
+    def upscale(self, image: Array, scale: float) -> Array:
+        """`image` enlarged by `scale` (for export; not cached). Pixels cross to the model
+        worker as 8 bits, which keeps a big photo small on the way."""
+        pixels = imaging.to_uint8(np.clip(image, 0.0, 1.0))
+        try:
+            result = self.worker.run("upscale", pixels, {"scale": scale}, doc_id=self.doc_id)
+        except JobFailedError as exc:
+            log.warning("Could not upscale: %s", exc)
+            return upscale_plainly(image, scale)
+        return (np.asarray(result.value, np.float32) / 255).astype(np.float32)
 
     def _remember_patch(self, name: str, patch: tuple[FractionBox, Array]) -> None:
         with self._lock:

@@ -99,6 +99,12 @@ like neon at night"), call relight with where the light comes from and its color
 in a short prompt. It starts its own layer like replace_background; mask the layer on the \
 subject to relight only it. Exposure and white balance only brighten or tint what is \
 there; relight moves light and shadow. Use amount to keep it believable.
+- For old, damaged, or soft photos ("restore this old photo", "fix the blurry faces"), \
+call restore_faces; for a black-and-white photo the person wants in color, call colorize. \
+Each starts its own layer. Restoration should still look like the same person: keep its \
+amount moderate unless the faces are badly degraded. To make a photo bigger or sharper \
+for printing, tell the person to pick Enlarge in the export dialog: upscaling happens \
+when the file is saved.
 - To turn a vertical photo into a landscape one, give a tight shot more room, or fit a \
 format without cropping ("make this 16:9 without cutting anything off"), call expand: it \
 extends the canvas with new surroundings painted to match. Prefer an aspect ratio; use \
@@ -505,6 +511,8 @@ class Editor:
                 if layer.operations:
                     # It works without a mask, so it can start its own layer.
                     layer = self._new_layer(op.summary())
+                elif layer.name == self.default_layer_name:
+                    layer.name = op.summary()[:80]
             elif isinstance(op, CONTENT_TYPES) and (layer.operations or layer.mask is None):
                 raise ToolError(
                     f"{name} needs its own new layer whose mask selects where it applies: "

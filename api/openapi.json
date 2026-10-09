@@ -1347,6 +1347,54 @@
         "title": "Clarity",
         "description": "Add (positive) or soften (negative) midtone local contrast and texture."
       },
+      "Colorize": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "op": {
+            "type": "string",
+            "const": "colorize",
+            "title": "Op",
+            "default": "colorize"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How strong the new colors are.",
+            "default": 100
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Colorize",
+        "description": "Colorize a black-and-white photo with an AI colorization model. The photo's own\nbrightness and detail stay; only color is added. The only operation in its layer."
+      },
       "Contrast": {
         "properties": {
           "id": {
@@ -1907,6 +1955,17 @@
             "title": "Keep Location",
             "description": "Keep GPS location from the original. Off by default for privacy.",
             "default": false
+          },
+          "upscale": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              4
+            ],
+            "title": "Upscale",
+            "description": "Enlarge the export with an AI upscaler (up to 8000 pixels across).",
+            "default": 1
           }
         },
         "type": "object",
@@ -2443,6 +2502,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/Relight"
+                },
+                {
+                  "$ref": "#/components/schemas/RestoreFaces"
+                },
+                {
+                  "$ref": "#/components/schemas/Colorize"
                 }
               ],
               "discriminator": {
@@ -2450,6 +2515,7 @@
                 "mapping": {
                   "blacks": "#/components/schemas/Blacks",
                   "clarity": "#/components/schemas/Clarity",
+                  "colorize": "#/components/schemas/Colorize",
                   "contrast": "#/components/schemas/Contrast",
                   "dehaze": "#/components/schemas/Dehaze",
                   "exposure": "#/components/schemas/Exposure",
@@ -2462,6 +2528,7 @@
                   "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
                   "replace_background": "#/components/schemas/ReplaceBackground",
+                  "restore_faces": "#/components/schemas/RestoreFaces",
                   "saturation": "#/components/schemas/Saturation",
                   "shadows": "#/components/schemas/Shadows",
                   "sharpen": "#/components/schemas/Sharpen",
@@ -3123,6 +3190,54 @@
         ],
         "title": "ReplaceBackground",
         "description": "Replace the background with a new scene described in words (\"a sunlit beach\",\n\"a softly lit studio, pale gray\"), painted around the subject so its perspective fits,\nand match the subject's light and color to it. The layer's mask selects what to\nreplace; without one, everything but the main subject. The only operation in its layer;\napplies before adjustments."
+      },
+      "RestoreFaces": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "op": {
+            "type": "string",
+            "const": "restore_faces",
+            "title": "Op",
+            "default": "restore_faces"
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How much of the restored faces to use; lower keeps more of the original.",
+            "default": 70
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RestoreFaces",
+        "description": "Restore faces in an old, blurry, or low-resolution photo with an AI face restoration\nmodel: sharper eyes, skin, and hair that still look like the person. Only faces change.\nThe only operation in its layer."
       },
       "Retouch": {
         "properties": {

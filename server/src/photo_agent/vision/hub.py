@@ -14,6 +14,11 @@ its weights' license, so moving to a product later does not mean swapping models
                             1.0-inpainting-0.1
     ic-light-fc             lllyasviel/ic-light                CreativeML Open RAIL-M
                             (iclight_sd15_fc) on stablediffusionapi/realistic-vision-v51
+    real-esrgan-x4          ai-forever/Real-ESRGAN             BSD-3-Clause
+    gfpgan-1.4              TencentARC/GFPGAN (GitHub release) Apache-2.0
+      with yunet faces      opencv/face_detection_yunet        MIT
+    ddcolor                 piddnad/DDColor-models             Apache-2.0
+                            (ddcolor_modelscope.pth)
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ from typing import Any, ClassVar, cast
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 
 from photo_agent.imaging import Array
 from photo_agent.vision import classical
@@ -498,6 +504,164 @@ def _light_gradient(direction: str, shape: tuple[int, int]) -> Array | None:
     else:
         return None
     return cast(Array, np.repeat((0.1 + 0.8 * ramp)[..., None], 3, axis=2))
+
+
+def _spandrel(path: str, extra: bool = False) -> Any:
+    """A model loaded by spandrel, which knows many image models' architectures."""
+    import spandrel
+
+    if extra:
+        import spandrel_extra_arches
+
+        spandrel_extra_arches.install()
+    return spandrel.ModelLoader().load_from_file(path).eval()
+
+
+def _tensor(image: npt.NDArray[Any], device: str) -> Any:
+    import torch
+
+    return torch.from_numpy(np.ascontiguousarray(image.transpose(2, 0, 1)))[None].to(device)
+
+
+def _array(tensor: Any) -> Array:
+    return cast(Array, tensor[0].float().clamp(0, 1).permute(1, 2, 0).cpu().numpy())
+
+
+class RealEsrgan(HubBackend):
+    """Real-ESRGAN: enlarges a photo 4x, inventing plausible fine detail instead of blur;
+    the result is then sized to the scale asked for. Takes and returns 8-bit pixels."""
+
+    name = "real-esrgan-x4"
+    license = "BSD-3-Clause"
+    repo = "ai-forever/Real-ESRGAN"
+    weights = "RealESRGAN_x4.pth"
+    packages = ("torch", "spandrel", "huggingface_hub")
+    TILE = 256
+    OVERLAP = 16
+
+    def _load(self, env: Env) -> Any:
+        from huggingface_hub import hf_hub_download
+
+        path = hf_hub_download(self.repo, self.weights, cache_dir=self._cache(env))
+        return _spandrel(path).to(env.device)
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        import torch
+
+        model = self.model(env, progress)
+        x = np.asarray(image, np.float32) / 255.0
+        h, w = x.shape[:2]
+        factor = int(model.scale)
+        out = np.zeros((h * factor, w * factor, 3), np.float32)
+        step = self.TILE - 2 * self.OVERLAP
+        tiles = [(y, xx) for y in range(0, h, step) for xx in range(0, w, step)]
+        for i, (y, xx) in enumerate(tiles):
+            progress(i / len(tiles), "Enlarging")
+            # Each tile with a margin, so its edges are made from real surroundings.
+            y0, x0 = max(0, y - self.OVERLAP), max(0, xx - self.OVERLAP)
+            y1, x1 = min(h, y + step + self.OVERLAP), min(w, xx + step + self.OVERLAP)
+            with torch.no_grad():
+                big = _array(model(_tensor(x[y0:y1, x0:x1], env.device)))
+            ty1, tx1 = min(h, y + step), min(w, xx + step)
+            oy, ox = (y - y0) * factor, (xx - x0) * factor
+            out[y * factor : ty1 * factor, xx * factor : tx1 * factor] = big[
+                oy : oy + (ty1 - y) * factor, ox : ox + (tx1 - xx) * factor
+            ]
+        scale = float(params.get("scale", 4))
+        size = (max(1, round(w * scale)), max(1, round(h * scale)))
+        if size != (w * factor, h * factor):
+            out = cv2.resize(out, size, interpolation=cv2.INTER_AREA)
+        return (np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8)
+
+
+class Gfpgan(HubBackend):
+    """GFPGAN 1.4: restores degraded faces (blur, noise, low resolution, old film) to sharp
+    ones that keep the person's likeness. Faces are found with YuNet; the rest of the photo
+    is left alone."""
+
+    name = "gfpgan-1.4"
+    license = "Apache-2.0"
+    repo = "TencentARC/GFPGAN"
+    url = "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth"
+    detector = ("opencv/face_detection_yunet", "face_detection_yunet_2023mar.onnx")
+    packages = ("torch", "spandrel", "huggingface_hub")
+    SIZE = 512
+
+    def _load(self, env: Env) -> Any:
+        from huggingface_hub import hf_hub_download
+        from torch.hub import download_url_to_file
+
+        folder = env.cache_dir / "gfpgan"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "GFPGANv1.4.pth"
+        if not path.exists():
+            tmp = path.with_suffix(".part")
+            download_url_to_file(self.url, str(tmp), progress=False)
+            tmp.replace(path)
+        faces = hf_hub_download(*self.detector, cache_dir=self._cache(env))
+        return _spandrel(str(path)).to(env.device), faces
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        import torch
+
+        model, detector_path = self.model(env, progress)
+        x = np.asarray(image, np.float32)
+        h, w = x.shape[:2]
+        detector = cv2.FaceDetectorYN.create(detector_path, "", (w, h), 0.6)
+        _, found = detector.detect((np.clip(x[..., ::-1], 0, 1) * 255).astype(np.uint8))
+        out = x.copy()
+        faces = [] if found is None else found[:, :4]
+        for i, (fx, fy, fw, fh) in enumerate(faces):
+            progress(i / len(faces), "Restoring faces")
+            # A square around the face with room for hair and chin, as GFPGAN was trained.
+            side = int(max(fw, fh) * 1.8)
+            cx, cy = fx + fw / 2, fy + fh / 2
+            x0, y0 = round(cx - side / 2), round(cy - side / 2)
+            crop = np.zeros((side, side, 3), np.float32)
+            sx0, sy0, sx1, sy1 = max(0, x0), max(0, y0), min(w, x0 + side), min(h, y0 + side)
+            if sx1 <= sx0 or sy1 <= sy0:
+                continue
+            crop[sy0 - y0 : sy1 - y0, sx0 - x0 : sx1 - x0] = x[sy0:sy1, sx0:sx1]
+            face = cv2.resize(crop, (self.SIZE, self.SIZE), interpolation=cv2.INTER_CUBIC)
+            with torch.no_grad():
+                # GFPGAN works in -1..1; called directly, past spandrel's 0..1 wrapper.
+                result = model.model(_tensor(face * 2 - 1, env.device))
+                fixed = (_array((result[0] + 1) / 2)).astype(np.float32)
+            back = cv2.resize(fixed, (side, side), interpolation=cv2.INTER_AREA)
+            ys, xs = np.mgrid[0:side, 0:side].astype(np.float32)
+            r = np.hypot((xs + 0.5) / side - 0.5, (ys + 0.5) / side - 0.5) * 2
+            weight = np.clip((0.9 - r) * 4, 0, 1)[..., None]
+            region = out[sy0:sy1, sx0:sx1]
+            part = back[sy0 - y0 : sy1 - y0, sx0 - x0 : sx1 - x0]
+            wpart = weight[sy0 - y0 : sy1 - y0, sx0 - x0 : sx1 - x0]
+            out[sy0:sy1, sx0:sx1] = region + (part - region) * wpart
+        return out
+
+
+class DdColor(HubBackend):
+    """DDColor: colorizes black-and-white photos with natural, varied colors. Only color
+    is taken from it; the photo keeps its own brightness."""
+
+    name = "ddcolor"
+    license = "Apache-2.0"
+    repo = "piddnad/DDColor-models"
+    weights = "ddcolor_modelscope.pth"
+    packages = ("torch", "spandrel", "spandrel_extra_arches", "huggingface_hub")
+
+    def _load(self, env: Env) -> Any:
+        from huggingface_hub import hf_hub_download
+
+        path = hf_hub_download(self.repo, self.weights, cache_dir=self._cache(env))
+        return _spandrel(path, extra=True).to(env.device)
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        import torch
+
+        model = self.model(env, progress)
+        progress(0.2, "Colorizing")
+        lum = classical.gray(np.asarray(image, np.float32))
+        with torch.no_grad():
+            return _array(model(_tensor(lum[..., None], env.device)))
 
 
 def _resize(image: Array, shape: tuple[int, int]) -> Array:
