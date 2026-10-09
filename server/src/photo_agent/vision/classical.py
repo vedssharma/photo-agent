@@ -291,3 +291,31 @@ def face_parts(image: Array) -> dict[str, Array]:
         ):
             parts[name] = np.maximum(parts[name], found.astype(np.float32))
     return {name: finish(mask, image, soften=0.002) for name, mask in parts.items()}
+
+
+def inpaint(image: Array, mask: npt.NDArray[Any]) -> Array:
+    """Fill the masked area from its surroundings.
+
+    Fast-marching inpainting smears across large holes, so it runs at a scale where the
+    hole is only a few pixels across, and the result is scaled back with grain matched to
+    the area around the hole, so the fill does not look plastic.
+    """
+    hole = np.asarray(mask) > 0.5
+    if not hole.any():
+        return image
+    h, w = hole.shape
+    depth = float(cv2.distanceTransform(hole.astype(np.uint8), cv2.DIST_L2, 5).max())
+    scale = min(1.0, 6.0 / max(depth, 1.0))
+    sw, sh = max(8, round(w * scale)), max(8, round(h * scale))
+    small = cv2.resize(image, (sw, sh), interpolation=cv2.INTER_AREA)
+    small_hole = cv2.resize(hole.astype(np.uint8), (sw, sh), interpolation=cv2.INTER_NEAREST)
+    small_hole = cv2.dilate(small_hole, np.ones((3, 3), np.uint8))
+    img8 = (np.clip(small, 0, 1) * 255 + 0.5).astype(np.uint8)
+    filled = cv2.inpaint(img8, small_hole, 3, cv2.INPAINT_TELEA).astype(np.float32) / 255
+    up = np.asarray(cv2.resize(filled, (w, h), interpolation=cv2.INTER_CUBIC), np.float32)
+    ring = cv2.dilate(hole.astype(np.uint8), np.ones((15, 15), np.uint8)).astype(bool) & ~hole
+    detail = image - cv2.GaussianBlur(image, (0, 0), 1.5)
+    std = detail[ring].std(axis=0) if ring.any() else np.zeros(3, np.float32)
+    noise = np.random.default_rng(0).standard_normal((h, w, 3)).astype(np.float32)
+    noise = cv2.GaussianBlur(noise, (0, 0), 0.7) * std
+    return cast(Array, np.where(hole[..., None], np.clip(up + noise, 0, 1), image))

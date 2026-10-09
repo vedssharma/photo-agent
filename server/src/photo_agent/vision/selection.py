@@ -1,10 +1,11 @@
-"""Semantic masks for one document: find what a mask selects, once, and remember it.
+"""Model results for one document: find what a mask selects, or fill in what is removed,
+once, and remember it.
 
 A semantic mask says what to select ("the sky", the object in a box); the model worker finds
-it in the framed original photo. Results are cached by everything they depend on (what is
-selected, the framing, and the backend that finds it), in memory and as PNGs in the
-document's folder, so re-rendering, undo, and export never run a model twice. Change the
-crop or the selection and the key changes, so the model runs again on the new framing.
+it in the framed original photo. A removal fills in a hole. Results are cached by everything
+they depend on (what is selected, the framing, and the backend that finds it), in memory and
+as PNGs in the document's folder, so re-rendering, undo, and export never run a model twice.
+Change the crop or the selection and the key changes, so the model runs again.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from typing import Any, cast
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 from PIL import Image
 
 from photo_agent import imaging
@@ -35,6 +37,7 @@ log = logging.getLogger(__name__)
 WORK_EDGE = 1024
 """Long edge of the framed photo that models look at."""
 MEMORY_ITEMS = 32
+MEMORY_FILLS = 8
 
 TARGET_TASKS = {
     "subject": "segment_subject",
@@ -71,6 +74,7 @@ class DocumentVision:
         self.folder = folder
         self.backends = backends
         self._memory: OrderedDict[str, Array] = OrderedDict()
+        self._fills: OrderedDict[str, tuple[tuple[int, int, int, int], Array]] = OrderedDict()
         self._locks: dict[str, threading.Lock] = {}
         self._lock = threading.Lock()
 
@@ -116,6 +120,78 @@ class DocumentVision:
                 self._store(name, result.value)
         stored = self._remembered(name)
         return stored if stored is not None else np.zeros(image.shape[:2], np.float32)
+
+    def fill(self, image: Array, hole: npt.NDArray[np.bool_], key: str) -> Array:
+        """`image` with `hole` filled in by the inpainting model. `key` identifies everything
+        the fill depends on, at this image's size (see `render._apply_removals`)."""
+        name = f"fill-{key}"
+        found = self._remembered_fill(name)
+        if found is None:
+            with self._key_lock(name):
+                found = self._remembered_fill(name)
+                if found is None:
+                    found = self._run_fill(image, hole, name)
+        if found is None:
+            return image
+        (x0, y0, x1, y1), patch = found
+        out = image.copy()
+        region = hole[y0:y1, x0:x1, None]
+        out[y0:y1, x0:x1] = np.where(region, patch, out[y0:y1, x0:x1])
+        return out
+
+    def _run_fill(
+        self, image: Array, hole: npt.NDArray[np.bool_], name: str
+    ) -> tuple[tuple[int, int, int, int], Array] | None:
+        ys, xs = np.nonzero(hole)
+        h, w = hole.shape
+        # Show the model the hole with plenty of surroundings, but not the whole photo.
+        pad = max(16, round(0.5 * max(xs.max() - xs.min(), ys.max() - ys.min())))
+        x0, y0 = max(0, int(xs.min()) - pad), max(0, int(ys.min()) - pad)
+        x1, y1 = min(w, int(xs.max()) + 1 + pad), min(h, int(ys.max()) + 1 + pad)
+        crop = np.ascontiguousarray(image[y0:y1, x0:x1], np.float32)
+        mask = hole[y0:y1, x0:x1].astype(np.float32)
+        try:
+            result = self.worker.run("inpaint", crop, {"mask": mask}, doc_id=self.doc_id)
+        except JobFailedError as exc:
+            log.warning("Could not fill in a removal: %s", exc)
+            return None
+        box = (x0, y0, x1, y1)
+        patch = imaging.to_uint8(np.asarray(result.value, np.float32))
+        self.folder.mkdir(parents=True, exist_ok=True)
+        tmp = self._path(name).with_suffix(".tmp")
+        tmp.write_bytes(imaging.encode_png(patch.astype(np.float32) / 255.0))
+        tmp.replace(self._path(name))
+        self._path(name).with_suffix(".json").write_text(json.dumps({"box": box}))
+        stored = (box, patch.astype(np.float32) / 255.0)
+        self._remember_fill(name, stored)
+        return stored
+
+    def _remember_fill(self, name: str, fill: tuple[tuple[int, int, int, int], Array]) -> None:
+        with self._lock:
+            self._fills[name] = fill
+            self._fills.move_to_end(name)
+            while len(self._fills) > MEMORY_FILLS:
+                self._fills.popitem(last=False)
+
+    def _remembered_fill(self, name: str) -> tuple[tuple[int, int, int, int], Array] | None:
+        with self._lock:
+            hit = self._fills.get(name)
+        if hit is not None:
+            return hit
+        meta, path = self._path(name).with_suffix(".json"), self._path(name)
+        if not (meta.is_file() and path.is_file()):
+            return None
+        try:
+            x0, y0, x1, y1 = (int(v) for v in json.loads(meta.read_text())["box"])
+            with Image.open(path) as img:
+                patch = np.asarray(img.convert("RGB"), np.float32) / 255.0
+        except (OSError, ValueError, KeyError):
+            return None
+        if patch.shape[:2] != (y1 - y0, x1 - x0):
+            return None
+        found = ((x0, y0, x1, y1), patch)
+        self._remember_fill(name, found)
+        return found
 
     def key(self, mask: SemanticMask, framing: Sequence[OpBase]) -> str:
         task = task_for(mask)

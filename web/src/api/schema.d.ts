@@ -968,7 +968,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"])[];
         };
         /**
          * LinearGradientMask
@@ -1097,7 +1097,7 @@ export interface components {
              * Group
              * @enum {string}
              */
-            group: "light" | "color" | "detail" | "framing" | "finishing";
+            group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch";
             /** Framing */
             framing: boolean;
             /** Params */
@@ -1182,6 +1182,30 @@ export interface components {
             created_at: string;
             /** Layers */
             layers: components["schemas"]["Layer"][];
+        };
+        /**
+         * Remove
+         * @description Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap
+         *     with plausible surroundings, using an AI inpainting model. Needs a mask; it is the only
+         *     operation in its layer. Removal layers apply first, before any adjustment layer.
+         */
+        Remove: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "remove";
+            /**
+             * Grow
+             * @description How far past the selection's edge to fill, so outlines and halos go.
+             * @default 20
+             */
+            grow: number;
         };
         /**
          * Rotate

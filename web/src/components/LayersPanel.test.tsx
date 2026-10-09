@@ -259,3 +259,19 @@ describe('LayersPanel manual controls', () => {
     expect(onSelect).toHaveBeenCalledWith(added.id)
   })
 })
+
+describe('LayersPanel removal', () => {
+  it('adds a removal layer and waits for a click on what to remove', async () => {
+    const { sent, onSelect, onMaskTool } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+    expect(sent[0].label).toBe('Remove an object')
+    const added = sent[0].state.layers[2]
+    expect(added).toMatchObject({ name: 'Remove object', mask: null })
+    expect(added.operations).toMatchObject([{ op: 'remove', grow: 20 }])
+    expect(onSelect).toHaveBeenCalledWith(added.id)
+    expect(onMaskTool).toHaveBeenCalledWith({
+      ...DEFAULT_MASK_TOOL,
+      picking: true,
+    })
+  })
+})

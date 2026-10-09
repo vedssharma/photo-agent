@@ -32,6 +32,7 @@ from photo_agent.operations import (
     OpBase,
     Operation,
     OperationAdapter,
+    Remove,
 )
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentStore
@@ -67,6 +68,11 @@ pick out one particular thing ("the person on the left", "the red car"), use tar
 object with a box around it, in fractions of the photo as you see it, a point on it when \
 the box holds other things too, and a short description. The render after your edits \
 shows what was selected; if it caught the wrong thing, adjust the box or points.
+- To remove something (a person, power lines, a sign, a photobomber), add a layer named \
+for it ("Remove the person on the left") with a mask selecting it, usually a semantic \
+object with a box, then call remove. It must be the only operation in that layer. Removal \
+layers apply first, before any adjustment, wherever they sit in the stack. Check the \
+render: if traces remain (an outline, a shadow), raise grow or widen the selection.
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -82,7 +88,7 @@ plainly undermines it (for example, warming a photo that is also underexposed).
 - Err on the side of subtle. Typical amounts are 10 to 40 on the -100..100 sliders and \
 -1 to +1 stop of exposure; go further only when the photo clearly needs it.
 - Protect skin tones, keep highlights from blowing out, and avoid oversaturation.
-- If a request needs something the tools cannot do (removing objects, replacing the sky, \
+- If a request needs something the tools cannot do (replacing the sky, adding or \
 generating content), say so plainly and offer what you can do instead.
 - If the request is ambiguous in a way that matters, make a reasonable choice and say which.
 
@@ -374,6 +380,15 @@ class Editor:
             where = "the framing"
         else:
             layer = self._target_layer()
+            if isinstance(op, Remove) and (layer.operations or layer.mask is None):
+                raise ToolError(
+                    "remove needs its own new layer whose mask selects what to remove: "
+                    "call add_layer with that mask first."
+                )
+            if layer.is_removal:
+                raise ToolError(
+                    f"Layer {layer.id} removes something; add a new layer for adjustments."
+                )
             layer.operations.append(op)  # type: ignore[arg-type]
             where = f"layer {layer.id} ({layer.name})"
         summary = op.summary()

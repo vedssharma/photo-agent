@@ -249,9 +249,13 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
 }
 
 
+MODEL_OPERATIONS = {"remove"}
+"""Operations whose result comes from an AI model (tested in their own modules)."""
+
+
 def test_golden_cases_cover_every_operation() -> None:
     covered = {op.op for case in GOLDEN_CASES.values() for op in case}  # type: ignore[attr-defined]
-    assert covered == set(ops.OPERATIONS_BY_NAME)
+    assert covered == set(ops.OPERATIONS_BY_NAME) - MODEL_OPERATIONS
 
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_CASES))

@@ -12,6 +12,7 @@ of the same graph look the same apart from resolution.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import threading
 from collections import OrderedDict
@@ -21,6 +22,7 @@ from typing import Any, Protocol, cast
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 
 from photo_agent import operations as ops
 from photo_agent.imaging import Array
@@ -37,6 +39,10 @@ class Vision(Protocol):
         self, mask: SemanticMask, framing: Sequence[ops.OpBase], shape: tuple[int, int]
     ) -> Array:
         """A semantic mask's selection, at `shape` (height, width) of the framed photo."""
+        ...
+
+    def fill(self, image: Array, hole: npt.NDArray[np.bool_], key: str) -> Array:
+        """`image` with the `hole` filled in by inpainting; cached under `key`."""
         ...
 
 
@@ -66,22 +72,57 @@ def render(pixels: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) 
 
 
 def render_state(pixels: Array, state: EditState, ctx: RenderContext) -> Array:
-    """Apply the framing, then blend in each visible layer from the bottom up."""
+    """Apply the framing, then the removal layers, then blend in each visible adjustment
+    layer from the bottom up."""
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
+    out = _apply_removals(out, state.layers, ctx)
     for layer in state.layers:
         out = _apply_layer(out, layer, ctx)
     return np.clip(out, 0.0, 1.0, out=out)
 
 
 def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
-    if not layer.visible or layer.opacity <= 0 or not layer.operations:
+    if not layer.visible or layer.opacity <= 0 or not layer.operations or layer.is_removal:
         return x
     adjusted = blend(x, apply_operations(x, layer.operations, ctx), layer.blend_mode)
     weight: Array | float = layer.opacity / 100
     if layer.mask is not None:
         weight = ctx.mask(layer.mask, x)[..., None] * weight
     return cast(Array, x + (adjusted - x) * weight)
+
+
+REMOVAL_THRESHOLD = 0.35
+"""Where a removal layer's mask is at least this strong, the photo is filled in."""
+
+
+def _apply_removals(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Array:
+    """Fill in what each visible removal layer selects, in stack order.
+
+    Removals come before every adjustment, whatever their place in the stack, so the
+    filled-in area takes each adjustment just like the photo around it. Each fill is found
+    from the photo as earlier removals left it, and is cached by everything it depends on.
+    """
+    chain: list[object] = [[op.model_dump(exclude={"id"}) for op in ctx.framing], x.shape]
+    for layer in layers:
+        if not layer.is_removal or not layer.visible or layer.opacity <= 0:
+            continue
+        if layer.mask is None or ctx.vision is None:
+            continue
+        op = layer.operations[0]
+        assert isinstance(op, ops.Remove)
+        chain.append([layer.mask.model_dump(), op.grow])
+        region = ctx.mask(layer.mask, x)
+        radius = max(1, round(op.grow / 100 * 0.02 * long_edge(x)))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
+        hole = cv2.dilate((region > REMOVAL_THRESHOLD).astype(np.uint8), kernel).astype(bool)
+        if not hole.any():
+            continue
+        key = hashlib.sha256(json.dumps(chain, default=str).encode()).hexdigest()[:24]
+        filled = ctx.vision.fill(np.clip(x, 0.0, 1.0), hole, key)
+        weight = blur(hole.astype(np.float32), max(1.0, radius / 2)) * (layer.opacity / 100)
+        x = x + (filled - x) * weight[..., None]
+    return x
 
 
 def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
@@ -91,6 +132,8 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
     if target.mask is None:
         return np.ones(out.shape[:2], np.float32)
+    if not target.is_removal:
+        out = _apply_removals(out, state.layers, ctx)
     for layer in state.layers:
         if layer.id == layer_id:
             break
@@ -526,6 +569,8 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Vignette: _vignette,
     ops.Grain: _grain,
     ops.ToneCurve: _tone_curve,
+    # Removal needs the layer's mask, so removal layers render separately (see above).
+    ops.Remove: lambda x, op, ctx: x,
 }
 
 

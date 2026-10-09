@@ -113,6 +113,22 @@ export function LayersPanel({
     )
   }
 
+  /** A removal layer, waiting for a click on what to remove. */
+  function removeSomething() {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: 'Remove object',
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [{ id: newOpId(), op: 'remove', grow: 20 }],
+      mask: null,
+    }
+    onSelect(layer.id)
+    onMaskTool({ ...maskTool, picking: true })
+    void apply('Remove an object', (s) => addLayer(s, layer))
+  }
+
   function newLayer() {
     const layer: Layer = {
       id: newLayerId(),
@@ -143,6 +159,15 @@ export function LayersPanel({
           type="button"
           className="icon"
           disabled={locked}
+          title="Remove a person or thing from the photo"
+          onClick={removeSomething}
+        >
+          Remove…
+        </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
           onClick={newLayer}
         >
           + New layer
@@ -156,6 +181,7 @@ export function LayersPanel({
       <ol className="layer-list">
         {topFirst.map((layer, i) => {
           const isSelected = layer.id === selected
+          const removes = layer.operations.some((op) => op.op === 'remove')
           return (
             <li
               key={layer.id}
@@ -241,27 +267,38 @@ export function LayersPanel({
                       )
                     }
                   />
-                  <label className="field">
-                    <span>Blend</span>
-                    <select
-                      value={layer.blend_mode}
-                      disabled={locked}
-                      onChange={(e) => {
-                        const mode = e.target.value as BlendMode
-                        void change(
-                          layer,
-                          `“${layer.name}” blend: ${blendLabel(mode)}`,
-                          { blend_mode: mode },
-                        )
-                      }}
-                    >
-                      {BLEND_MODES.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {!removes && (
+                    <>
+                      <label className="field">
+                        <span>Blend</span>
+                        <select
+                          value={layer.blend_mode}
+                          disabled={locked}
+                          onChange={(e) => {
+                            const mode = e.target.value as BlendMode
+                            void change(
+                              layer,
+                              `“${layer.name}” blend: ${blendLabel(mode)}`,
+                              { blend_mode: mode },
+                            )
+                          }}
+                        >
+                          {BLEND_MODES.map((m) => (
+                            <option key={m.value} value={m.value}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                  {removes && (
+                    <p className="hint">
+                      {layer.mask
+                        ? 'Removed and filled in from the surroundings. Paint or click to change what is removed.'
+                        : 'Choose what to remove: click it on the photo, or pick a mask below.'}
+                    </p>
+                  )}
                   <MaskControls
                     layer={layer}
                     disabled={locked}
@@ -278,12 +315,16 @@ export function LayersPanel({
                   {layer.operations.map((op) =>
                     operationControls(op, layer.id),
                   )}
-                  <AddOperation
-                    label="Add adjustment"
-                    specs={allSpecs.filter((s) => !s.framing)}
-                    disabled={locked}
-                    onAdd={(spec) => add(spec, layer.id, `“${layer.name}”`)}
-                  />
+                  {!removes && (
+                    <AddOperation
+                      label="Add adjustment"
+                      specs={allSpecs.filter(
+                        (s) => !s.framing && s.group !== 'retouch',
+                      )}
+                      disabled={locked}
+                      onAdd={(spec) => add(spec, layer.id, `“${layer.name}”`)}
+                    />
+                  )}
                 </div>
               )}
             </li>

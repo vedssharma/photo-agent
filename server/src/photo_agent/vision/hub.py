@@ -9,6 +9,7 @@ its weights' license, so moving to a product later does not mean swapping models
     birefnet                ZhengPeng7/BiRefNet                MIT
     segformer-face-parsing  jonathandinu/face-parsing          unspecified; trained on
                                                                CelebAMask-HQ (non-commercial)
+    lama                    Carve/LaMa-ONNX (lama_fp32.onnx)   Apache-2.0
 """
 
 from __future__ import annotations
@@ -223,3 +224,46 @@ class FaceParser(HubBackend):
         mouth = parts.pop("mouth").astype(bool)
         parts["teeth"] = (mouth & (hsv[..., 2] > 0.5) & (hsv[..., 1] < 0.35)).astype(np.float32)
         return {name: classical.finish(m, image, soften=0.0015) for name, m in parts.items()}
+
+
+class LamaInpaint(HubBackend):
+    """LaMa (big-lama, ONNX export): fills large holes with plausible texture and structure."""
+
+    name = "lama"
+    license = "Apache-2.0"
+    repo = "Carve/LaMa-ONNX"
+    packages = ("onnxruntime", "huggingface_hub")
+    SIZE = 512
+    """The export takes a fixed 512x512 input."""
+
+    def _load(self, env: Env) -> Any:
+        import onnxruntime
+        from huggingface_hub import hf_hub_download
+
+        path = hf_hub_download(self.repo, "lama_fp32.onnx", cache_dir=self._cache(env))
+        providers = ["CPUExecutionProvider"]
+        if env.device == "cuda":
+            providers.insert(0, "CUDAExecutionProvider")
+        return onnxruntime.InferenceSession(path, providers=providers)
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        session = self.model(env, progress)
+        hole = np.asarray(params["mask"]) > 0.5
+        h, w = hole.shape
+        progress(0.3, "Filling in")
+        size = (self.SIZE, self.SIZE)
+        img = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+        small = cv2.resize(hole.astype(np.uint8), size, interpolation=cv2.INTER_NEAREST)
+        small = cv2.dilate(small, np.ones((5, 5), np.uint8)).astype(np.float32)
+        names = [i.name for i in session.get_inputs()]
+        mask_name = next((n for n in names if "mask" in n.lower()), names[1])
+        image_name = next(n for n in names if n != mask_name)
+        feeds = {
+            image_name: img.transpose(2, 0, 1)[None].astype(np.float32),
+            mask_name: small[None, None],
+        }
+        out = np.asarray(session.run(None, feeds)[0][0], np.float32).transpose(1, 2, 0)
+        if out.max() > 2.0:
+            out = out / 255.0
+        filled = cv2.resize(np.clip(out, 0, 1), (w, h), interpolation=cv2.INTER_CUBIC)
+        return np.where(hole[..., None], np.clip(filled, 0, 1), image).astype(np.float32)

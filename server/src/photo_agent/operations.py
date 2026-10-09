@@ -227,6 +227,20 @@ class Grain(OpBase):
     size: Strength = Field(25, description="Grain size; larger is coarser.")
 
 
+# Retouching
+
+
+class Remove(OpBase):
+    """Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap
+    with plausible surroundings, using an AI inpainting model. Needs a mask; it is the only
+    operation in its layer. Removal layers apply first, before any adjustment layer."""
+
+    op: Literal["remove"] = "remove"
+    grow: Strength = Field(
+        20, description="How far past the selection's edge to fill, so outlines and halos go."
+    )
+
+
 class ToneCurve(OpBase):
     """Remap tones with a curve through control points (input, output), both 0..1.
 
@@ -262,7 +276,8 @@ Operation = Annotated[
     | Flip
     | Vignette
     | Grain
-    | ToneCurve,
+    | ToneCurve
+    | Remove,
     Field(discriminator="op"),
 ]
 
@@ -288,6 +303,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Vignette,
     Grain,
     ToneCurve,
+    Remove,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -315,7 +331,8 @@ AdjustmentOperation = Annotated[
     | Dehaze
     | Vignette
     | Grain
-    | ToneCurve,
+    | ToneCurve
+    | Remove,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""

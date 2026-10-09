@@ -1,6 +1,7 @@
 """Edit state: the framing of the photo plus a stack of adjustment layers.
 
-Framing (crop, rotation, flips) applies first, to the whole photo. Then each visible layer,
+Framing (crop, rotation, flips) applies first, to the whole photo. Then removal layers (which
+fill in what their mask selects) clean up the photo, and each visible adjustment layer,
 bottom to top, applies its operations to the result so far and is blended back in by its
 blend mode, opacity, and mask. That lets each change stay separate: it can be hidden, faded, or
 removed without touching the others.
@@ -13,7 +14,7 @@ import uuid
 from collections.abc import Iterator, Sequence
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from photo_agent.masks import Mask
 from photo_agent.operations import (
@@ -22,6 +23,7 @@ from photo_agent.operations import (
     FramingOperation,
     OpBase,
     Operation,
+    Remove,
 )
 
 BlendMode = Literal["normal", "multiply", "screen", "overlay", "soft_light", "color", "luminosity"]
@@ -51,6 +53,17 @@ class Layer(BaseModel):
         None, description="Limits the layer to part of the photo; null applies it everywhere."
     )
     operations: list[AdjustmentOperation] = Field([])
+
+    @model_validator(mode="after")
+    def _removal_stands_alone(self) -> Layer:
+        if self.is_removal and len(self.operations) > 1:
+            raise ValueError("a remove operation must be the only operation in its layer")
+        return self
+
+    @property
+    def is_removal(self) -> bool:
+        """Removes what its mask selects. Removal layers render before all others."""
+        return any(isinstance(op, Remove) for op in self.operations)
 
 
 class EditState(BaseModel):

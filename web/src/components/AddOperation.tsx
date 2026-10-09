@@ -13,6 +13,7 @@ const GROUP_NAMES: Record<OperationSpec['group'], string> = {
   detail: 'Detail',
   finishing: 'Finishing',
   framing: 'Crop & rotate',
+  retouch: 'Retouch',
 }
 
 /** A picker that adds a new operation with neutral settings. */
