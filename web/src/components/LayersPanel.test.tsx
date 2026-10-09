@@ -361,3 +361,24 @@ describe('LayersPanel framing', () => {
     expect(sent).toEqual([])
   })
 })
+
+describe('LayersPanel generative fill', () => {
+  it('asks what to add, then adds a layer to paint it into', async () => {
+    const { sent, onSelect } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Generate…' }))
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'What to add' }),
+      'a potted fern{Enter}',
+    )
+    expect(sent[0].label).toBe('Generate “a potted fern”')
+    const added = sent[0].state.layers.at(-1)
+    expect(added?.name).toBe('A potted fern')
+    expect(added?.mask).toEqual({ kind: 'brush', strokes: [], invert: false })
+    expect(added?.operations[0]).toMatchObject({
+      op: 'generate',
+      prompt: 'a potted fern',
+    })
+    expect(onSelect).toHaveBeenCalledWith(added?.id)
+    expect(screen.queryByRole('textbox', { name: 'What to add' })).toBeNull()
+  })
+})

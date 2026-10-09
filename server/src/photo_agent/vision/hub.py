@@ -10,6 +10,8 @@ its weights' license, so moving to a product later does not mean swapping models
     segformer-face-parsing  jonathandinu/face-parsing          unspecified; trained on
                                                                CelebAMask-HQ (non-commercial)
     lama                    Carve/LaMa-ONNX (lama_fp32.onnx)   Apache-2.0
+    sdxl-inpainting-0.1     diffusers/stable-diffusion-xl-     CreativeML Open RAIL++-M
+                            1.0-inpainting-0.1
 """
 
 from __future__ import annotations
@@ -267,3 +269,82 @@ class LamaInpaint(HubBackend):
             out = out / 255.0
         filled = cv2.resize(np.clip(out, 0, 1), (w, h), interpolation=cv2.INTER_CUBIC)
         return np.where(hole[..., None], np.clip(filled, 0, 1), image).astype(np.float32)
+
+
+class SdxlInpaint(HubBackend):
+    """Stable Diffusion XL inpainting: paints what `prompt` describes where `mask` is set,
+    matched to the light and perspective around it. Without a mask it repaints the whole
+    image, keeping as much of it as `strength` (0..1) leaves alone."""
+
+    name = "sdxl-inpainting-0.1"
+    license = "CreativeML Open RAIL++-M"
+    repo = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
+    packages = ("torch", "diffusers", "transformers", "accelerate")
+    SIZE = 1024
+    """Long edge it generates at: SDXL's native resolution."""
+    STEPS = 30
+    NEGATIVE = "blurry, low quality, distorted, deformed, watermark, text, frame, border"
+
+    def _load(self, env: Env) -> Any:
+        import torch
+        from diffusers import AutoPipelineForInpainting
+
+        half = env.device in ("cuda", "mps")
+        kwargs: dict[str, Any] = {
+            "cache_dir": self._cache(env),
+            "torch_dtype": torch.float16 if half else torch.float32,
+        }
+        if half:
+            kwargs["variant"] = "fp16"
+        pipe = AutoPipelineForInpainting.from_pretrained(self.repo, **kwargs).to(env.device)
+        pipe.set_progress_bar_config(disable=True)
+        if env.device == "cpu":
+            pipe.enable_attention_slicing()
+        return pipe
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        import torch
+        from PIL import Image
+
+        pipe = self.model(env, progress)
+        h, w = image.shape[:2]
+        scale = self.SIZE / max(h, w)
+        gw, gh = (max(256, round(v * scale / 8) * 8) for v in (w, h))
+        mask = params.get("mask")
+        strength = float(params.get("strength", 1.0))
+        if mask is None:
+            mask = np.ones((h, w), np.float32)
+        m = cv2.resize(np.asarray(mask, np.float32), (gw, gh), interpolation=cv2.INTER_LINEAR)
+        mask_image = Image.fromarray((np.clip(m, 0, 1) * 255 + 0.5).astype(np.uint8), "L")
+        steps = self.STEPS
+        runs = max(1, int(steps * min(strength, 0.99)))
+
+        def on_step(_pipe: Any, step: int, _t: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+            progress(0.1 + 0.85 * (step + 1) / runs, "Generating")
+            return kwargs
+
+        progress(0.1, "Generating")
+        result = pipe(
+            prompt=str(params.get("prompt") or ""),
+            negative_prompt=str(params.get("negative") or self.NEGATIVE),
+            image=_to_pil(cv2.resize(image, (gw, gh), interpolation=cv2.INTER_AREA)),
+            mask_image=mask_image,
+            width=gw,
+            height=gh,
+            strength=min(strength, 0.99),
+            num_inference_steps=steps,
+            guidance_scale=float(params.get("guidance", 7.0)),
+            generator=torch.Generator(device="cpu").manual_seed(int(params.get("seed", 0))),
+            callback_on_step_end=on_step,
+        ).images[0]
+        out = (np.asarray(result.convert("RGB")) / 255.0).astype(np.float32)
+        return _resize(out, (h, w))
+
+
+def _resize(image: Array, shape: tuple[int, int]) -> Array:
+    h, w = shape
+    if image.shape[:2] == (h, w):
+        return image
+    shrinking = h < image.shape[0]
+    flags = cv2.INTER_AREA if shrinking else cv2.INTER_CUBIC
+    return cast(Array, np.clip(cv2.resize(image, (w, h), interpolation=flags), 0, 1))

@@ -17,9 +17,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Open-source models for AI edits (Phase 3). Without them, each task uses its classical
+# Open-source models for AI edits (Phases 3 and 4). Without them, each task uses its classical
 # computer-vision fallback. Install with `uv sync --extra models`.
 models = [
+    "accelerate>=1.0",
+    "diffusers>=0.35",
     "einops>=0.8",
     "huggingface-hub>=0.30",
     "kornia>=0.7",
@@ -63,5 +65,14 @@ testpaths = ["tests"]
 
 [[tool.mypy.overrides]]
 # Optional model packages (the `models` extra) are not installed in CI.
-module = ["torch", "torch.*", "transformers", "transformers.*", "onnxruntime", "huggingface_hub"]
+module = [
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+    "onnxruntime",
+    "huggingface_hub",
+    "diffusers",
+    "diffusers.*",
+]
 ignore_missing_imports = true

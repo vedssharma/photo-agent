@@ -895,6 +895,47 @@ export interface components {
             axis: "horizontal" | "vertical";
         };
         /**
+         * Generate
+         * @description Generative fill: paint new content where the layer's mask selects, described in
+         *     words ("a potted plant", "a sunset sky", "calm water"). The model blends it into the
+         *     photo's light and perspective. Needs a mask; it is the only operation in its layer, and
+         *     like removals it applies before any adjustment layer.
+         */
+        Generate: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "generate";
+            /**
+             * Prompt
+             * @description What to put there, in plain words.
+             */
+            prompt: string;
+            /**
+             * Grow
+             * @description How far past the selection's edge to repaint, for a seamless blend.
+             * @default 10
+             */
+            grow: number;
+        };
+        /**
          * Grain
          * @description Add film-like grain.
          */
@@ -1080,7 +1121,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"])[];
         };
         /**
          * LensCorrection
@@ -1232,7 +1273,7 @@ export interface components {
              * Group
              * @enum {string}
              */
-            group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch";
+            group: "light" | "color" | "detail" | "framing" | "finishing" | "retouch" | "generative";
             /** Framing */
             framing: boolean;
             /** Params */
@@ -1248,7 +1289,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "number" | "choice" | "curve";
+            kind: "number" | "choice" | "curve" | "text" | "seed";
             /**
              * Description
              * @default

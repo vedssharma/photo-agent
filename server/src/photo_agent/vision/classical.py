@@ -298,7 +298,7 @@ def face_parts(image: Array) -> dict[str, Array]:
     return {name: finish(mask, image, soften=0.002) for name, mask in parts.items()}
 
 
-def inpaint(image: Array, mask: npt.NDArray[Any]) -> Array:
+def inpaint(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Array:
     """Fill the masked area from its surroundings.
 
     Fast-marching inpainting smears across large holes, so it runs at a scale where the
@@ -321,6 +321,18 @@ def inpaint(image: Array, mask: npt.NDArray[Any]) -> Array:
     ring = cv2.dilate(hole.astype(np.uint8), np.ones((15, 15), np.uint8)).astype(bool) & ~hole
     detail = image - cv2.GaussianBlur(image, (0, 0), 1.5)
     std = detail[ring].std(axis=0) if ring.any() else np.zeros(3, np.float32)
-    noise = np.random.default_rng(0).standard_normal((h, w, 3)).astype(np.float32)
+    noise = np.random.default_rng(seed).standard_normal((h, w, 3)).astype(np.float32)
     noise = cv2.GaussianBlur(noise, (0, 0), 0.7) * std
     return cast(Array, np.where(hole[..., None], np.clip(up + noise, 0, 1), image))
+
+
+# Generative fallbacks: without a generative model there is nothing to draw new content
+# with, so these do the closest honest thing and the app says which backend ran.
+
+
+def generate(image: Array, mask: npt.NDArray[Any] | None = None, seed: int = 0, **_: Any) -> Array:
+    """Generative fill without a model: fill the area from its surroundings, as a removal
+    would. The prompt cannot be followed."""
+    if mask is None:
+        return image
+    return inpaint(image, mask, seed=seed)

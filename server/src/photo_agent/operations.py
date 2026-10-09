@@ -36,6 +36,34 @@ class OpBase(BaseModel):
         return f"{title} ({', '.join(parts)})" if parts else title
 
 
+SEED_MAX = 2**31 - 1
+APP_FIELDS = ("model",)
+"""Fields the app fills in on generative operations; tools and sliders leave them out."""
+
+
+class GenerativeBase(OpBase):
+    """An operation whose pixels come from a generative model. The prompt, the seed, and the
+    model are recorded, so the same result can be rendered again, or varied by a new seed."""
+
+    seed: int | None = Field(
+        None,
+        ge=0,
+        le=SEED_MAX,
+        description="The same prompt and seed give the same result; leave it out for a "
+        "fresh one, or change it for a different take.",
+    )
+    model: str = Field(
+        "", max_length=80, description="The model that generates it, recorded by the app."
+    )
+
+    def summary(self) -> str:
+        title = self.op.replace("_", " ").capitalize()  # type: ignore[attr-defined]
+        prompt = getattr(self, "prompt", "")
+        what = f" “{prompt}”" if prompt else ""
+        seed = f" (seed {self.seed})" if self.seed is not None else ""
+        return f"{title}{what}{seed}"
+
+
 def _fmt(v: object) -> str:
     if isinstance(v, float):
         return f"{v:+g}"
@@ -277,6 +305,24 @@ class Remove(OpBase):
     )
 
 
+# Generative
+
+
+class Generate(GenerativeBase):
+    """Generative fill: paint new content where the layer's mask selects, described in
+    words ("a potted plant", "a sunset sky", "calm water"). The model blends it into the
+    photo's light and perspective. Needs a mask; it is the only operation in its layer, and
+    like removals it applies before any adjustment layer."""
+
+    op: Literal["generate"] = "generate"
+    prompt: str = Field(
+        min_length=1, max_length=400, description="What to put there, in plain words."
+    )
+    grow: Strength = Field(
+        10, description="How far past the selection's edge to repaint, for a seamless blend."
+    )
+
+
 class SmoothSkin(OpBase):
     """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
@@ -335,7 +381,8 @@ Operation = Annotated[
     | ToneCurve
     | Remove
     | SmoothSkin
-    | HealBlemishes,
+    | HealBlemishes
+    | Generate,
     Field(discriminator="op"),
 ]
 
@@ -366,6 +413,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Remove,
     SmoothSkin,
     HealBlemishes,
+    Generate,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -406,10 +454,15 @@ AdjustmentOperation = Annotated[
     | ToneCurve
     | Remove
     | SmoothSkin
-    | HealBlemishes,
+    | HealBlemishes
+    | Generate,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""
+
+CONTENT_TYPES: tuple[type[OpBase], ...] = (Remove, Generate)
+"""Operations that change what is in the photo rather than how it looks. Each is the only
+operation in its layer, and content layers render before every adjustment layer."""
 
 
 def op_name(cls: type[OpBase]) -> str:

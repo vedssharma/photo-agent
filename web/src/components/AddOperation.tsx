@@ -14,6 +14,7 @@ const GROUP_NAMES: Record<OperationSpec['group'], string> = {
   finishing: 'Finishing',
   framing: 'Crop & rotate',
   retouch: 'Retouch',
+  generative: 'Generative',
 }
 
 /** A picker that adds a new operation with neutral settings. */

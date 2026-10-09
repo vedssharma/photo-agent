@@ -22,7 +22,7 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import geometry, imaging, portrait, projects, recipes
+from photo_agent import generative, geometry, imaging, portrait, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
@@ -234,7 +234,8 @@ class ManualEdit(BaseModel):
 def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
     """Record a change made with the manual controls as a named step in the history."""
     doc = load(store, doc_id)
-    if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
+    state = generative.stamp(edit.state, store.model_for)
+    if doc.edit_by_hand(edit.label, state, edit.coalesce):
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)

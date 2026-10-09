@@ -95,7 +95,7 @@ def test_the_agent_removes_things_in_their_own_layer() -> None:
     person = {"kind": "semantic", "target": "object", "box": [0.1, 0.2, 0.3, 0.9]}
     editor.call("add_layer", {"name": "Remove the person on the left", "mask": person})
     editor.call("remove", {"grow": 30})
-    with pytest.raises(ToolError, match="removes something"):
+    with pytest.raises(ToolError, match="changes what is in the photo"):
         editor.call("contrast", {"amount": 10})
     layer = editor.state.layers[-1]
     assert layer.is_removal

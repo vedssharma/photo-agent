@@ -10,9 +10,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from photo_agent.operations import GEOMETRY_TYPES, OPERATIONS_BY_NAME, OpBase
+from photo_agent.operations import APP_FIELDS, GEOMETRY_TYPES, OPERATIONS_BY_NAME, OpBase
 
-Group = Literal["light", "color", "detail", "framing", "finishing", "retouch"]
+Group = Literal["light", "color", "detail", "framing", "finishing", "retouch", "generative"]
 
 GROUPS: dict[str, Group] = {
     "exposure": "light",
@@ -41,13 +41,14 @@ GROUPS: dict[str, Group] = {
     "remove": "retouch",
     "smooth_skin": "retouch",
     "heal_blemishes": "retouch",
+    "generate": "generative",
 }
 
 
 class ParamSpec(BaseModel):
     name: str
     label: str
-    kind: Literal["number", "choice", "curve"]
+    kind: Literal["number", "choice", "curve", "text", "seed"]
     description: str = ""
     min: float | None = None
     max: float | None = None
@@ -84,6 +85,12 @@ def _step(lo: float, hi: float) -> float:
 
 def _param(name: str, prop: dict[str, Any], required: bool) -> ParamSpec:
     description = str(prop.get("description", ""))
+    if name == "seed":
+        return ParamSpec(name=name, label="Seed", kind="seed", description=description)
+    if prop.get("type") == "string" and "enum" not in prop and "const" not in prop:
+        return ParamSpec(
+            name=name, label=_label(name), kind="text", description=description, default=""
+        )
     if "enum" in prop or "const" in prop:
         choices = prop.get("enum") or [prop["const"]]
         default = prop.get("default", choices[0])
@@ -124,7 +131,7 @@ def _spec(name: str, cls: type[OpBase]) -> OperationSpec:
     required = set(schema.get("required", []))
     params = []
     for field, prop in schema["properties"].items():
-        if field in ("id", "op"):
+        if field in ("id", "op", *APP_FIELDS):
             continue
         ref = prop.get("$ref")
         if isinstance(ref, str):
@@ -133,6 +140,8 @@ def _spec(name: str, cls: type[OpBase]) -> OperationSpec:
                 **{k: v for k, v in prop.items() if k != "$ref"},
             }
         params.append(_param(field, prop, field in required))
+    # What to generate comes first, then its sliders.
+    params.sort(key=lambda p: p.kind != "text")
     return OperationSpec(
         op=name,
         label=_label(name),

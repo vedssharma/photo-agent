@@ -5,8 +5,11 @@ import type {
   Operation,
 } from '../api/documents'
 import type { OperationSpec } from '../api/operations'
+import { useState } from 'react'
+
 import type { EditFn } from '../hooks/useManualEdit'
-import { type MaskTool, semanticMask } from '../lib/masks'
+import { type MaskTool, defaultMask, semanticMask } from '../lib/masks'
+import { isContentOp, newSeed } from '../lib/operations'
 import {
   CUTOUT,
   FRAMING,
@@ -56,6 +59,71 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'overlay', label: 'Overlay' },
   { value: 'soft_light', label: 'Soft light' },
 ]
+
+type GenerativeTool = 'generate'
+
+/** What each generative tool asks for. */
+const GENERATIVE_TOOLS: Record<
+  GenerativeTool,
+  { label: string; placeholder: string; submit: string }
+> = {
+  generate: {
+    label: 'What to add',
+    placeholder: 'a potted fern, a sunset sky, a red kite…',
+    submit: 'Add',
+  },
+}
+
+/** A layer name from a prompt: its start, capitalized. */
+function layerTitle(prompt: string): string {
+  const words = prompt.trim().replace(/\s+/g, ' ')
+  const short = words.length <= 40 ? words : `${words.slice(0, 39)}…`
+  return short.charAt(0).toUpperCase() + short.slice(1)
+}
+
+/** Asks for a prompt before a generative layer is added. */
+function PromptForm({
+  label,
+  placeholder,
+  submit,
+  disabled,
+  onSubmit,
+  onCancel,
+}: {
+  label: string
+  placeholder: string
+  submit: string
+  disabled: boolean
+  onSubmit: (prompt: string) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState('')
+  return (
+    <form
+      className="prompt-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (text.trim()) onSubmit(text.trim())
+      }}
+    >
+      <input
+        type="text"
+        aria-label={label}
+        placeholder={placeholder}
+        value={text}
+        autoFocus
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel()
+        }}
+      />
+      <button type="submit" disabled={disabled || !text.trim()}>
+        {submit}
+      </button>
+    </form>
+  )
+}
 
 const blendLabel = (mode: BlendMode) =>
   BLEND_MODES.find((m) => m.value === mode)?.label ?? mode
@@ -155,6 +223,34 @@ export function LayersPanel({
     void apply('Remove an object', (s) => addLayer(s, layer))
   }
 
+  /** What a generative tool asks for before it adds its layer, if one is open. */
+  const [asking, setAsking] = useState<GenerativeTool | null>(null)
+
+  /** A generative fill layer, waiting for the person to paint where it goes. */
+  function generate(prompt: string) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: layerTitle(prompt),
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'generate',
+          prompt,
+          seed: newSeed(),
+          grow: 10,
+          model: '',
+        },
+      ],
+      mask: defaultMask('brush'),
+    }
+    onSelect(layer.id)
+    onMaskTool({ ...maskTool, picking: false, refining: false, erase: false })
+    void apply(`Generate “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
   function newLayer() {
     const layer: Layer = {
       id: newLayerId(),
@@ -201,6 +297,16 @@ export function LayersPanel({
         >
           Remove…
         </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'generate'}
+          title="Paint something new into the photo from a description"
+          onClick={() => setAsking(asking === 'generate' ? null : 'generate')}
+        >
+          Generate…
+        </button>
         {onRetouch && (
           <button
             type="button"
@@ -221,6 +327,18 @@ export function LayersPanel({
           + New layer
         </button>
       </div>
+      {asking && (
+        <PromptForm
+          key={asking}
+          {...GENERATIVE_TOOLS[asking]}
+          disabled={locked}
+          onCancel={() => setAsking(null)}
+          onSubmit={(prompt) => {
+            setAsking(null)
+            if (asking === 'generate') generate(prompt)
+          }}
+        />
+      )}
       {state.layers.length === 0 && (
         <p className="empty">
           No edits yet. Each change the agent makes shows up here as a layer.
@@ -351,6 +469,10 @@ export function LayersPanel({
         {topFirst.map((layer, i) => {
           const isSelected = layer.id === selected
           const removes = layer.operations.some((op) => op.op === 'remove')
+          const content = layer.operations.some(isContentOp)
+          const generated = layer.operations.find(
+            (op) => 'model' in op && op.model,
+          )
           return (
             <li
               key={layer.id}
@@ -436,7 +558,7 @@ export function LayersPanel({
                       )
                     }
                   />
-                  {!removes && (
+                  {!content && (
                     <>
                       <label className="field">
                         <span>Blend</span>
@@ -460,6 +582,11 @@ export function LayersPanel({
                         </select>
                       </label>
                     </>
+                  )}
+                  {layer.operations.some((op) => op.op === 'generate') && (
+                    <p className="hint">
+                      Paint where it goes on the photo, or pick a mask below.
+                    </p>
                   )}
                   {removes && (
                     <p className="hint">
@@ -485,11 +612,22 @@ export function LayersPanel({
                   {layer.operations.map((op) =>
                     operationControls(op, layer.id),
                   )}
-                  {!removes && (
+                  {generated && 'model' in generated && (
+                    <p className="hint">
+                      Made with {generated.model}
+                      {generated.model === 'classical' &&
+                        ' (no generative model installed: a rough stand-in)'}
+                      .
+                    </p>
+                  )}
+                  {!content && (
                     <AddOperation
                       label="Add adjustment"
                       specs={allSpecs.filter(
-                        (s) => !s.framing && s.group !== 'retouch',
+                        (s) =>
+                          !s.framing &&
+                          s.group !== 'retouch' &&
+                          s.group !== 'generative',
                       )}
                       disabled={locked}
                       onAdd={(spec) => add(spec, layer.id, `“${layer.name}”`)}

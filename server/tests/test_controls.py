@@ -12,11 +12,15 @@ def test_every_operation_has_controls() -> None:
     assert specs["crop"].framing and not specs["exposure"].framing
     band = next(p for p in specs["hsl"].params if p.name == "band")
     assert band.kind == "choice" and band.choices and "blue" in band.choices
+    generate = specs["generate"]
+    assert [p.kind for p in generate.params] == ["text", "seed", "number"]
+    assert generate.group == "generative"
 
 
 def test_defaults_make_valid_operations() -> None:
     for spec in operation_specs():
-        args = {p.name: p.default for p in spec.params}
+        # Prompts are typed by the person; the rest have usable defaults.
+        args = {p.name: "a plant" if p.kind == "text" else p.default for p in spec.params}
         OperationAdapter.validate_python({"op": spec.op, **args})
 
 

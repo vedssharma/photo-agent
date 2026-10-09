@@ -23,17 +23,20 @@ from anthropic.types.beta import (
 from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging
+from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
 from photo_agent.masks import SemanticMask, describe_mask
 from photo_agent.operations import (
+    APP_FIELDS,
+    CONTENT_TYPES,
     GEOMETRY_TYPES,
     OPERATIONS_BY_NAME,
+    GenerativeBase,
     OpBase,
     Operation,
     OperationAdapter,
-    Remove,
 )
 from photo_agent.portrait import Retouch, retouch_layers
 from photo_agent.render import RenderCache, render
@@ -75,6 +78,16 @@ for it ("Remove the person on the left") with a mask selecting it, usually a sem
 object with a box, then call remove. It must be the only operation in that layer. Removal \
 layers apply first, before any adjustment, wherever they sit in the stack. Check the \
 render: if traces remain (an outline, a shadow), raise grow or widen the selection.
+- To add or replace something in the photo ("add a sunset", "replace the trash can with \
+a plant", "put a boat on the water"), use generative fill: add a layer named for it with a \
+mask selecting where it goes (a semantic object box around the thing to replace, a radial \
+gradient or a box-shaped object selection for empty space, the sky to replace the sky), \
+then call generate with a short concrete prompt describing only what to paint there \
+("a terracotta pot with a leafy fern"), not the whole photo. It must be the only operation \
+in its layer and applies before adjustments, like a removal. Each generative edit keeps \
+its prompt and seed, so it renders the same every time; change the seed with \
+update_operation for a different take. Look at the render: if it does not fit, refine the \
+prompt or the mask.
 - To remove the background or cut out the subject, call cut_out: by default it keeps \
 the main subject on a transparent background (the person downloads a PNG); give a color \
 such as "#ffffff" for a clean product shot, or a different mask to keep something else.
@@ -100,8 +113,8 @@ plainly undermines it (for example, warming a photo that is also underexposed).
 - Err on the side of subtle. Typical amounts are 10 to 40 on the -100..100 sliders and \
 -1 to +1 stop of exposure; go further only when the photo clearly needs it.
 - Protect skin tones, keep highlights from blowing out, and avoid oversaturation.
-- If a request needs something the tools cannot do (replacing the sky, adding or \
-generating content), say so plainly and offer what you can do instead.
+- If a request needs something the tools cannot do, say so plainly and offer what you \
+can do instead.
 - If the request is ambiguous in a way that matters, make a reasonable choice and say which.
 
 Checking your work: after each round of edits you get the newly rendered photo and \
@@ -249,7 +262,9 @@ def tool_definitions() -> list[BetaToolParam]:
     tools: list[BetaToolParam] = []
     for name, cls in OPERATIONS_BY_NAME.items():
         schema = cls.model_json_schema()
-        props = {k: v for k, v in schema["properties"].items() if k not in ("id", "op")}
+        props = {
+            k: v for k, v in schema["properties"].items() if k not in ("id", "op", *APP_FIELDS)
+        }
         input_schema: dict[str, Any] = {
             "type": "object",
             "properties": props,
@@ -429,15 +444,24 @@ class Editor:
         state: EditState,
         default_layer_name: str = "Edits",
         framed: Framed | None = None,
+        model_for: Callable[[str], str] | None = None,
     ) -> None:
         self.state = state.model_copy(deep=True)
         self.default_layer_name = default_layer_name
         self.framed = framed
         """Renders the photo with a given framing, for tools that measure it."""
+        self.model_for = model_for
+        """Names the backend (model or "classical") that runs a model task."""
         self.target: str | None = None
         """The layer that operation tools add to: the one added most recently."""
 
     def call(self, name: str, args: object) -> tuple[str, OperationEvent]:
+        result = self._call(name, args)
+        # Generative edits get their seed and model now, so every render shows the same take.
+        self.state = stamp(self.state, self.model_for)
+        return result
+
+    def _call(self, name: str, args: object) -> tuple[str, OperationEvent]:
         if not isinstance(args, dict):
             raise ToolError("Tool input must be a JSON object.")
         handler = {
@@ -461,20 +485,31 @@ class Editor:
             where = "the framing"
         else:
             layer = self._target_layer()
-            if isinstance(op, Remove) and (layer.operations or layer.mask is None):
+            if isinstance(op, CONTENT_TYPES) and (layer.operations or layer.mask is None):
                 raise ToolError(
-                    "remove needs its own new layer whose mask selects what to remove: "
+                    f"{name} needs its own new layer whose mask selects where it applies: "
                     "call add_layer with that mask first."
                 )
-            if layer.is_removal:
+            if layer.is_content:
                 raise ToolError(
-                    f"Layer {layer.id} removes something; add a new layer for adjustments."
+                    f"Layer {layer.id} changes what is in the photo; add a new layer for "
+                    "adjustments."
                 )
             layer.operations.append(op)  # type: ignore[arg-type]
             where = f"layer {layer.id} ({layer.name})"
         summary = op.summary()
-        return f"Added {summary} as operation {op.id} in {where}.", OperationEvent(
-            action="added", summary=summary
+        text = f"Added {summary} as operation {op.id} in {where}."
+        if isinstance(op, GenerativeBase):
+            text += self._generative_note(op)
+        return text, OperationEvent(action="added", summary=summary)
+
+    def _generative_note(self, op: GenerativeBase) -> str:
+        if self.model_for is None or self.model_for(task_for(op)) != "classical":
+            return ""
+        return (
+            " Note: no generative model is installed here, so this is only a rough stand-in "
+            "(for a fill, the surroundings continued into it). Tell the person, and that "
+            "installing the models (uv sync --extra models) gives the real result."
         )
 
     def _target_layer(self) -> Layer:
@@ -748,6 +783,7 @@ class AgentService:
                 doc.state,
                 default_layer_name=layer_name(request),
                 framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
+                model_for=self.store.model_for,
             )
             reply = await self._converse(doc, request, editor, emit)
 

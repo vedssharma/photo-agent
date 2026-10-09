@@ -866,3 +866,26 @@ select {
   transform: translateX(-50%);
   white-space: nowrap;
 }
+
+.field input[type='text'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.seed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.prompt-form {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.prompt-form input {
+  flex: 1;
+  min-width: 0;
+}

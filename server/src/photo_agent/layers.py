@@ -1,7 +1,8 @@
 """Edit state: the framing of the photo plus a stack of adjustment layers.
 
-Framing (crop, rotation, flips) applies first, to the whole photo. Then removal layers (which
-fill in what their mask selects) clean up the photo, and each visible adjustment layer,
+Framing (crop, rotation, flips) applies first, to the whole photo. Then content layers (which
+remove what their mask selects, or generate something new there) change what is in the
+photo, and each visible adjustment layer,
 bottom to top, applies its operations to the result so far and is blended back in by its
 blend mode, opacity, and mask. Last, a cutout can replace the background with transparency
 or a color. That lets each change stay separate: it can be hidden, faded, or
@@ -19,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from photo_agent.masks import Mask, SemanticMask
 from photo_agent.operations import (
+    CONTENT_TYPES,
     GEOMETRY_TYPES,
     AdjustmentOperation,
     FramingOperation,
@@ -56,14 +58,21 @@ class Layer(BaseModel):
     operations: list[AdjustmentOperation] = Field([])
 
     @model_validator(mode="after")
-    def _removal_stands_alone(self) -> Layer:
-        if self.is_removal and len(self.operations) > 1:
-            raise ValueError("a remove operation must be the only operation in its layer")
+    def _content_stands_alone(self) -> Layer:
+        if self.is_content and len(self.operations) > 1:
+            op = next(op for op in self.operations if isinstance(op, CONTENT_TYPES))
+            raise ValueError(f"a {op.op} operation must be the only operation in its layer")
         return self
 
     @property
+    def is_content(self) -> bool:
+        """Changes what is in the photo (removes or generates something). Content layers
+        render before all adjustment layers."""
+        return any(isinstance(op, CONTENT_TYPES) for op in self.operations)
+
+    @property
     def is_removal(self) -> bool:
-        """Removes what its mask selects. Removal layers render before all others."""
+        """Removes what its mask selects."""
         return any(isinstance(op, Remove) for op in self.operations)
 
 

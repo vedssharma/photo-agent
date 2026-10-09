@@ -5,6 +5,7 @@ leaves out what only fits the photo it was made on: framing, brush masks, which 
 painted on that photo's content, and selections of one particular object. Gradient and
 brightness-range masks carry over, since they are relative to the frame or to the photo's
 own tones, and so do selections like "the sky" or "skin", which are found anew in each photo.
+Layers that remove or generate something in a place that only this photo has are left out.
 
 Recipes live in one JSON file, `<data_dir>/recipes.json`, shared by every document.
 """
@@ -43,6 +44,8 @@ def portable(layers: Sequence[Layer]) -> list[Layer]:
     for layer in layers:
         copy = layer.model_copy(deep=True)
         if copy.mask is not None and not is_portable(copy.mask):
+            if copy.is_content:
+                continue  # removing or generating "there" means nothing on another photo
             copy.mask = None
         if isinstance(copy.mask, SemanticMask):
             copy.mask.strokes = []  # painted for this photo

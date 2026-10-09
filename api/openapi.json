@@ -1868,6 +1868,64 @@
         "title": "Flip",
         "description": "Mirror the photo."
       },
+      "Generate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Model",
+            "description": "The model that generates it, recorded by the app.",
+            "default": ""
+          },
+          "op": {
+            "type": "string",
+            "const": "generate",
+            "title": "Op",
+            "default": "generate"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "What to put there, in plain words."
+          },
+          "grow": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Grow",
+            "description": "How far past the selection's edge to repaint, for a seamless blend.",
+            "default": 10
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "Generate",
+        "description": "Generative fill: paint new content where the layer's mask selects, described in\nwords (\"a potted plant\", \"a sunset sky\", \"calm water\"). The model blends it into the\nphoto's light and perspective. Needs a mask; it is the only operation in its layer, and\nlike removals it applies before any adjustment layer."
+      },
       "Grain": {
         "properties": {
           "id": {
@@ -2275,6 +2333,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/HealBlemishes"
+                },
+                {
+                  "$ref": "#/components/schemas/Generate"
                 }
               ],
               "discriminator": {
@@ -2285,6 +2346,7 @@
                   "contrast": "#/components/schemas/Contrast",
                   "dehaze": "#/components/schemas/Dehaze",
                   "exposure": "#/components/schemas/Exposure",
+                  "generate": "#/components/schemas/Generate",
                   "grain": "#/components/schemas/Grain",
                   "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
@@ -2550,7 +2612,8 @@
               "detail",
               "framing",
               "finishing",
-              "retouch"
+              "retouch",
+              "generative"
             ],
             "title": "Group"
           },
@@ -2592,7 +2655,9 @@
             "enum": [
               "number",
               "choice",
-              "curve"
+              "curve",
+              "text",
+              "seed"
             ],
             "title": "Kind"
           },

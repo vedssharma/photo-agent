@@ -25,6 +25,7 @@ import numpy as np
 import numpy.typing as npt
 
 from photo_agent import operations as ops
+from photo_agent.generative import cache_identity, job_params, task_for
 from photo_agent.imaging import Array
 from photo_agent.layers import BlendMode, EditState, Layer
 from photo_agent.masks import Mask, SemanticMask, render_mask
@@ -44,6 +45,18 @@ class Vision(Protocol):
 
     def fill(self, image: Array, hole: npt.NDArray[np.bool_], key: str) -> Array:
         """`image` with the `hole` filled in by inpainting; cached under `key`."""
+        ...
+
+    def generate(
+        self,
+        task: str,
+        image: Array,
+        hole: npt.NDArray[np.bool_] | None,
+        params: dict[str, Any],
+        key: str,
+    ) -> Array:
+        """`image` with the region around `hole` (or all of it) generated anew by `task`;
+        cached under `key` at a fixed working size, whatever the render size."""
         ...
 
 
@@ -89,7 +102,7 @@ def render_cutout(
     """The rendered photo and, when a visible cutout is set, its alpha (1 keeps a pixel)."""
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
-    out = _apply_removals(out, state.layers, ctx)
+    out = _apply_content(out, state.layers, ctx)
     for layer in state.layers:
         out = _apply_layer(out, layer, ctx)
     out = np.clip(out, 0.0, 1.0, out=out)
@@ -115,7 +128,7 @@ def _backdrop(shape: tuple[int, int], color: str | None) -> Array:
 
 
 def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
-    if not layer.visible or layer.opacity <= 0 or not layer.operations or layer.is_removal:
+    if not layer.visible or layer.opacity <= 0 or not layer.operations or layer.is_content:
         return x
     adjusted = blend(x, apply_operations(x, layer.operations, ctx), layer.blend_mode)
     weight: Array | float = layer.opacity / 100
@@ -131,32 +144,75 @@ REMOVAL_THRESHOLD = 0.35
 """Where a removal layer's mask is at least this strong, the photo is filled in."""
 
 
-def _apply_removals(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Array:
-    """Fill in what each visible removal layer selects, in stack order.
+def _apply_content(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Array:
+    """Apply each visible content layer (removals and generative edits), in stack order.
 
-    Removals come before every adjustment, whatever their place in the stack, so the
-    filled-in area takes each adjustment just like the photo around it. Each fill is found
-    from the photo as earlier removals left it, and is cached by everything it depends on.
+    Content layers come before every adjustment, whatever their place in the stack, so new
+    or filled-in areas take each adjustment just like the photo around them. Each result is
+    found from the photo as earlier content layers left it, and is cached by everything it
+    depends on.
     """
-    chain: list[object] = [[op.model_dump(exclude={"id"}) for op in ctx.framing], x.shape]
+    chain: list[object] = [[op.model_dump(exclude={"id"}) for op in ctx.framing]]
     for layer in layers:
-        if not layer.is_removal or not layer.visible or layer.opacity <= 0:
+        if not layer.is_content or not layer.visible or layer.opacity <= 0:
             continue
-        if layer.mask is None or ctx.vision is None:
+        if ctx.vision is None:
             continue
         op = layer.operations[0]
-        assert isinstance(op, ops.Remove)
-        chain.append([layer.mask.model_dump(), op.grow])
-        region = ctx.mask(layer.mask, x)
-        radius = max(1, round(op.grow / 100 * 0.02 * long_edge(x)))
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
-        hole = cv2.dilate((region > REMOVAL_THRESHOLD).astype(np.uint8), kernel).astype(bool)
-        if not hole.any():
-            continue
-        key = hashlib.sha256(json.dumps(chain, default=str).encode()).hexdigest()[:24]
-        filled = ctx.vision.fill(np.clip(x, 0.0, 1.0), hole, key)
-        weight = blur(hole.astype(np.float32), max(1.0, radius / 2)) * (layer.opacity / 100)
-        x = x + (filled - x) * weight[..., None]
+        chain.append([layer.mask.model_dump() if layer.mask else None, cache_identity(op)])
+        if isinstance(op, ops.Remove):
+            x = _apply_removal(x, layer, op, [*chain, x.shape], ctx)
+        elif isinstance(op, ops.GenerativeBase):
+            x = _apply_generative(x, layer, op, chain, ctx)
+    return x
+
+
+def _chain_key(chain: list[object]) -> str:
+    return hashlib.sha256(json.dumps(chain, default=str).encode()).hexdigest()[:24]
+
+
+def _hole(layer: Layer, x: Array, grow: float, ctx: RenderContext) -> npt.NDArray[np.bool_] | None:
+    """Where a content layer's mask selects, grown by `grow` (0..100), as a boolean map."""
+    if layer.mask is None:
+        return None
+    region = ctx.mask(layer.mask, x)
+    radius = max(1, round(grow / 100 * 0.02 * long_edge(x)))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
+    hole = cv2.dilate((region > REMOVAL_THRESHOLD).astype(np.uint8), kernel).astype(bool)
+    return hole if hole.any() else None
+
+
+def _apply_removal(
+    x: Array, layer: Layer, op: ops.Remove, chain: list[object], ctx: RenderContext
+) -> Array:
+    assert ctx.vision is not None
+    hole = _hole(layer, x, op.grow, ctx)
+    if hole is None:
+        return x
+    filled = ctx.vision.fill(np.clip(x, 0.0, 1.0), hole, _chain_key(chain))
+    return _blend_hole(x, filled, hole, op.grow, layer.opacity)
+
+
+def _blend_hole(
+    x: Array, filled: Array, hole: npt.NDArray[np.bool_], grow: float, opacity: float
+) -> Array:
+    radius = max(1, round(grow / 100 * 0.02 * long_edge(x)))
+    weight = blur(hole.astype(np.float32), max(1.0, radius / 2)) * (opacity / 100)
+    return x + (filled - x) * weight[..., None]
+
+
+def _apply_generative(
+    x: Array, layer: Layer, op: ops.GenerativeBase, chain: list[object], ctx: RenderContext
+) -> Array:
+    assert ctx.vision is not None
+    if isinstance(op, ops.Generate):
+        hole = _hole(layer, x, op.grow, ctx)
+        if hole is None:
+            return x
+        made = ctx.vision.generate(
+            task_for(op), np.clip(x, 0.0, 1.0), hole, job_params(op), _chain_key(chain)
+        )
+        return _blend_hole(x, made, hole, op.grow, layer.opacity)
     return x
 
 
@@ -178,8 +234,8 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
     if target.mask is None:
         return np.ones(out.shape[:2], np.float32)
-    if not target.is_removal:
-        out = _apply_removals(out, state.layers, ctx)
+    if not target.is_content:
+        out = _apply_content(out, state.layers, ctx)
     for layer in state.layers:
         if layer.id == layer_id:
             break
@@ -721,8 +777,9 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Vignette: _vignette,
     ops.Grain: _grain,
     ops.ToneCurve: _tone_curve,
-    # Removal needs the layer's mask, so removal layers render separately (see above).
+    # Content operations need their layer's mask, so they render separately (see above).
     ops.Remove: lambda x, op, ctx: x,
+    ops.Generate: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,
     ops.HealBlemishes: _heal_blemishes,
 }

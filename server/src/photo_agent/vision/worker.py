@@ -31,6 +31,9 @@ from photo_agent.vision.backends import Env, WorkerConfig, pick_device
 log = logging.getLogger(__name__)
 
 Mode = Literal["process", "inline"]
+
+PREFER = "prefer_backend"
+"""A job parameter naming the backend to try first (the model a result was recorded with)."""
 JobState = Literal["queued", "running", "done", "failed"]
 
 KEEP_FINISHED_SECONDS = 5.0
@@ -100,14 +103,20 @@ def execute(request: _Request, config: WorkerConfig, send: Send) -> None:
         return
     env = Env(device=_device(config), cache_dir=config.cache_dir)
     error = "No backend can run this task."
-    for backend in task.choices(config.backends):
+    params = dict(request.params)
+    choices = task.choices(config.backends)
+    prefer = params.pop(PREFER, None)
+    if prefer:
+        # Re-render with the model that made a result first, when it is still around.
+        choices.sort(key=lambda b: b.name != prefer)
+    for backend in choices:
         send(("started", request.job_id, backend.name))
 
         def progress(fraction: float | None, message: str) -> None:
             send(("progress", request.job_id, fraction, message))
 
         try:
-            value = backend.run(request.image, request.params, progress, env)
+            value = backend.run(request.image, params, progress, env)
         except Exception as exc:
             error = str(exc) or type(exc).__name__
             if not backend.uses_weights:

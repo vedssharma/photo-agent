@@ -1,6 +1,8 @@
+import { useState } from 'react'
+
 import type { Operation } from '../api/documents'
 import type { OperationSpec, ParamSpec } from '../api/operations'
-import { formatValue, opSummary } from '../lib/operations'
+import { formatValue, newSeed, opSummary } from '../lib/operations'
 import { Slider } from './Slider'
 
 interface Props {
@@ -79,6 +81,46 @@ export function OperationControls({
               }
             />
           )
+        if (param.kind === 'text')
+          return (
+            <TextParam
+              key={param.name}
+              label={param.label}
+              value={typeof value === 'string' ? value : ''}
+              disabled={disabled}
+              onCommit={(text) =>
+                onChange(
+                  { [param.name]: text },
+                  `${title}: “${text}”`,
+                  param.name,
+                )
+              }
+            />
+          )
+        if (param.kind === 'seed')
+          return (
+            <div className="field" key={param.name}>
+              <span>{param.label}</span>
+              <span className="seed">
+                <code>{typeof value === 'number' ? value : '…'}</code>
+                <button
+                  type="button"
+                  className="icon"
+                  disabled={disabled}
+                  title="Generate it again with a new seed"
+                  onClick={() =>
+                    onChange(
+                      { [param.name]: newSeed() },
+                      `${title}: new take`,
+                      param.name,
+                    )
+                  }
+                >
+                  New take
+                </button>
+              </span>
+            </div>
+          )
         if (param.kind === 'choice')
           return (
             <label className="field" key={param.name}>
@@ -113,5 +155,46 @@ export function OperationControls({
         )
       })}
     </div>
+  )
+}
+
+/** A line of text, such as what to generate, committed on Enter or when leaving the field. */
+function TextParam({
+  label,
+  value,
+  disabled,
+  onCommit,
+}: {
+  label: string
+  value: string
+  disabled: boolean
+  onCommit: (text: string) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  const [shown, setShown] = useState(value)
+  if (shown !== value) {
+    // The value changed elsewhere (undo, the agent); show it.
+    setShown(value)
+    setDraft(value)
+  }
+  const commit = () => {
+    const text = draft.trim()
+    if (text && text !== value) onCommit(text)
+    else setDraft(value)
+  }
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="text"
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
+    </label>
   )
 }

@@ -253,7 +253,11 @@ GOLDEN_CASES: dict[str, list[ops.OpBase]] = {
 }
 
 
-MODEL_OPERATIONS = {"remove"}
+MODEL_OPERATIONS = {
+    name
+    for name, cls in ops.OPERATIONS_BY_NAME.items()
+    if issubclass(cls, ops.CONTENT_TYPES) or issubclass(cls, ops.GenerativeBase)
+}
 """Operations whose result comes from an AI model (tested in their own modules)."""
 
 

@@ -21,6 +21,7 @@ from photo_agent.graph import Document, new_id
 from photo_agent.render import RenderContext
 from photo_agent.vision.backends import BackendMode
 from photo_agent.vision.selection import DocumentVision
+from photo_agent.vision.tasks import TASKS
 from photo_agent.vision.worker import ModelWorker
 
 EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "HEIF": ".heic"}
@@ -105,6 +106,11 @@ class DocumentStore:
         self.save(doc)
         self._remember(doc.id, self._loaded(doc.id, decoded))
         return doc
+
+    def model_for(self, task: str) -> str:
+        """The backend that runs a model task here (a model, or "classical")."""
+        choices = TASKS[task].choices(self.backends)
+        return choices[0].name if choices else "none"
 
     def exists(self, doc_id: str) -> bool:
         try:
