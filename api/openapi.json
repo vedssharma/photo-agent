@@ -1219,6 +1219,52 @@
         }
       }
     },
+    "/api/documents/{doc_id}/critique": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Critique Photo",
+        "description": "Feedback on the photo as it is now: what works and what does not, each point that\ncould be better with a fix the agent can carry out. Added to the conversation, so the\nagent knows what it said.",
+        "operationId": "critiquePhoto",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Claude could not be reached"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "post": {
         "tags": [
@@ -1686,6 +1732,16 @@
               }
             ]
           },
+          "critique": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Critique"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -1909,6 +1965,97 @@
         ],
         "title": "Contrast",
         "description": "Increase or decrease overall contrast around the midtones."
+      },
+      "Critique": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One sentence on the photo as a whole."
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/CritiquePoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source",
+            "default": "claude"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "points"
+        ],
+        "title": "Critique"
+      },
+      "CritiquePoint": {
+        "properties": {
+          "aspect": {
+            "type": "string",
+            "enum": [
+              "composition",
+              "exposure",
+              "color",
+              "sharpness",
+              "subject",
+              "mood"
+            ],
+            "title": "Aspect"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "good",
+              "improve"
+            ],
+            "title": "Verdict"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "One or two friendly sentences, no jargon."
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix",
+            "description": "For points to improve: a request the agent can carry out."
+          },
+          "fix_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Label",
+            "description": "A short button label for the fix."
+          }
+        },
+        "type": "object",
+        "required": [
+          "aspect",
+          "verdict",
+          "text"
+        ],
+        "title": "CritiquePoint"
       },
       "Crop": {
         "properties": {

@@ -37,3 +37,15 @@ export async function applySuggestion(
   if (!data) throw new ApiError(detail(error, response.status))
   return data
 }
+
+export type Critique = components['schemas']['Critique']
+
+/** Feedback on the photo as it is now, added to the conversation. */
+export async function critiquePhoto(docId: string): Promise<DocumentView> {
+  const { data, error, response } = await api.POST(
+    '/api/documents/{doc_id}/critique',
+    { params: { path: { doc_id: docId } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}

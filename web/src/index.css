@@ -1057,3 +1057,33 @@ select {
   align-items: center;
   gap: 0.6rem;
 }
+
+.critique {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  white-space: normal;
+}
+
+.critique-aspect {
+  font-weight: 600;
+}
+
+.critique li.good .critique-aspect {
+  color: var(--accent);
+}
+
+.critique button {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.chat-tools {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+}

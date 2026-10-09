@@ -6,13 +6,25 @@ import { describe, expect, it } from 'vitest'
 import type { DocumentView } from '../api/documents'
 import { useChat } from '../hooks/useChat'
 import { FakeSocket } from '../test/fakeSocket'
-import { makeDoc, makeStep } from '../test/fixtures'
+import { makeDoc, makeStep, stubApi } from '../test/fixtures'
 import { ChatPanel } from './ChatPanel'
 
-function Harness({ initial }: { initial: DocumentView }) {
+function Harness({
+  initial,
+  editable = false,
+}: {
+  initial: DocumentView
+  editable?: boolean
+}) {
   const [doc, setDoc] = useState(initial)
   const chat = useChat(doc.id, setDoc, FakeSocket.factory)
-  return <ChatPanel doc={doc} chat={chat} />
+  return (
+    <ChatPanel
+      doc={doc}
+      chat={chat}
+      onDocument={editable ? setDoc : undefined}
+    />
+  )
 }
 
 async function sendMessage(text: string) {
@@ -174,5 +186,60 @@ describe('ChatPanel plans', () => {
     expect(
       screen.queryByRole('button', { name: 'Go ahead' }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatPanel feedback', () => {
+  it('asks for a critique and sends a fix to the agent', async () => {
+    const critique = {
+      summary: 'A lovely moment, a little dark.',
+      source: 'claude' as const,
+      points: [
+        {
+          aspect: 'subject' as const,
+          verdict: 'good' as const,
+          text: 'Her smile carries it.',
+          fix: null,
+          fix_label: null,
+        },
+        {
+          aspect: 'exposure' as const,
+          verdict: 'improve' as const,
+          text: 'The faces are in shadow.',
+          fix: 'Brighten the faces a little',
+          fix_label: 'Brighten faces',
+        },
+      ],
+    }
+    const after = makeDoc({
+      head: 'x',
+      chat: [
+        {
+          role: 'user',
+          text: 'What do you think of this photo?',
+          created_at: '',
+        },
+        {
+          role: 'assistant',
+          text: critique.summary,
+          critique,
+          created_at: '',
+        },
+      ],
+    })
+    stubApi({
+      'POST /api/documents/abc123abc123/critique': () => Response.json(after),
+    })
+    render(<Harness initial={makeDoc({ head: 'x' })} editable />)
+    await userEvent.click(screen.getByRole('button', { name: 'Get feedback' }))
+
+    expect(await screen.findByText('Her smile carries it.')).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Brighten faces' }),
+    )
+    act(() => FakeSocket.last!.open())
+    expect(FakeSocket.last!.sent).toEqual([
+      { type: 'message', text: 'Brighten the faces a little' },
+    ])
   })
 })

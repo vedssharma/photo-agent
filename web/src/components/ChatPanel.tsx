@@ -3,6 +3,8 @@ import type { FormEvent, KeyboardEvent } from 'react'
 
 import type { DocumentView } from '../api/documents'
 import type { Chat } from '../hooks/useChat'
+import { critiquePhoto } from '../api/advice'
+import { CritiqueCard } from './CritiqueCard'
 import { PlanCard } from './PlanCard'
 import { SuggestionPicker } from './SuggestionPicker'
 
@@ -22,6 +24,8 @@ interface Props {
 
 export function ChatPanel({ doc, chat, onDocument }: Props) {
   const [draft, setDraft] = useState('')
+  const [critiquing, setCritiquing] = useState(false)
+  const [critiqueError, setCritiqueError] = useState<string | null>(null)
   const log = useRef<HTMLOListElement>(null)
   const active = new Set(doc.history.filter((s) => s.active).map((s) => s.id))
 
@@ -41,12 +45,25 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
     setDraft('')
   }
 
+  async function critique() {
+    if (!onDocument) return
+    setCritiquing(true)
+    setCritiqueError(null)
+    try {
+      onDocument(await critiquePhoto(doc.id))
+    } catch (err) {
+      setCritiqueError(`Could not get feedback: ${(err as Error).message}`)
+    } finally {
+      setCritiquing(false)
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing)
       submit(e)
   }
 
-  const empty = shown.length === 0 && !chat.pending
+  const empty = shown.length === 0 && !chat.pending && !critiquing
   return (
     <aside className="chat" aria-label="Chat with the editor">
       <ol className="chat-log" ref={log} aria-live="polite">
@@ -84,6 +101,13 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
               {entry.step_id && !active.has(entry.step_id) && (
                 <span className="tag">not in effect</span>
               )}
+              {entry.critique && (
+                <CritiqueCard
+                  critique={entry.critique}
+                  disabled={chat.busy}
+                  onFix={(request) => chat.send(request)}
+                />
+              )}
               {entry.plan && (
                 <PlanCard
                   plan={entry.plan}
@@ -94,6 +118,11 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
               )}
             </li>
           ),
+        )}
+        {critiquing && (
+          <li className="bubble assistant working">
+            <span className="thinking">Taking a good look at your photo…</span>
+          </li>
         )}
         {chat.pending && (
           <>
@@ -113,10 +142,22 @@ export function ChatPanel({ doc, chat, onDocument }: Props) {
           </>
         )}
       </ol>
-      {chat.error && (
+      {(chat.error ?? critiqueError) && (
         <p className="error chat-error" role="alert">
-          {chat.error}
+          {chat.error ?? critiqueError}
         </p>
+      )}
+      {onDocument && (
+        <div className="chat-tools">
+          <button
+            type="button"
+            disabled={chat.busy || critiquing}
+            onClick={() => void critique()}
+            title="What works in this photo, what does not, and a fix for each"
+          >
+            Get feedback
+          </button>
+        </div>
       )}
       <form className="chat-input" onSubmit={submit}>
         <textarea

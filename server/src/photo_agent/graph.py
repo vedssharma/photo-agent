@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from photo_agent.critique import Critique
 from photo_agent.layers import EditState
 from photo_agent.operations import Operation, OperationAdapter
 
@@ -99,6 +100,8 @@ class ChatEntry(BaseModel):
     """The step this entry produced, for assistant replies that changed the photo."""
     plan: Plan | None = None
     """For assistant replies that propose a plan instead of carrying it out yet."""
+    critique: Critique | None = None
+    """For assistant replies that critique the photo, with a fix for each point."""
     created_at: datetime = Field(default_factory=now)
 
     @model_validator(mode="before")

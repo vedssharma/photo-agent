@@ -494,6 +494,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/critique": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Critique Photo
+         * @description Feedback on the photo as it is now: what works and what does not, each point that
+         *     could be better with a fix the agent can carry out. Added to the conversation, so the
+         *     agent knows what it said.
+         */
+        post: operations["critiquePhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -754,6 +776,7 @@ export interface components {
             /** Step Id */
             step_id?: string | null;
             plan?: components["schemas"]["Plan"] | null;
+            critique?: components["schemas"]["Critique"] | null;
             /**
              * Created At
              * Format: date-time
@@ -905,6 +928,50 @@ export interface components {
              * @description Positive adds punch; negative flattens.
              */
             amount: number;
+        };
+        /** Critique */
+        Critique: {
+            /**
+             * Summary
+             * @description One sentence on the photo as a whole.
+             */
+            summary: string;
+            /** Points */
+            points: components["schemas"]["CritiquePoint"][];
+            /**
+             * Source
+             * @default claude
+             * @enum {string}
+             */
+            source: "claude" | "built-in";
+        };
+        /** CritiquePoint */
+        CritiquePoint: {
+            /**
+             * Aspect
+             * @enum {string}
+             */
+            aspect: "composition" | "exposure" | "color" | "sharpness" | "subject" | "mood";
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "good" | "improve";
+            /**
+             * Text
+             * @description One or two friendly sentences, no jargon.
+             */
+            text: string;
+            /**
+             * Fix
+             * @description For points to improve: a request the agent can carry out.
+             */
+            fix?: string | null;
+            /**
+             * Fix Label
+             * @description A short button label for the fix.
+             */
+            fix_label?: string | null;
         };
         /**
          * Crop
@@ -3412,6 +3479,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    critiquePhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude could not be reached */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

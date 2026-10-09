@@ -967,6 +967,8 @@ def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam],
         text = entry.text
         if entry.plan is not None:
             text = f"{text}\n\nProposed plan:\n{entry.plan.describe()}"
+        if entry.critique is not None:
+            text = f"(Feedback on the photo.)\n{entry.critique.describe()}"
         if entry.role == "user" and pending_events:
             text = events_note(pending_events) + text
             pending_events = []

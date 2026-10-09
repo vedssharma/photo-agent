@@ -23,6 +23,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from photo_agent import (
+    critique,
     generative,
     geometry,
     imaging,
@@ -700,6 +701,37 @@ def apply_suggestion(doc_id: str, suggestion_id: str, store: Store) -> DocumentV
     doc.chat.append(ChatEntry(role="assistant", text=found.description, step_id=step.id))
     store.save(doc)
     warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+CRITIQUE_REQUEST = "What do you think of this photo?"
+
+
+@router.post(
+    "/{doc_id}/critique",
+    operation_id="critiquePhoto",
+    responses={502: {"description": "Claude could not be reached"}},
+)
+async def critique_photo(doc_id: str, store: Store, advisor: AdvisorDep) -> DocumentView:
+    """Feedback on the photo as it is now: what works and what does not, each point that
+    could be better with a fix the agent can carry out. Added to the conversation, so the
+    agent knows what it said."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    pixels = await asyncio.to_thread(
+        previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
+    )
+    if advisor is None:
+        found = critique.built_in(pixels)
+    else:
+        try:
+            found = await critique.ask_claude(advisor, dict(image_block(pixels)), measure(pixels))
+        except (AdvisorError, ValueError) as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from None
+    doc = load(store, doc_id)  # it may have changed while Claude looked
+    doc.chat.append(ChatEntry(role="user", text=CRITIQUE_REQUEST))
+    doc.chat.append(ChatEntry(role="assistant", text=found.summary, critique=found))
+    store.save(doc)
     return DocumentView.of(doc)
 
 
