@@ -1265,6 +1265,52 @@
         }
       }
     },
+    "/api/documents/{doc_id}/style/usual-look": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Usual Look",
+        "description": "Add \"my usual look\", one layer with the values the person keeps coming back to, as\none step in the history.",
+        "operationId": "applyUsualLook",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not enough is known about the person's taste yet"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "post": {
         "tags": [
@@ -1438,6 +1484,41 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/style": {
+      "get": {
+        "tags": [
+          "style"
+        ],
+        "summary": "Get Style Summary",
+        "description": "What the app has learned about the person's taste from the edits they kept, set by\nhand, and undid.",
+        "operationId": "getStyle",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleSummary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "style"
+        ],
+        "summary": "Forget Style",
+        "description": "Forget everything learned about the person's taste.",
+        "operationId": "forgetStyle",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           }
         }
       }
@@ -4702,6 +4783,43 @@
         "title": "Straighten",
         "description": "Rotate by a small angle to level a tilted horizon, cropping away the empty corners."
       },
+      "StyleSummary": {
+        "properties": {
+          "tendencies": {
+            "items": {
+              "$ref": "#/components/schemas/Tendency"
+            },
+            "type": "array",
+            "title": "Tendencies"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines",
+            "description": "The tendencies in plain words."
+          },
+          "has_usual_look": {
+            "type": "boolean",
+            "title": "Has Usual Look"
+          },
+          "signals": {
+            "type": "integer",
+            "title": "Signals",
+            "description": "How many notes it has taken."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tendencies",
+          "lines",
+          "has_usual_look",
+          "signals"
+        ],
+        "title": "StyleSummary",
+        "description": "What the app has learned about the person's taste."
+      },
       "Suggestion": {
         "properties": {
           "id": {
@@ -4810,6 +4928,39 @@
           "uses_weights"
         ],
         "title": "TaskStatus"
+      },
+      "Tendency": {
+        "properties": {
+          "slider": {
+            "type": "string",
+            "title": "Slider"
+          },
+          "preferred": {
+            "type": "number",
+            "title": "Preferred",
+            "description": "The value they tend to keep (weighted mean)."
+          },
+          "samples": {
+            "type": "integer",
+            "title": "Samples"
+          },
+          "rejected": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Rejected",
+            "description": "Values they undid, most recent last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "slider",
+          "preferred",
+          "samples",
+          "rejected"
+        ],
+        "title": "Tendency"
       },
       "ToneCurve": {
         "properties": {

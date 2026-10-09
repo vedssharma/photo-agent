@@ -1087,3 +1087,19 @@ select {
   gap: 0.5rem;
   padding: 0 0.75rem;
 }
+
+.style-lines {
+  margin: 0.2rem 0 0.4rem;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}

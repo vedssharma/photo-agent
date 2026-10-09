@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5-5"
     """Claude model that drives the editing agent."""
 
+    style_memory: bool = True
+    """Learn the person's taste from the edits they keep and undo (kept in
+    `<data_dir>/style.json`), for the agent and "my usual look"."""
+
     data_dir: Path = REPO_ROOT / ".data"
     """Where uploaded photos and their edit graphs are kept."""
 

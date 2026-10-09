@@ -32,6 +32,7 @@ from photo_agent import (
     projects,
     recipes,
     safety,
+    style,
     suggestions,
     variants,
 )
@@ -64,6 +65,7 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
 recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 looks_router = APIRouter(prefix="/api/looks", tags=["looks"])
+style_router = APIRouter(prefix="/api/style", tags=["style"])
 
 
 @lru_cache
@@ -118,6 +120,18 @@ def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes
 
 
 Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
+
+
+@lru_cache
+def _style_for(data_dir: Path) -> style.StyleStore:
+    return style.StyleStore(data_dir)
+
+
+def get_style(settings: Annotated[Settings, Depends(get_settings)]) -> style.StyleStore | None:
+    return _style_for(settings.data_dir) if settings.style_memory else None
+
+
+Style = Annotated[style.StyleStore | None, Depends(get_style)]
 
 
 def load(store: DocumentStore, doc_id: str) -> Document:
@@ -238,9 +252,13 @@ def get_source(doc_id: str, store: Store) -> Response:
 
 
 @router.post("/{doc_id}/undo", operation_id="undo")
-def undo(doc_id: str, store: Store) -> DocumentView:
+def undo(doc_id: str, store: Store, taste: Style) -> DocumentView:
     """Step back one step in the history."""
     doc = load(store, doc_id)
+    current = doc.current
+    if taste is not None and current is not None and current.kind == "agent":
+        parent = doc.step(current.parent).state if current.parent else EditState()
+        taste.rejected(parent, current.state)
     if doc.undo():
         store.save(doc)
     return DocumentView.of(doc)
@@ -271,15 +289,20 @@ class ManualEdit(BaseModel):
     operation_id="editByHand",
     responses={422: {"description": "Invalid, or a generative edit that is not allowed"}},
 )
-def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store, screen: Screen) -> DocumentView:
+def edit_by_hand(
+    doc_id: str, edit: ManualEdit, store: Store, screen: Screen, taste: Style
+) -> DocumentView:
     """Record a change made with the manual controls as a named step in the history."""
     doc = load(store, doc_id)
+    before = doc.state
     verdict = screen.check_new(doc.state, edit.state)
     if not verdict.allowed:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, verdict.reason)
     state = generative.stamp(edit.state, store.model_for)
     if doc.edit_by_hand(edit.label, state, edit.coalesce):
         store.save(doc)
+        if taste is not None:
+            taste.adjusted(before, state)
         warm_preview(store, doc)
     return DocumentView.of(doc)
 
@@ -508,9 +531,11 @@ def preview(doc_id: str, store: Store) -> Response:
     response_class=Response,
     responses={200: {"content": {"image/jpeg": {}, "image/png": {}}}},
 )
-async def export(doc_id: str, options: ExportOptions, store: Store) -> Response:
+async def export(doc_id: str, options: ExportOptions, store: Store, taste: Style) -> Response:
     """Render the edits at full resolution and return the file to download."""
     doc = load(store, doc_id)
+    if taste is not None:
+        taste.kept(doc.state)
     loaded = store.image(doc_id)
     data = await asyncio.to_thread(export_bytes, doc, loaded, options, store.data_dir)
     filename = export_filename(doc, options)
@@ -683,7 +708,7 @@ def suggestion_preview(doc_id: str, suggestion_id: str, store: Store) -> Respons
     operation_id="applySuggestion",
     responses={404: {"description": "No such document or suggestion"}},
 )
-def apply_suggestion(doc_id: str, suggestion_id: str, store: Store) -> DocumentView:
+def apply_suggestion(doc_id: str, suggestion_id: str, store: Store, taste: Style) -> DocumentView:
     """Add a suggestion's layers on top of the current edits, as one step the agent knows
     about, so the conversation can carry on from it ("a bit less contrast")."""
     doc = load(store, doc_id)
@@ -700,6 +725,8 @@ def apply_suggestion(doc_id: str, suggestion_id: str, store: Store) -> DocumentV
     doc.chat.append(ChatEntry(role="user", text=request))
     doc.chat.append(ChatEntry(role="assistant", text=found.description, step_id=step.id))
     store.save(doc)
+    if taste is not None:
+        taste.kept(EditState(layers=found.layers))
     warm_preview(store, doc)
     return DocumentView.of(doc)
 
@@ -742,6 +769,7 @@ async def chat(
     store: Store,
     model: Annotated[ModelClient | None, Depends(get_model)],
     screen: Screen,
+    taste: Style,
 ) -> None:
     """Chat with the agent about one document.
 
@@ -759,7 +787,7 @@ async def chat(
     async def emit(event: AgentEvent) -> None:
         await ws.send_text(event.model_dump_json())
 
-    agent = AgentService(store, previews, model, screen) if model else None
+    agent = AgentService(store, previews, model, screen, taste) if model else None
     try:
         while True:
             incoming = await ws.receive_json()
@@ -784,6 +812,42 @@ async def chat(
                 await emit(AgentError(message=f"Something went wrong: {exc}"))
     except WebSocketDisconnect:
         pass
+
+
+@style_router.get("", operation_id="getStyle")
+def get_style_summary(taste: Style) -> style.StyleSummary:
+    """What the app has learned about the person's taste from the edits they kept, set by
+    hand, and undid."""
+    return (taste.load() if taste else style.Profile()).summary()
+
+
+@style_router.delete("", operation_id="forgetStyle", status_code=status.HTTP_204_NO_CONTENT)
+def forget_style(taste: Style) -> None:
+    """Forget everything learned about the person's taste."""
+    if taste is not None:
+        taste.forget()
+
+
+@router.post(
+    "/{doc_id}/style/usual-look",
+    operation_id="applyUsualLook",
+    responses={409: {"description": "Not enough is known about the person's taste yet"}},
+)
+def apply_usual_look(doc_id: str, store: Store, taste: Style) -> DocumentView:
+    """Add "my usual look", one layer with the values the person keeps coming back to, as
+    one step in the history."""
+    doc = load(store, doc_id)
+    state = style.apply_usual_look(taste.load(), doc.state) if taste else None
+    if state is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "There is no usual look yet: keep editing and downloading photos, and it will "
+            "learn what you like.",
+        )
+    if doc.edit_by_hand("My usual look", state):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
 
 
 @recipes_router.get("", operation_id="listRecipes")

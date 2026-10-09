@@ -516,6 +516,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/style/usual-look": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Usual Look
+         * @description Add "my usual look", one layer with the values the person keeps coming back to, as
+         *     one step in the history.
+         */
+        post: operations["applyUsualLook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -595,6 +616,31 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/style": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Style Summary
+         * @description What the app has learned about the person's taste from the edits they kept, set by
+         *     hand, and undid.
+         */
+        get: operations["getStyle"];
+        put?: never;
+        post?: never;
+        /**
+         * Forget Style
+         * @description Forget everything learned about the person's taste.
+         */
+        delete: operations["forgetStyle"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2339,6 +2385,26 @@ export interface components {
              */
             angle: number;
         };
+        /**
+         * StyleSummary
+         * @description What the app has learned about the person's taste.
+         */
+        StyleSummary: {
+            /** Tendencies */
+            tendencies: components["schemas"]["Tendency"][];
+            /**
+             * Lines
+             * @description The tendencies in plain words.
+             */
+            lines: string[];
+            /** Has Usual Look */
+            has_usual_look: boolean;
+            /**
+             * Signals
+             * @description How many notes it has taken.
+             */
+            signals: number;
+        };
         /** Suggestion */
         Suggestion: {
             /** Id */
@@ -2392,6 +2458,23 @@ export interface components {
             license: string;
             /** Uses Weights */
             uses_weights: boolean;
+        };
+        /** Tendency */
+        Tendency: {
+            /** Slider */
+            slider: string;
+            /**
+             * Preferred
+             * @description The value they tend to keep (weighted mean).
+             */
+            preferred: number;
+            /** Samples */
+            samples: number;
+            /**
+             * Rejected
+             * @description Values they undid, most recent last.
+             */
+            rejected: number[];
         };
         /**
          * ToneCurve
@@ -3520,6 +3603,44 @@ export interface operations {
             };
         };
     };
+    applyUsualLook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description Not enough is known about the person's taste yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     openProject: {
         parameters: {
             query?: never;
@@ -3673,6 +3794,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Look"][];
                 };
+            };
+        };
+    };
+    getStyle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleSummary"];
+                };
+            };
+        };
+    };
+    forgetStyle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

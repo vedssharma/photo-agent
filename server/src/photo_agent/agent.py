@@ -22,7 +22,7 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import diagnostics, imaging, looks, safety, variants
+from photo_agent import diagnostics, imaging, looks, safety, style, variants
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Plan, Step
@@ -153,6 +153,10 @@ propose_plan with the steps in order, marking each as adjust, ai (selections, re
 retouching), or generative, and stop: the person sees the plan and approves or changes it \
 before anything slow runs. Do not call it for quick slider edits or a single generative \
 edit the person asked for directly. Once a plan is approved, carry it out in full.
+- When the person's taste is known (from edits they kept, set by hand, or undid), it comes \
+with the request. Lean toward it for open-ended requests ("make it nice"); what they ask \
+for now always wins. When they ask for "my usual look" or "my style", call \
+apply_usual_look.
 - With each request you get the current rendered photo and the current framing and layers. \
 The person may have tweaked, hidden, or removed things by hand; respect those choices.
 - Crop boxes are fractions of the frame as it is at that point in the framing list, after \
@@ -469,6 +473,15 @@ def tool_definitions() -> list[BetaToolParam]:
     )
     tools.append(
         {
+            "name": "apply_usual_look",
+            "description": "Add the person's usual look: one layer with the slider values they "
+            "keep coming back to, learned from their past edits. Fails if too little is known.",
+            "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
             "name": "show_options",
             "description": "Generate several takes on a generative operation (by id) to "
             "compare, when the person asks for options or a result could go several ways. "
@@ -568,8 +581,11 @@ class Editor:
         model_for: Callable[[str], str] | None = None,
         render_state: Callable[[EditState], imaging.Array] | None = None,
         screen: safety.Screen | None = None,
+        taste: style.Profile | None = None,
     ) -> None:
         self.state = state.model_copy(deep=True)
+        self.taste = taste
+        """What is known of the person's taste, for "my usual look"."""
         self.default_layer_name = default_layer_name
         self.framed = framed
         """Renders the photo with a given framing, for tools that measure it."""
@@ -628,6 +644,7 @@ class Editor:
             "apply_look": self._apply_look,
             "show_options": self._show_options,
             "propose_plan": self._propose_plan,
+            "apply_usual_look": self._apply_usual_look,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
@@ -817,6 +834,19 @@ class Editor:
             action="updated", summary=f"Options for {op.summary()}"
         )
 
+    def _apply_usual_look(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        layer = self.taste.usual_look() if self.taste else None
+        if layer is None:
+            raise ToolError(
+                "Too little is known about the person's taste for a usual look yet. Say so, "
+                "and offer to edit it to their description instead."
+            )
+        self.state.layers.append(layer)
+        summary = ", ".join(op.summary() for op in layer.operations)
+        return f"Added layer {layer.id} (My usual look): {summary}.", OperationEvent(
+            action="added", summary="My usual look"
+        )
+
     def _propose_plan(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
         try:
             plan = Plan.model_validate({"steps": args.get("steps")})
@@ -993,11 +1023,13 @@ class AgentService:
         renders: RenderCache,
         model: ModelClient,
         screen: safety.Screen | None = None,
+        taste: style.StyleStore | None = None,
     ) -> None:
         self.store = store
         self.renders = renders
         self.model = model
         self.screen = screen or safety.Screen()
+        self.taste = taste
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def run_turn(
@@ -1013,12 +1045,14 @@ class AgentService:
             plan = doc.pending_plan if approve_plan else None
             await emit(TurnStarted())
             loaded = self.store.image(doc_id)
+            profile = self.taste.load() if self.taste else None
             editor = Editor(
                 doc.state,
                 default_layer_name=layer_name(request),
                 framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
                 model_for=self.store.model_for,
                 screen=self.screen,
+                taste=profile,
                 render_state=lambda state: self.renders.get_or_render(
                     doc_id, loaded.proxy, state, loaded.proxy_context
                 ),
@@ -1077,6 +1111,9 @@ class AgentService:
         baseline = diagnostics.measure(await self._render(doc, EditState()))
         state_seen = editor.state.model_copy(deep=True)
         intro = events_note(events)
+        taste = editor.taste.describe() if editor.taste else None
+        if taste:
+            intro = f"{taste}\n\n{intro}"
         messages: list[BetaMessageParam] = [
             *history,
             {
