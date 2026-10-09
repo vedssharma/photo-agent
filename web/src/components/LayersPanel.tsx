@@ -27,6 +27,18 @@ import {
   updateOperation,
 } from '../lib/state'
 import { AddOperation } from './AddOperation'
+import { IconButton } from './IconButton'
+import {
+  BackgroundIcon,
+  CutOutIcon,
+  GenerateIcon,
+  NewLayerIcon,
+  RelightIcon,
+  RemoveIcon,
+  RestoreIcon,
+  RestyleIcon,
+  RetouchIcon,
+} from './icons'
 import { MaskControls } from './MaskControls'
 import { OperationControls } from './OperationControls'
 import { Slider } from './Slider'
@@ -288,7 +300,10 @@ export function LayersPanel({
   }
 
   /** What a generative tool asks for before it adds its layer, if one is open. */
-  const [asking, setAsking] = useState<GenerativeTool | null>(null)
+  const [asking, setAsking] = useState<GenerativeTool | 'restore' | null>(null)
+  /** Opens a tool's question, or closes it if it is already open. */
+  const ask = (tool: GenerativeTool | 'restore') =>
+    setAsking(asking === tool ? null : tool)
 
   /** A generative fill layer, waiting for the person to paint where it goes. */
   function generate(prompt: string) {
@@ -461,104 +476,122 @@ export function LayersPanel({
     <section className="panel layers-panel" aria-label="Layers">
       <div className="panel-head">
         <h2>Layers</h2>
-        {!cutout && (
-          <button
-            type="button"
-            className="icon"
-            disabled={locked}
-            title="Keep the subject and remove the background"
-            onClick={cutOut}
-          >
-            Cut out
-          </button>
-        )}
-        <button
-          type="button"
-          className="icon"
-          disabled={locked}
-          title="Remove a person or thing from the photo"
-          onClick={removeSomething}
-        >
-          Remove…
-        </button>
-        <button
-          type="button"
-          className="icon"
-          disabled={locked}
-          aria-expanded={asking === 'generate'}
-          title="Paint something new into the photo from a description"
-          onClick={() => setAsking(asking === 'generate' ? null : 'generate')}
-        >
-          Generate…
-        </button>
-        <button
-          type="button"
-          className="icon"
-          disabled={locked}
-          aria-expanded={asking === 'background'}
-          title="Put the subject in a new scene, matched to its light"
-          onClick={() =>
-            setAsking(asking === 'background' ? null : 'background')
-          }
-        >
-          New background…
-        </button>
-        <button
-          type="button"
-          className="icon"
-          disabled={locked}
-          aria-expanded={asking === 'light'}
-          title="Change where the light comes from and its mood"
-          onClick={() => setAsking(asking === 'light' ? null : 'light')}
-        >
-          Relight…
-        </button>
-        <button
-          type="button"
-          className="icon"
-          disabled={locked}
-          aria-expanded={asking === 'style'}
-          title="Redraw the photo in a new style, like a painting (for color looks, see Recipes)"
-          onClick={() => setAsking(asking === 'style' ? null : 'style')}
-        >
-          Restyle…
-        </button>
-        <select
-          className="icon"
-          aria-label="Restore"
-          disabled={locked}
-          value=""
-          title="Fix an old or damaged photo"
-          onChange={(e) => {
-            const op = e.target.value
-            if (op === 'restore_faces' || op === 'colorize') restore(op)
-          }}
-        >
-          <option value="">Restore…</option>
-          <option value="restore_faces">Restore faces</option>
-          <option value="colorize">Colorize black and white</option>
-        </select>
-        {onRetouch && (
-          <button
-            type="button"
-            className="icon"
-            disabled={locked}
-            title="Smooth skin, heal blemishes, and brighten eyes and teeth"
-            onClick={onRetouch}
-          >
-            Retouch
-          </button>
-        )}
-        <button
-          type="button"
-          className="icon"
+        <IconButton
+          label="New layer"
+          hint="Add an empty layer to edit by hand"
           disabled={locked}
           onClick={newLayer}
         >
-          + New layer
-        </button>
+          <NewLayerIcon />
+        </IconButton>
       </div>
-      {asking && (
+      <div className="layer-tools" role="toolbar" aria-label="Layer tools">
+        {!cutout && (
+          <IconButton
+            label="Cut out"
+            hint="Keep the subject and remove the background"
+            disabled={locked}
+            onClick={cutOut}
+          >
+            <CutOutIcon />
+          </IconButton>
+        )}
+        <IconButton
+          label="Remove"
+          hint="Remove a person or thing from the photo"
+          disabled={locked}
+          onClick={removeSomething}
+        >
+          <RemoveIcon />
+        </IconButton>
+        <IconButton
+          label="Generate"
+          hint="Paint something new into the photo from a description"
+          disabled={locked}
+          aria-expanded={asking === 'generate'}
+          onClick={() => ask('generate')}
+        >
+          <GenerateIcon />
+        </IconButton>
+        <IconButton
+          label="New background"
+          hint="Put the subject in a new scene, matched to its light"
+          disabled={locked}
+          aria-expanded={asking === 'background'}
+          onClick={() => ask('background')}
+        >
+          <BackgroundIcon />
+        </IconButton>
+        <IconButton
+          label="Relight"
+          hint="Change where the light comes from and its mood"
+          disabled={locked}
+          aria-expanded={asking === 'light'}
+          onClick={() => ask('light')}
+        >
+          <RelightIcon />
+        </IconButton>
+        <IconButton
+          label="Restyle"
+          hint="Redraw the photo in a new style, like a painting (for color looks, see Recipes)"
+          disabled={locked}
+          aria-expanded={asking === 'style'}
+          onClick={() => ask('style')}
+        >
+          <RestyleIcon />
+        </IconButton>
+        <IconButton
+          label="Restore"
+          hint="Fix an old or damaged photo"
+          disabled={locked}
+          aria-expanded={asking === 'restore'}
+          onClick={() => ask('restore')}
+        >
+          <RestoreIcon />
+        </IconButton>
+        {onRetouch && (
+          <IconButton
+            label="Retouch"
+            hint="Smooth skin, heal blemishes, and brighten eyes and teeth"
+            disabled={locked}
+            onClick={onRetouch}
+          >
+            <RetouchIcon />
+          </IconButton>
+        )}
+      </div>
+      {asking === 'restore' && (
+        <div className="restore-choices" role="group" aria-label="Restore">
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() => {
+              setAsking(null)
+              restore('restore_faces')
+            }}
+          >
+            Restore faces
+          </button>
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() => {
+              setAsking(null)
+              restore('colorize')
+            }}
+          >
+            Colorize black and white
+          </button>
+          <button
+            type="button"
+            className="icon"
+            onClick={() => setAsking(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {asking && asking !== 'restore' && (
         <PromptForm
           key={asking}
           {...GENERATIVE_TOOLS[asking]}
