@@ -39,7 +39,7 @@ class OpBase(BaseModel):
 SEED_MAX = 2**31 - 1
 MAX_OPTIONS = 4
 """The most takes offered to pick from at once."""
-APP_FIELDS = ("model", "options")
+APP_FIELDS = ("model", "options", "stats")
 """Fields the app fills in on generative operations; tools and sliders leave them out."""
 
 
@@ -357,6 +357,48 @@ class Grain(OpBase):
     size: Strength = Field(25, description="Grain size; larger is coarser.")
 
 
+TONE_POINTS = 17
+"""How many brightness quantiles describe a photo's tone, for reference matching."""
+
+
+class ReferenceStats(BaseModel):
+    """The color and tone of a reference photo, measured once when it is shared, so the
+    operation renders anywhere (including on other photos, as part of a recipe)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lab_mean: list[float] = Field(min_length=3, max_length=3)
+    lab_std: list[float] = Field(min_length=3, max_length=3)
+    tone: list[float] = Field(
+        min_length=TONE_POINTS,
+        max_length=TONE_POINTS,
+        description="Brightness (0..1) at evenly spaced quantiles, darkest to brightest.",
+    )
+
+
+class MatchReference(OpBase):
+    """Make the photo's color and tone look like a reference photo the person shared ("make
+    this look like that one"): its palette, color cast, brightness, and contrast. Not its
+    content or framing. Lower color or tone to transfer only one of them."""
+
+    op: Literal["match_reference"] = "match_reference"
+    reference: str = Field(
+        min_length=1, max_length=40, description="Id of the reference photo to match."
+    )
+    amount: Strength = Field(100, description="How far to go toward the reference.")
+    color: Strength = Field(100, description="How much of its color palette and cast.")
+    tone: Strength = Field(100, description="How much of its brightness and contrast.")
+    stats: ReferenceStats | None = Field(None, description="Recorded by the app.")
+
+    def summary(self) -> str:
+        parts = [f"amount {self.amount:g}"]
+        if self.color != 100:
+            parts.append(f"color {self.color:g}")
+        if self.tone != 100:
+            parts.append(f"tone {self.tone:g}")
+        return f"Match reference {self.reference} ({', '.join(parts)})"
+
+
 # Retouching
 
 
@@ -517,6 +559,7 @@ Operation = Annotated[
     | ColorGrade
     | Grain
     | ToneCurve
+    | MatchReference
     | Remove
     | SmoothSkin
     | HealBlemishes
@@ -555,6 +598,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     ColorGrade,
     Grain,
     ToneCurve,
+    MatchReference,
     Remove,
     SmoothSkin,
     HealBlemishes,
@@ -606,6 +650,7 @@ AdjustmentOperation = Annotated[
     | ColorGrade
     | Grain
     | ToneCurve
+    | MatchReference
     | Remove
     | SmoothSkin
     | HealBlemishes

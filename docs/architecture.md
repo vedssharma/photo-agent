@@ -143,3 +143,33 @@ The fallbacks are honest stand-ins: the agent is told when no generative model i
 **Safety (`safety.py`).** Every prompt new to the edit state is screened before anything is generated. Local rules always block sexual edits of real people, undressing, and faked documents; with an API key, Claude classifies the rest with a short structured-output call, chiefly for deceptive impersonation of real people. Verdicts are cached; if Claude can't be reached the local rules still apply. A refused manual edit returns 422 with the reason; a refused agent tool call goes back to Claude, and nothing changes.
 
 **Content Credentials (`credentials.py`).** An export in which any generative edit shows is signed with a C2PA manifest (`c2pa-python`) listing each generative edit, its model, and the IPTC `compositeWithTrainedAlgorithmicMedia` source type. The signing certificate and a local certificate authority are made on first use in `.data/c2pa/`. Verifiers read the manifest but report the signer as unknown; a product would sign with a certificate from a C2PA-trusted issuer.
+
+## A smarter agent (Phase 5)
+
+```
+Browser                                     Backend (server/src/photo_agent)
+───────                                     ─────────────────────────────────
+ChatPanel (new photo): suggestion picker    suggestions.py     edit directions with thumbnails
+  ── POST …/suggestions, …/{sid} ─────────▶ advisor.py         one-shot structured-output questions to Claude
+PlanCard: Go ahead ── chat approve_plan ──▶ agent.py           propose_plan; slow multi-step edits wait for a yes
+Get feedback ── POST …/critique ──────────▶ critique.py        friendly points, each with a one-click fix
+StylePanel ── /api/style, …/usual-look ───▶ style.py           taste from kept, adjusted, and undone edits
+Reference photo chips ── …/references ────▶ references.py      shared photos, measured once; render.py matches them
+                                            routing.py         routine or deep model for each request
+                                            analyses.py        cached suggestions and critiques per revision
+                                            evals.py           scripted and live agent evals (CI)
+```
+
+**Suggestions (`suggestions.py`).** When a photo opens with no edits, the chat offers up to four directions ("Warm and bright", "Moody", …), each a small layer of everyday sliders with a thumbnail rendered from it. Claude proposes them from the photo when a key is set; otherwise built-in directions are picked from measurements. Picking one applies it as an ordinary agent step.
+
+**Plan preview (`agent.py`).** The agent calls `propose_plan` before slow or generative multi-step work, the turn ends, and the chat shows the plan with a Go ahead button. More than one new diffusion edit in a turn without an approved plan is refused back to Claude. Approving sends the plan back with the request.
+
+**Critique (`critique.py`).** "Get feedback" returns a summary and two to six points (composition, exposure, color, …), each that could be better carrying a request the agent can carry out; its button sends that request to the chat. Without a key, a built-in critique covers what measurements can tell.
+
+**Style memory (`style.py`).** Downloads and picked suggestions count as kept, hand-set sliders as adjusted (counted double), and undone agent steps as rejected. Sliders with enough notes become tendencies the agent is told with each request, and "my usual look" is one layer of them. Everything lives in `.data/style.json`; the style panel shows it and can forget it.
+
+**Reference matching (`references.py`, `render.py`).** A shared photo is shrunk, stored beside the document, and measured once (Lab mean and spread, and a tone curve). `match_reference` copies those measurements in, so it renders without the reference file and carries over in recipes; it maps tones by quantiles and shifts color mean and spread, capped so a vivid reference can't blow out a muted photo. The agent sees shared references as images too.
+
+**Cost and latency (`routing.py`, `analyses.py`).** Short, single-step requests go to the routine model at low effort; long, multi-step, look-matching, or approved-plan requests go to the main model, and a routine round whose every tool call fails escalates. Suggestions use the routine model and critiques the main one. The system prompt and tools are cached between rounds; suggestions and critiques are cached on disk per revision and per model, so reopening a photo costs nothing.
+
+**Evals (`evals.py`).** Ten cases (brighter, moody, black and white, crop to square, subtle, plan first, …) check the resulting photo by measurement, not by the agent's words. CI replays reference tool scripts through the real editor and must score 100%; with an `ANTHROPIC_API_KEY` secret, it also runs Claude live and fails if the score drops below `server/evals/baseline.json`. See `server/evals/README.md`.

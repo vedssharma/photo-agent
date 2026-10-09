@@ -1,0 +1,58 @@
+name: Agent evals
+
+# Scores the agent on a fixed set of photos and requests whenever the agent, its prompts,
+# or its tools change, so quality does not silently regress. See server/evals/README.md.
+on:
+  pull_request:
+    paths:
+      - server/src/photo_agent/agent.py
+      - server/src/photo_agent/advisor.py
+      - server/src/photo_agent/critique.py
+      - server/src/photo_agent/suggestions.py
+      - server/src/photo_agent/style.py
+      - server/src/photo_agent/operations.py
+      - server/src/photo_agent/render.py
+      - server/src/photo_agent/evals.py
+      - server/evals/**
+      - .github/workflows/evals.yml
+  push:
+    branches: [main]
+    paths:
+      - server/src/photo_agent/agent.py
+      - server/src/photo_agent/evals.py
+      - server/evals/**
+  workflow_dispatch:
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      MODEL_BACKENDS: classical
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Reference edits pass their checks
+        run: uv run python -m photo_agent.evals --replay
+      - name: Live agent scores at least the baseline
+        if: env.ANTHROPIC_API_KEY != ''
+        run: uv run python -m photo_agent.evals --judge --report eval-report.json
+      - name: Note when the live suite was skipped
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "No ANTHROPIC_API_KEY secret, so only the replay suite ran." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always() && env.ANTHROPIC_API_KEY != ''
+        with:
+          name: eval-report
+          path: server/eval-report.json
+          if-no-files-found: ignore

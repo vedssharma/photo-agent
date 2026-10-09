@@ -11,6 +11,8 @@ from anthropic.types.beta import (
     BetaToolUseBlock,
 )
 
+from photo_agent.advisor import Tier
+
 
 def text(t: str) -> BetaTextBlock:
     return BetaTextBlock.model_construct(type="text", text=t, citations=None)
@@ -33,6 +35,7 @@ class FakeModel:
         self.responses = list(responses)
         self.stop_reason = stop_reason
         self.calls: list[list[dict[str, Any]]] = []
+        self.tiers: list[Tier] = []
         """Each request's messages, loosely typed so tests can poke at them. A scripted
         response may be a function of the request's messages."""
 
@@ -43,8 +46,10 @@ class FakeModel:
         tools: Sequence[BetaToolParam],
         messages: Sequence[BetaMessageParam],
         on_text: Callable[[str], Awaitable[None]],
+        tier: Tier = "deep",
     ) -> BetaMessage:
         self.calls.append([dict(m) for m in messages])
+        self.tiers.append(tier)
         scripted = self.responses.pop(0)
         blocks = scripted(self.calls[-1]) if callable(scripted) else scripted
         for block in blocks:

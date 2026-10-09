@@ -1050,6 +1050,432 @@
         }
       }
     },
+    "/api/documents/{doc_id}/suggestions": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Suggest Edits",
+        "description": "Two to four directions this photo could go in, each as layers with a thumbnail, to\npick from and refine. Proposed by Claude when an API key is set, else built in. The\nanswer is kept, so asking again for the same edits is free.",
+        "operationId": "suggestEdits",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SuggestionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionSet"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Claude could not be reached"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/suggestions/{suggestion_id}/preview": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Suggestion Preview",
+        "description": "A small preview of the photo with a suggestion applied on top of the current edits.",
+        "operationId": "getSuggestionPreview",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such suggestion"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/suggestions/{suggestion_id}": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Suggestion",
+        "description": "Add a suggestion's layers on top of the current edits, as one step the agent knows\nabout, so the conversation can carry on from it (\"a bit less contrast\").",
+        "operationId": "applySuggestion",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or suggestion"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/critique": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Critique Photo",
+        "description": "Feedback on the photo as it is now: what works and what does not, each point that\ncould be better with a fix the agent can carry out. Added to the conversation, so the\nagent knows what it said.",
+        "operationId": "critiquePhoto",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Claude could not be reached"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/references": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Add Reference",
+        "description": "Share another photo to match this one to (\"make it look like this\"). Send its id\nwith a chat message, or match it directly.",
+        "operationId": "addReference",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_addReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reference"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large"
+          },
+          "415": {
+            "description": "Not a photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/references/{ref_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Reference",
+        "description": "A shared reference photo, small.",
+        "operationId": "getReference",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "ref_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ref Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such reference"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/references/{ref_id}/match": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Match Reference",
+        "description": "Add a layer that matches the photo's color and tone to a shared reference, as one\nstep in the history.",
+        "operationId": "matchReference",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "ref_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ref Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such document or reference"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/style/usual-look": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Apply Usual Look",
+        "description": "Add \"my usual look\", one layer with the values the person keeps coming back to, as\none step in the history.",
+        "operationId": "applyUsualLook",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not enough is known about the person's taste yet"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "post": {
         "tags": [
@@ -1227,6 +1653,41 @@
         }
       }
     },
+    "/api/style": {
+      "get": {
+        "tags": [
+          "style"
+        ],
+        "summary": "Get Style Summary",
+        "description": "What the app has learned about the person's taste from the edits they kept, set by\nhand, and undid.",
+        "operationId": "getStyle",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleSummary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "style"
+        ],
+        "summary": "Forget Style",
+        "description": "Forget everything learned about the person's taste.",
+        "operationId": "forgetStyle",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -1347,6 +1808,20 @@
         ],
         "title": "Blacks",
         "description": "Move the black point: negative makes blacks deeper, positive lifts them (matte look)."
+      },
+      "Body_addReference": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_addReference"
       },
       "Body_createDocument": {
         "properties": {
@@ -1506,6 +1981,33 @@
               }
             ],
             "title": "Step Id"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "critique": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Critique"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "References"
           },
           "created_at": {
             "type": "string",
@@ -1730,6 +2232,97 @@
         ],
         "title": "Contrast",
         "description": "Increase or decrease overall contrast around the midtones."
+      },
+      "Critique": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One sentence on the photo as a whole."
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/CritiquePoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source",
+            "default": "claude"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "points"
+        ],
+        "title": "Critique"
+      },
+      "CritiquePoint": {
+        "properties": {
+          "aspect": {
+            "type": "string",
+            "enum": [
+              "composition",
+              "exposure",
+              "color",
+              "sharpness",
+              "subject",
+              "mood"
+            ],
+            "title": "Aspect"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "good",
+              "improve"
+            ],
+            "title": "Verdict"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "One or two friendly sentences, no jargon."
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix",
+            "description": "For points to improve: a request the agent can carry out."
+          },
+          "fix_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Label",
+            "description": "A short button label for the fix."
+          }
+        },
+        "type": "object",
+        "required": [
+          "aspect",
+          "verdict",
+          "text"
+        ],
+        "title": "CritiquePoint"
       },
       "Crop": {
         "properties": {
@@ -2050,6 +2643,16 @@
             },
             "type": "array",
             "title": "Chat"
+          },
+          "pending_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2820,6 +3423,9 @@
                   "$ref": "#/components/schemas/ToneCurve"
                 },
                 {
+                  "$ref": "#/components/schemas/MatchReference"
+                },
+                {
                   "$ref": "#/components/schemas/Remove"
                 },
                 {
@@ -2862,6 +3468,7 @@
                   "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
+                  "match_reference": "#/components/schemas/MatchReference",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
                   "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
@@ -3041,6 +3648,9 @@
                   "$ref": "#/components/schemas/ToneCurve"
                 },
                 {
+                  "$ref": "#/components/schemas/MatchReference"
+                },
+                {
                   "$ref": "#/components/schemas/Remove"
                 },
                 {
@@ -3083,6 +3693,7 @@
                   "heal_blemishes": "#/components/schemas/HealBlemishes",
                   "highlights": "#/components/schemas/Highlights",
                   "hsl": "#/components/schemas/HSL",
+                  "match_reference": "#/components/schemas/MatchReference",
                   "noise_reduction": "#/components/schemas/NoiseReduction",
                   "relight": "#/components/schemas/Relight",
                   "remove": "#/components/schemas/Remove",
@@ -3205,6 +3816,70 @@
         ],
         "title": "ManualEdit"
       },
+      "MatchReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "match_reference",
+            "title": "Op",
+            "default": "match_reference"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Reference",
+            "description": "Id of the reference photo to match."
+          },
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "How far to go toward the reference.",
+            "default": 100
+          },
+          "color": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Color",
+            "description": "How much of its color palette and cast.",
+            "default": 100
+          },
+          "tone": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Tone",
+            "description": "How much of its brightness and contrast.",
+            "default": 100
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReferenceStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded by the app."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reference"
+        ],
+        "title": "MatchReference",
+        "description": "Make the photo's color and tone look like a reference photo the person shared (\"make\nthis look like that one\"): its palette, color cast, brightness, and contrast. Not its\ncontent or framing. Lower color or tone to transfer only one of them."
+      },
       "NewRecipe": {
         "properties": {
           "name": {
@@ -3295,6 +3970,11 @@
           "framing": {
             "type": "boolean",
             "title": "Framing"
+          },
+          "addable": {
+            "type": "boolean",
+            "title": "Addable",
+            "default": true
           },
           "params": {
             "items": {
@@ -3456,6 +4136,56 @@
         "title": "Perspective",
         "description": "Fix lines that converge because the camera was tilted: buildings that lean in toward\nthe top, or a wall that shrinks toward one side. The narrow side is stretched out to the\nframe, so nothing is left empty."
       },
+      "Plan": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "steps"
+        ],
+        "title": "Plan",
+        "description": "What the agent means to do for a multi-step request, shown before the slow or\ngenerative steps run, so the person can approve or change it."
+      },
+      "PlanStep": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "description": "What this step does."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "adjust",
+              "ai",
+              "generative"
+            ],
+            "title": "Kind",
+            "description": "adjust: quick slider-style edits; ai: runs an AI model to select, remove, or retouch; generative: paints new pixels with an image generation model.",
+            "default": "adjust"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "PlanStep"
+      },
       "RadialGradientMask": {
         "properties": {
           "invert": {
@@ -3549,6 +4279,70 @@
           "layers"
         ],
         "title": "Recipe"
+      },
+      "Reference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "The shared file's name, for display."
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ReferenceStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "stats"
+        ],
+        "title": "Reference"
+      },
+      "ReferenceStats": {
+        "properties": {
+          "lab_mean": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Lab Mean"
+          },
+          "lab_std": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Lab Std"
+          },
+          "tone": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 17,
+            "minItems": 17,
+            "title": "Tone",
+            "description": "Brightness (0..1) at evenly spaced quantiles, darkest to brightest."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lab_mean",
+          "lab_std",
+          "tone"
+        ],
+        "title": "ReferenceStats",
+        "description": "The color and tone of a reference photo, measured once when it is shared, so the\noperation renders anywhere (including on other photos, as part of a recipe)."
       },
       "Relight": {
         "properties": {
@@ -4316,6 +5110,119 @@
         "title": "Straighten",
         "description": "Rotate by a small angle to level a tilted horizon, cropping away the empty corners."
       },
+      "StyleSummary": {
+        "properties": {
+          "tendencies": {
+            "items": {
+              "$ref": "#/components/schemas/Tendency"
+            },
+            "type": "array",
+            "title": "Tendencies"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines",
+            "description": "The tendencies in plain words."
+          },
+          "has_usual_look": {
+            "type": "boolean",
+            "title": "Has Usual Look"
+          },
+          "signals": {
+            "type": "integer",
+            "title": "Signals",
+            "description": "How many notes it has taken."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tendencies",
+          "lines",
+          "has_usual_look",
+          "signals"
+        ],
+        "title": "StyleSummary",
+        "description": "What the app has learned about the person's taste."
+      },
+      "Suggestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "A short name, like \u201cMoody film\u201d."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "One friendly sentence on what it does."
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "type": "array",
+            "title": "Layers",
+            "description": "The layers picking it adds on top."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "layers"
+        ],
+        "title": "Suggestion"
+      },
+      "SuggestionSet": {
+        "properties": {
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "source",
+          "suggestions"
+        ],
+        "title": "SuggestionSet"
+      },
+      "SuggestionsRequest": {
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "description": "Ask again instead of reusing earlier ideas.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SuggestionsRequest"
+      },
       "TaskStatus": {
         "properties": {
           "task": {
@@ -4348,6 +5255,39 @@
           "uses_weights"
         ],
         "title": "TaskStatus"
+      },
+      "Tendency": {
+        "properties": {
+          "slider": {
+            "type": "string",
+            "title": "Slider"
+          },
+          "preferred": {
+            "type": "number",
+            "title": "Preferred",
+            "description": "The value they tend to keep (weighted mean)."
+          },
+          "samples": {
+            "type": "integer",
+            "title": "Samples"
+          },
+          "rejected": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Rejected",
+            "description": "Values they undid, most recent last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "slider",
+          "preferred",
+          "samples",
+          "rejected"
+        ],
+        "title": "Tendency"
       },
       "ToneCurve": {
         "properties": {
@@ -4734,6 +5674,22 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "approve_plan": {
+            "default": false,
+            "description": "Go ahead with the plan the agent proposed in its last reply.",
+            "title": "Approve Plan",
+            "type": "boolean"
+          },
+          "references": {
+            "default": [],
+            "description": "Ids of reference photos shared with this message.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "References",
+            "type": "array"
           }
         },
         "required": [

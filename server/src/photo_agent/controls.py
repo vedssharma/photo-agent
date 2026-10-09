@@ -26,6 +26,7 @@ GROUPS: dict[str, Group] = {
     "saturation": "color",
     "hsl": "color",
     "color_grade": "color",
+    "match_reference": "color",
     "sharpen": "detail",
     "noise_reduction": "detail",
     "clarity": "detail",
@@ -52,6 +53,11 @@ GROUPS: dict[str, Group] = {
 }
 
 
+HIDDEN = ("reference",)
+"""Parameters set by how an operation is added rather than by a control."""
+NOT_ADDABLE = {"match_reference"}
+
+
 class ParamSpec(BaseModel):
     name: str
     label: str
@@ -72,6 +78,9 @@ class OperationSpec(BaseModel):
     group: Group
     framing: bool
     """Whether this is a crop/rotation/flip, which goes in the framing rather than a layer."""
+    addable: bool = True
+    """Whether "add adjustment" offers it; some need more than sliders to start (a
+    reference photo to match)."""
     params: list[ParamSpec]
 
 
@@ -138,7 +147,7 @@ def _spec(name: str, cls: type[OpBase]) -> OperationSpec:
     required = set(schema.get("required", []))
     params = []
     for field, prop in schema["properties"].items():
-        if field in ("id", "op", *APP_FIELDS):
+        if field in ("id", "op", *APP_FIELDS, *HIDDEN):
             continue
         ref = prop.get("$ref")
         if isinstance(ref, str):
@@ -155,6 +164,7 @@ def _spec(name: str, cls: type[OpBase]) -> OperationSpec:
         description=" ".join((cls.__doc__ or "").split()),
         group=GROUPS[name],
         framing=cls in GEOMETRY_TYPES,
+        addable=name not in NOT_ADDABLE,
         params=params,
     )
 

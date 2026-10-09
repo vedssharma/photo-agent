@@ -17,6 +17,7 @@ app.include_router(routes.router)
 app.include_router(routes.projects_router)
 app.include_router(routes.recipes_router)
 app.include_router(routes.looks_router)
+app.include_router(routes.style_router)
 
 
 class HealthResponse(BaseModel):

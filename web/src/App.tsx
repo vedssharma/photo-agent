@@ -40,6 +40,7 @@ import { CUTOUT, type Preview, setCutout, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
 import { RecentProjects } from './components/RecentProjects'
 import { RecipesPanel } from './components/RecipesPanel'
+import { StylePanel } from './components/StylePanel'
 import { useAutosave } from './hooks/useAutosave'
 import {
   type ProjectStore,
@@ -178,6 +179,11 @@ function Editor({
           onDocument={onDocument}
           disabled={chat.busy || manual.working}
         />
+        <StylePanel
+          doc={doc}
+          onDocument={onDocument}
+          disabled={chat.busy || manual.working}
+        />
         <HistoryPanel
           doc={doc}
           onDocument={onDocument}
@@ -266,7 +272,7 @@ function Editor({
           }
         />
       </div>
-      <ChatPanel doc={doc} chat={chat} />
+      <ChatPanel doc={doc} chat={chat} onDocument={onDocument} />
       {exporting && (
         <ExportDialog doc={doc} onClose={() => setExporting(false)} />
       )}

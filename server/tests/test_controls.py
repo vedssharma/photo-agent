@@ -19,6 +19,8 @@ def test_every_operation_has_controls() -> None:
 
 def test_defaults_make_valid_operations() -> None:
     for spec in operation_specs():
+        if not spec.addable:
+            continue
         # Prompts are typed by the person; the rest have usable defaults.
         args = {p.name: "a plant" if p.kind == "text" else p.default for p in spec.params}
         OperationAdapter.validate_python({"op": spec.op, **args})

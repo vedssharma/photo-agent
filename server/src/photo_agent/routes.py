@@ -23,6 +23,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from photo_agent import (
+    critique,
     generative,
     geometry,
     imaging,
@@ -30,14 +31,27 @@ from photo_agent import (
     portrait,
     projects,
     recipes,
+    references,
     safety,
+    style,
+    suggestions,
     variants,
 )
-from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
+from photo_agent.advisor import Advisor, AdvisorError, ClaudeAdvisor
+from photo_agent.agent import (
+    AgentError,
+    AgentEvent,
+    AgentService,
+    ClaudeModel,
+    ModelClient,
+    image_block,
+)
+from photo_agent.analyses import AnalysisCache
+from photo_agent.diagnostics import measure
 from photo_agent.export import ExportOptions, export_bytes, export_filename
-from photo_agent.graph import Document, DocumentView
-from photo_agent.layers import EditState, Layer
-from photo_agent.operations import MAX_OPTIONS, GenerativeBase
+from photo_agent.graph import ChatEntry, Document, DocumentView, Step
+from photo_agent.layers import EditState, Layer, new_layer_id
+from photo_agent.operations import MAX_OPTIONS, GenerativeBase, MatchReference
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
@@ -53,6 +67,7 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
 recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 looks_router = APIRouter(prefix="/api/looks", tags=["looks"])
+style_router = APIRouter(prefix="/api/style", tags=["style"])
 
 
 @lru_cache
@@ -91,7 +106,8 @@ def _screen_for(api_key: str | None, model: str) -> safety.Screen:
 
 def get_screen(settings: Annotated[Settings, Depends(get_settings)]) -> safety.Screen:
     key = settings.anthropic_api_key
-    return _screen_for(key.get_secret_value() if key else None, settings.anthropic_model)
+    # A yes/no screen of a short prompt: the routine model is plenty.
+    return _screen_for(key.get_secret_value() if key else None, settings.anthropic_routine_model)
 
 
 Screen = Annotated[safety.Screen, Depends(get_screen)]
@@ -107,6 +123,18 @@ def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes
 
 
 Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
+
+
+@lru_cache
+def _style_for(data_dir: Path) -> style.StyleStore:
+    return style.StyleStore(data_dir)
+
+
+def get_style(settings: Annotated[Settings, Depends(get_settings)]) -> style.StyleStore | None:
+    return _style_for(settings.data_dir) if settings.style_memory else None
+
+
+Style = Annotated[style.StyleStore | None, Depends(get_style)]
 
 
 def load(store: DocumentStore, doc_id: str) -> Document:
@@ -227,9 +255,13 @@ def get_source(doc_id: str, store: Store) -> Response:
 
 
 @router.post("/{doc_id}/undo", operation_id="undo")
-def undo(doc_id: str, store: Store) -> DocumentView:
+def undo(doc_id: str, store: Store, taste: Style) -> DocumentView:
     """Step back one step in the history."""
     doc = load(store, doc_id)
+    current = doc.current
+    if taste is not None and current is not None and current.kind == "agent":
+        parent = doc.step(current.parent).state if current.parent else EditState()
+        taste.rejected(parent, current.state)
     if doc.undo():
         store.save(doc)
     return DocumentView.of(doc)
@@ -260,15 +292,26 @@ class ManualEdit(BaseModel):
     operation_id="editByHand",
     responses={422: {"description": "Invalid, or a generative edit that is not allowed"}},
 )
-def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store, screen: Screen) -> DocumentView:
+def edit_by_hand(
+    doc_id: str, edit: ManualEdit, store: Store, screen: Screen, taste: Style
+) -> DocumentView:
     """Record a change made with the manual controls as a named step in the history."""
     doc = load(store, doc_id)
+    before = doc.state
     verdict = screen.check_new(doc.state, edit.state)
     if not verdict.allowed:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, verdict.reason)
-    state = generative.stamp(edit.state, store.model_for)
+    try:
+        state = references.fill_stats(edit.state, store.folder(doc_id))
+    except references.ReferenceNotFoundError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "No such reference photo."
+        ) from None
+    state = generative.stamp(state, store.model_for)
     if doc.edit_by_hand(edit.label, state, edit.coalesce):
         store.save(doc)
+        if taste is not None:
+            taste.adjusted(before, state)
         warm_preview(store, doc)
     return DocumentView.of(doc)
 
@@ -497,9 +540,11 @@ def preview(doc_id: str, store: Store) -> Response:
     response_class=Response,
     responses={200: {"content": {"image/jpeg": {}, "image/png": {}}}},
 )
-async def export(doc_id: str, options: ExportOptions, store: Store) -> Response:
+async def export(doc_id: str, options: ExportOptions, store: Store, taste: Style) -> Response:
     """Render the edits at full resolution and return the file to download."""
     doc = load(store, doc_id)
+    if taste is not None:
+        taste.kept(doc.state)
     loaded = store.image(doc_id)
     data = await asyncio.to_thread(export_bytes, doc, loaded, options, store.data_dir)
     filename = export_filename(doc, options)
@@ -574,7 +619,245 @@ def warm_preview(store: DocumentStore, doc: Document) -> None:
 
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:
     key = settings.anthropic_api_key
-    return ClaudeModel(key.get_secret_value(), settings.anthropic_model) if key else None
+    if key is None:
+        return None
+    return ClaudeModel(
+        key.get_secret_value(), settings.anthropic_model, settings.anthropic_routine_model
+    )
+
+
+def get_advisor(settings: Annotated[Settings, Depends(get_settings)]) -> Advisor | None:
+    key = settings.anthropic_api_key
+    if key is None:
+        return None
+    return ClaudeAdvisor(
+        key.get_secret_value(), settings.anthropic_model, settings.anthropic_routine_model
+    )
+
+
+AdvisorDep = Annotated[Advisor | None, Depends(get_advisor)]
+
+
+def _analyst(advisor: Advisor | None) -> str:
+    """Who makes an analysis, for caching it: the model, or the built-in fallback."""
+    return "built-in" if advisor is None else str(getattr(advisor, "model", "claude"))
+
+
+class SuggestionsRequest(BaseModel):
+    refresh: bool = Field(False, description="Ask again instead of reusing earlier ideas.")
+
+
+def _stored_suggestions(store: DocumentStore, doc_id: str) -> suggestions.SuggestionSet | None:
+    path = store.file(doc_id, "suggestions.json")
+    if not path.is_file():
+        return None
+    try:
+        return suggestions.SuggestionSet.model_validate_json(path.read_text())
+    except ValueError:
+        return None
+
+
+@router.post(
+    "/{doc_id}/suggestions",
+    operation_id="suggestEdits",
+    responses={502: {"description": "Claude could not be reached"}},
+)
+async def suggest_edits(
+    doc_id: str,
+    store: Store,
+    advisor: AdvisorDep,
+    request: Annotated[SuggestionsRequest | None, Body()] = None,
+) -> suggestions.SuggestionSet:
+    """Two to four directions this photo could go in, each as layers with a thumbnail, to
+    pick from and refine. Proposed by Claude when an API key is set, else built in. The
+    answer is kept, so asking again for the same edits is free."""
+    doc = load(store, doc_id)
+    cache = AnalysisCache(store.folder(doc_id))
+    who = _analyst(advisor)
+    cached = cache.get("suggestions", doc.revision, who, suggestions.SuggestionSet)
+    if cached is not None and not (request and request.refresh):
+        store.file(doc_id, "suggestions.json").write_text(cached.model_dump_json())
+        return cached
+    loaded = store.image(doc_id)
+    pixels = await asyncio.to_thread(
+        previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
+    )
+    source: suggestions.Source = "built-in"
+    directions = suggestions.built_in_directions(pixels)
+    if advisor is not None:
+        try:
+            block = dict(image_block(pixels))
+            found = await suggestions.ask_claude(advisor, block, measure(pixels))
+        except (AdvisorError, ValueError) as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from None
+        if found:
+            directions, source = found, "claude"
+    made = suggestions.SuggestionSet(
+        revision=doc.revision, source=source, suggestions=suggestions.suggestions_from(directions)
+    )
+    store.file(doc_id, "suggestions.json").write_text(made.model_dump_json())
+    cache.put("suggestions", doc.revision, who, made)
+    return made
+
+
+def _suggestion(store: DocumentStore, doc_id: str, suggestion_id: str) -> suggestions.Suggestion:
+    stored = _stored_suggestions(store, doc_id)
+    for found in stored.suggestions if stored else []:
+        if found.id == suggestion_id:
+            return found
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "No such suggestion.")
+
+
+@router.get(
+    "/{doc_id}/suggestions/{suggestion_id}/preview",
+    operation_id="getSuggestionPreview",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "No such suggestion"}},
+)
+def suggestion_preview(doc_id: str, suggestion_id: str, store: Store) -> Response:
+    """A small preview of the photo with a suggestion applied on top of the current edits."""
+    doc = load(store, doc_id)
+    found = _suggestion(store, doc_id, suggestion_id)
+    loaded = store.image(doc_id)
+    state = suggestions.apply(found, doc.state)
+    rendered = previews.get_or_render(doc.id, loaded.proxy, state, loaded.proxy_context)
+    pixels = imaging.resize_long_edge(rendered, suggestions.THUMBNAIL_LONG_EDGE)
+    return Response(
+        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@router.post(
+    "/{doc_id}/suggestions/{suggestion_id}",
+    operation_id="applySuggestion",
+    responses={404: {"description": "No such document or suggestion"}},
+)
+def apply_suggestion(doc_id: str, suggestion_id: str, store: Store, taste: Style) -> DocumentView:
+    """Add a suggestion's layers on top of the current edits, as one step the agent knows
+    about, so the conversation can carry on from it ("a bit less contrast")."""
+    doc = load(store, doc_id)
+    found = _suggestion(store, doc_id, suggestion_id)
+    request = f"Try the “{found.title}” suggestion."
+    step = Step(
+        kind="agent",
+        label=found.title,
+        request=request,
+        reply=found.description,
+        state=suggestions.apply(found, doc.state),
+    )
+    doc.commit(step)
+    doc.chat.append(ChatEntry(role="user", text=request))
+    doc.chat.append(ChatEntry(role="assistant", text=found.description, step_id=step.id))
+    store.save(doc)
+    if taste is not None:
+        taste.kept(EditState(layers=found.layers))
+    warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+CRITIQUE_REQUEST = "What do you think of this photo?"
+
+
+@router.post(
+    "/{doc_id}/critique",
+    operation_id="critiquePhoto",
+    responses={502: {"description": "Claude could not be reached"}},
+)
+async def critique_photo(doc_id: str, store: Store, advisor: AdvisorDep) -> DocumentView:
+    """Feedback on the photo as it is now: what works and what does not, each point that
+    could be better with a fix the agent can carry out. Added to the conversation, so the
+    agent knows what it said."""
+    doc = load(store, doc_id)
+    cache = AnalysisCache(store.folder(doc_id))
+    who = _analyst(advisor)
+    found = cache.get("critique", doc.revision, who, critique.Critique)
+    if found is None:
+        loaded = store.image(doc_id)
+        pixels = await asyncio.to_thread(
+            previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
+        )
+        if advisor is None:
+            found = critique.built_in(pixels)
+        else:
+            try:
+                block = dict(image_block(pixels))
+                found = await critique.ask_claude(advisor, block, measure(pixels))
+            except (AdvisorError, ValueError) as exc:
+                raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from None
+        cache.put("critique", doc.revision, who, found)
+    doc = load(store, doc_id)  # it may have changed while Claude looked
+    doc.chat.append(ChatEntry(role="user", text=CRITIQUE_REQUEST))
+    doc.chat.append(ChatEntry(role="assistant", text=found.summary, critique=found))
+    store.save(doc)
+    return DocumentView.of(doc)
+
+
+@router.post(
+    "/{doc_id}/references",
+    operation_id="addReference",
+    status_code=status.HTTP_201_CREATED,
+    responses={413: {"description": "File too large"}, 415: {"description": "Not a photo"}},
+)
+async def add_reference(doc_id: str, file: UploadFile, store: Store) -> references.Reference:
+    """Share another photo to match this one to ("make it look like this"). Send its id
+    with a chat message, or match it directly."""
+    load(store, doc_id)
+    data = await _read_limited(file, MAX_UPLOAD_BYTES)
+    try:
+        return await asyncio.to_thread(
+            references.add, store.folder(doc_id), file.filename or "reference", data
+        )
+    except imaging.UnsupportedImageError as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from None
+
+
+@router.get(
+    "/{doc_id}/references/{ref_id}",
+    operation_id="getReference",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "No such reference"}},
+)
+def get_reference(doc_id: str, ref_id: str, store: Store) -> Response:
+    """A shared reference photo, small."""
+    load(store, doc_id)
+    try:
+        path = references.image_file(store.folder(doc_id), ref_id)
+    except references.ReferenceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such reference.") from None
+    return Response(
+        path.read_bytes(),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
+@router.post(
+    "/{doc_id}/references/{ref_id}/match",
+    operation_id="matchReference",
+    responses={404: {"description": "No such document or reference"}},
+)
+def match_reference(doc_id: str, ref_id: str, store: Store) -> DocumentView:
+    """Add a layer that matches the photo's color and tone to a shared reference, as one
+    step in the history."""
+    doc = load(store, doc_id)
+    try:
+        found = references.get(store.folder(doc_id), ref_id)
+    except references.ReferenceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such reference.") from None
+    name = f"Match {found.filename}"[:80]
+    layer = Layer(
+        id=new_layer_id(),
+        name=name,
+        operations=[MatchReference(reference=found.id, stats=found.stats)],
+    )
+    state = doc.state
+    state.layers.append(layer)
+    if doc.edit_by_hand(name, state):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
 
 
 @router.websocket("/{doc_id}/chat")
@@ -584,6 +867,7 @@ async def chat(
     store: Store,
     model: Annotated[ModelClient | None, Depends(get_model)],
     screen: Screen,
+    taste: Style,
 ) -> None:
     """Chat with the agent about one document.
 
@@ -601,11 +885,14 @@ async def chat(
     async def emit(event: AgentEvent) -> None:
         await ws.send_text(event.model_dump_json())
 
-    agent = AgentService(store, previews, model, screen) if model else None
+    agent = AgentService(store, previews, model, screen, taste) if model else None
     try:
         while True:
             incoming = await ws.receive_json()
             text = str(incoming.get("text", "")).strip() if isinstance(incoming, dict) else ""
+            approve = isinstance(incoming, dict) and incoming.get("approve_plan") is True
+            shared = incoming.get("references") if isinstance(incoming, dict) else None
+            shared = [str(r) for r in shared][:4] if isinstance(shared, list) else []
             if not text:
                 await emit(AgentError(message="Type what you would like to change."))
                 continue
@@ -618,13 +905,49 @@ async def chat(
                 )
                 continue
             try:
-                await agent.run_turn(doc_id, text, emit)
+                await agent.run_turn(doc_id, text, emit, approve_plan=approve, shared=shared)
             except WebSocketDisconnect:
                 raise
             except Exception as exc:  # Report, keep the socket open for the next message.
                 await emit(AgentError(message=f"Something went wrong: {exc}"))
     except WebSocketDisconnect:
         pass
+
+
+@style_router.get("", operation_id="getStyle")
+def get_style_summary(taste: Style) -> style.StyleSummary:
+    """What the app has learned about the person's taste from the edits they kept, set by
+    hand, and undid."""
+    return (taste.load() if taste else style.Profile()).summary()
+
+
+@style_router.delete("", operation_id="forgetStyle", status_code=status.HTTP_204_NO_CONTENT)
+def forget_style(taste: Style) -> None:
+    """Forget everything learned about the person's taste."""
+    if taste is not None:
+        taste.forget()
+
+
+@router.post(
+    "/{doc_id}/style/usual-look",
+    operation_id="applyUsualLook",
+    responses={409: {"description": "Not enough is known about the person's taste yet"}},
+)
+def apply_usual_look(doc_id: str, store: Store, taste: Style) -> DocumentView:
+    """Add "my usual look", one layer with the values the person keeps coming back to, as
+    one step in the history."""
+    doc = load(store, doc_id)
+    state = style.apply_usual_look(taste.load(), doc.state) if taste else None
+    if state is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "There is no usual look yet: keep editing and downloading photos, and it will "
+            "learn what you like.",
+        )
+    if doc.edit_by_hand("My usual look", state):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
 
 
 @recipes_router.get("", operation_id="listRecipes")

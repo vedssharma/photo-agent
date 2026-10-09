@@ -12,6 +12,7 @@ const spec: OperationSpec = {
   description: '',
   group: 'generative',
   framing: false,
+  addable: true,
   params: [
     { name: 'prompt', label: 'Prompt', kind: 'text', description: '' },
     { name: 'seed', label: 'Seed', kind: 'seed', description: '' },

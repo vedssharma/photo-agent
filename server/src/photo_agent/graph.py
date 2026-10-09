@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from photo_agent.critique import Critique
 from photo_agent.layers import EditState
 from photo_agent.operations import Operation, OperationAdapter
 
@@ -66,6 +67,26 @@ def _validate_ops(raw: Any) -> list[Operation]:
     return [OperationAdapter.validate_python(op) for op in raw]
 
 
+class PlanStep(BaseModel):
+    text: str = Field(min_length=1, max_length=300, description="What this step does.")
+    kind: Literal["adjust", "ai", "generative"] = Field(
+        "adjust",
+        description="adjust: quick slider-style edits; ai: runs an AI model to select, "
+        "remove, or retouch; generative: paints new pixels with an image generation model.",
+    )
+
+
+class Plan(BaseModel):
+    """What the agent means to do for a multi-step request, shown before the slow or
+    generative steps run, so the person can approve or change it."""
+
+    id: str = Field(default_factory=new_id)
+    steps: list[PlanStep] = Field(min_length=1, max_length=12)
+
+    def describe(self) -> str:
+        return "\n".join(f"{i}. {step.text}" for i, step in enumerate(self.steps, start=1))
+
+
 class ChatEntry(BaseModel):
     """One line of the conversation shown in the chat panel and replayed to the agent.
 
@@ -77,6 +98,12 @@ class ChatEntry(BaseModel):
     text: str
     step_id: str | None = None
     """The step this entry produced, for assistant replies that changed the photo."""
+    plan: Plan | None = None
+    """For assistant replies that propose a plan instead of carrying it out yet."""
+    critique: Critique | None = None
+    """For assistant replies that critique the photo, with a fix for each point."""
+    references: list[str] = Field(default_factory=list)
+    """For user messages, ids of reference photos shared with it."""
     created_at: datetime = Field(default_factory=now)
 
     @model_validator(mode="before")
@@ -124,6 +151,16 @@ class Document(BaseModel):
         data["head"] = turns[cursor - 1]["id"] if cursor else None
         data["tip"] = turns[-1]["id"] if turns else None
         return data
+
+    @property
+    def pending_plan(self) -> Plan | None:
+        """A plan the agent proposed in its last reply, waiting for the person's go-ahead."""
+        for entry in reversed(self.chat):
+            if entry.role == "user":
+                return None
+            if entry.role == "assistant":
+                return entry.plan
+        return None
 
     def step(self, step_id: str) -> Step:
         for s in self.steps:
@@ -279,6 +316,8 @@ class DocumentView(BaseModel):
     """What redo would bring back."""
     history: list[StepView]
     chat: list[ChatEntry]
+    pending_plan: Plan | None = None
+    """A plan the agent proposed, waiting for the go-ahead."""
 
     @classmethod
     def of(cls, doc: Document) -> DocumentView:
@@ -310,4 +349,5 @@ class DocumentView(BaseModel):
                 for s in doc.steps
             ],
             chat=doc.chat,
+            pending_plan=doc.pending_plan,
         )

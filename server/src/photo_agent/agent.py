@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Annotated, Any, Literal, Protocol
 
@@ -22,10 +23,11 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import diagnostics, imaging, looks, safety, variants
+from photo_agent import diagnostics, imaging, looks, references, safety, style, variants
+from photo_agent.advisor import Tier
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
-from photo_agent.graph import ChatEntry, Document, DocumentView, Step
+from photo_agent.graph import ChatEntry, Document, DocumentView, Plan, Step
 from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
 from photo_agent.masks import SemanticMask, describe_mask
 from photo_agent.operations import (
@@ -35,14 +37,24 @@ from photo_agent.operations import (
     MASKED_TYPES,
     MAX_OPTIONS,
     OPERATIONS_BY_NAME,
+    Expand,
+    Generate,
     GenerativeBase,
+    MatchReference,
     OpBase,
     Operation,
     OperationAdapter,
+    ReferenceStats,
+    Relight,
+    ReplaceBackground,
+    Restyle,
 )
 from photo_agent.portrait import Retouch, retouch_layers
 from photo_agent.render import RenderCache, render
+from photo_agent.routing import choose_tier
 from photo_agent.store import DocumentStore
+
+log = logging.getLogger(__name__)
 
 MAX_MODEL_CALLS = 8
 """Upper bound on model round trips in one turn, so a confused agent cannot loop forever."""
@@ -141,6 +153,23 @@ set straighten yourself. Use lens_correction for lines that bow (wide-angle barr
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
+- Before a multi-step request that includes slow or generative steps ("remove the people, \
+replace the sky, and make it warmer"; anything needing two or more of generate, expand, \
+replace_background, relight, and restyle), call \
+propose_plan with the steps in order, marking each as adjust, ai (selections, removals, \
+retouching), or generative, and stop: the person sees the plan and approves or changes it \
+before anything slow runs. Do not call it for quick slider edits or a single generative \
+edit the person asked for directly. Once a plan is approved, carry it out in full.
+- When the person shares a reference photo (you see it labeled with its id) and wants \
+theirs to look like it ("make this look like that", "same colors as this one"), add a \
+layer named for it and call match_reference with the reference's id: it transfers the \
+reference's color palette and its brightness and contrast. Lower color or tone to take \
+only one, and amount to go part of the way. Check the result: if skin or the subject \
+looks off, mask the layer or lower amount, and fix what it overshoots with other tools.
+- When the person's taste is known (from edits they kept, set by hand, or undid), it comes \
+with the request. Lean toward it for open-ended requests ("make it nice"); what they ask \
+for now always wins. When they ask for "my usual look" or "my style", call \
+apply_usual_look.
 - With each request you get the current rendered photo and the current framing and layers. \
 The person may have tweaked, hidden, or removed things by hand; respect those choices.
 - Crop boxes are fractions of the frame as it is at that point in the framing list, after \
@@ -205,6 +234,12 @@ class ChatMessage(BaseModel):
 
     type: Literal["message"] = "message"
     text: str
+    approve_plan: bool = Field(
+        False, description="Go ahead with the plan the agent proposed in its last reply."
+    )
+    references: list[str] = Field(
+        [], max_length=4, description="Ids of reference photos shared with this message."
+    )
 
 
 Emit = Callable[[AgentEvent], Awaitable[None]]
@@ -220,13 +255,18 @@ class ModelClient(Protocol):
         tools: Sequence[BetaToolParam],
         messages: Sequence[BetaMessageParam],
         on_text: Callable[[str], Awaitable[None]],
+        tier: Tier = "deep",
     ) -> BetaMessage: ...
 
 
 class ClaudeModel:
-    def __init__(self, api_key: str, model: str) -> None:
+    """Claude, with the main model for turns that need judgment and a smaller one for
+    routine turns (see `photo_agent.routing`)."""
+
+    def __init__(self, api_key: str, model: str, routine_model: str | None = None) -> None:
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
+        self.routine_model = routine_model or model
 
     async def create(
         self,
@@ -235,25 +275,46 @@ class ClaudeModel:
         tools: Sequence[BetaToolParam],
         messages: Sequence[BetaMessageParam],
         on_text: Callable[[str], Awaitable[None]],
+        tier: Tier = "deep",
     ) -> BetaMessage:
+        model = self.model if tier == "deep" else self.routine_model
+        # Server-side fallbacks exist for the larger models only.
+        fallback: dict[str, Any] = (
+            {}
+            if "haiku" in model
+            else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+        )
         for attempt in range(3):
             try:
                 async with self.client.beta.messages.stream(
-                    model=self.model,
+                    model=model,
                     max_tokens=16000,
-                    system=system,
+                    # The system prompt and tools are the same every call: cache them, and
+                    # the conversation so far, so each round only pays for what is new.
+                    system=[
+                        {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+                    ],
+                    cache_control={"type": "ephemeral"},
                     tools=list(tools),
                     messages=list(messages),
                     thinking={"type": "adaptive"},
-                    output_config={"effort": "medium"},
-                    # If a safety classifier declines, retry on Anthropic's recommended model.
-                    betas=["server-side-fallback-2026-07-01"],
-                    fallbacks="default",
+                    output_config={"effort": "medium" if tier == "deep" else "low"},
+                    **fallback,
                 ) as stream:
                     async for event in stream:
                         if event.type == "text":
                             await on_text(event.text)
-                    return await stream.get_final_message()
+                    message = await stream.get_final_message()
+                    usage = message.usage
+                    log.info(
+                        "%s turn on %s: %s input (%s cached), %s output tokens",
+                        tier,
+                        message.model,
+                        usage.input_tokens,
+                        usage.cache_read_input_tokens,
+                        usage.output_tokens,
+                    )
+                    return message
             except ValueError:
                 # Tool input JSON the SDK could not parse at all; re-issue the call.
                 if attempt == 2:
@@ -454,6 +515,15 @@ def tool_definitions() -> list[BetaToolParam]:
     )
     tools.append(
         {
+            "name": "apply_usual_look",
+            "description": "Add the person's usual look: one layer with the slider values they "
+            "keep coming back to, learned from their past edits. Fails if too little is known.",
+            "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
             "name": "show_options",
             "description": "Generate several takes on a generative operation (by id) to "
             "compare, when the person asks for options or a result could go several ways. "
@@ -473,6 +543,23 @@ def tool_definitions() -> list[BetaToolParam]:
                 },
                 "required": ["id"],
                 "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    plan_schema = Plan.model_json_schema()
+    tools.append(
+        {
+            "name": "propose_plan",
+            "description": "Show the person your plan for a multi-step request before running "
+            "slow or generative steps, and end your turn. They approve it or tell you what to "
+            "change; on approval you carry it out.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"steps": plan_schema["properties"]["steps"]},
+                "required": ["steps"],
+                "additionalProperties": False,
+                "$defs": plan_schema["$defs"],
             },
             "eager_input_streaming": True,
         }
@@ -536,8 +623,14 @@ class Editor:
         model_for: Callable[[str], str] | None = None,
         render_state: Callable[[EditState], imaging.Array] | None = None,
         screen: safety.Screen | None = None,
+        taste: style.Profile | None = None,
+        reference_stats: Callable[[str], ReferenceStats | None] | None = None,
     ) -> None:
         self.state = state.model_copy(deep=True)
+        self.reference_stats = reference_stats
+        """Looks up the measurements of a shared reference photo by id."""
+        self.taste = taste
+        """What is known of the person's taste, for "my usual look"."""
         self.default_layer_name = default_layer_name
         self.framed = framed
         """Renders the photo with a given framing, for tools that measure it."""
@@ -551,11 +644,25 @@ class Editor:
         """Images the last tool call shows Claude along with its text result."""
         self.target: str | None = None
         """The layer that operation tools add to: the one added most recently."""
+        self.plan: Plan | None = None
+        """A plan proposed in this turn; the turn ends to wait for the go-ahead."""
+        self.plan_approved = False
+        """Whether the person approved a plan for this turn, so it may run several
+        generative steps."""
+        self._generative_before = _generative_ids(state)
 
     def call(self, name: str, args: object) -> tuple[str, OperationEvent]:
         self.images = []
         before = self.state.model_copy(deep=True)
         result = self._call(name, args)
+        added = _generative_ids(self.state) - self._generative_before
+        if len(added) > 1 and not self.plan_approved:
+            self.state = before
+            raise ToolError(
+                "This would be a second slow generative edit (fill, expand, background, "
+                "relight, or restyle) in one request. Call propose_plan "
+                "with every step first and wait for the person's go-ahead; nothing changed."
+            )
         verdict = (self.screen or safety.Screen()).check_new(before, self.state)
         if not verdict.allowed:
             self.state = before
@@ -581,13 +688,15 @@ class Editor:
             "auto_straighten": self._auto_straighten,
             "apply_look": self._apply_look,
             "show_options": self._show_options,
+            "propose_plan": self._propose_plan,
+            "apply_usual_look": self._apply_usual_look,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
             return handler(args)
         if name not in OPERATIONS_BY_NAME:
             raise ToolError(f"Unknown tool {name!r}.")
-        op = self._validate({**args, "op": name})
+        op = self._with_stats(self._validate({**args, "op": name}))
         if isinstance(op, GEOMETRY_TYPES):
             self.state.framing.append(op)  # type: ignore[arg-type]
             where = "the framing"
@@ -616,6 +725,14 @@ class Editor:
         if isinstance(op, GenerativeBase):
             text += self._generative_note(op)
         return text, OperationEvent(action="added", summary=summary)
+
+    def _with_stats(self, op: Operation) -> Operation:
+        if not isinstance(op, MatchReference) or op.stats is not None:
+            return op
+        stats = self.reference_stats(op.reference) if self.reference_stats else None
+        if stats is None:
+            raise ToolError(f"No reference photo with id {op.reference!r}.")
+        return op.model_copy(update={"stats": stats})
 
     def _generative_note(self, op: GenerativeBase) -> str:
         if self.model_for is None or self.model_for(task_for(op)) != "classical":
@@ -663,7 +780,9 @@ class Editor:
             raise ToolError("changes must be an object of parameter names to values.")
         current = ops[index]
         changes = {k: v for k, v in changes.items() if k not in ("id", "op")}
-        op = self._validate({**current.model_dump(), **changes})
+        if "reference" in changes:
+            changes["stats"] = None
+        op = self._with_stats(self._validate({**current.model_dump(), **changes}))
         ops[index] = op
         summary = op.summary()
         return f"Updated operation {op.id}: {summary}.", OperationEvent(
@@ -770,6 +889,30 @@ class Editor:
             action="updated", summary=f"Options for {op.summary()}"
         )
 
+    def _apply_usual_look(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        layer = self.taste.usual_look() if self.taste else None
+        if layer is None:
+            raise ToolError(
+                "Too little is known about the person's taste for a usual look yet. Say so, "
+                "and offer to edit it to their description instead."
+            )
+        self.state.layers.append(layer)
+        summary = ", ".join(op.summary() for op in layer.operations)
+        return f"Added layer {layer.id} (My usual look): {summary}.", OperationEvent(
+            action="added", summary="My usual look"
+        )
+
+    def _propose_plan(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            plan = Plan.model_validate({"steps": args.get("steps")})
+        except ValidationError as exc:
+            raise ToolError(f"Invalid plan: {_problems(exc)}") from None
+        self.plan = plan
+        return (
+            "The plan is shown to the person. End your turn now.",
+            OperationEvent(action="added", summary=f"Plan with {len(plan.steps)} steps"),
+        )
+
     def _auto_straighten(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
         try:
             options = AutoStraighten.model_validate(args)
@@ -819,6 +962,15 @@ class Editor:
             raise ToolError(f"Invalid layer: {_problems(exc)}") from None
 
 
+SLOW_TYPES = (Generate, Expand, ReplaceBackground, Relight, Restyle)
+"""Generative operations that run a diffusion model: slow, and worth a plan when a request
+needs more than one. Face restoration and colorizing are quick by comparison."""
+
+
+def _generative_ids(state: EditState) -> set[str]:
+    return {op.id for op in state.all_operations() if isinstance(op, SLOW_TYPES)}
+
+
 def layer_name(request: str) -> str:
     """A layer name for edits made without add_layer: the start of the request."""
     words = " ".join(request.split())
@@ -843,7 +995,8 @@ def describe_layer(layer: Layer) -> str:
 
 
 def _op_json(op: OpBase) -> str:
-    return json.dumps(op.model_dump(), separators=(",", ":"))
+    # Reference statistics are numbers for the renderer, not for Claude.
+    return json.dumps(op.model_dump(exclude={"stats"}), separators=(",", ":"))
 
 
 def describe_state(state: EditState) -> str:
@@ -898,6 +1051,12 @@ def history_messages(chat: Sequence[ChatEntry]) -> tuple[list[BetaMessageParam],
             pending_events.append(entry.text)
             continue
         text = entry.text
+        if entry.plan is not None:
+            text = f"{text}\n\nProposed plan:\n{entry.plan.describe()}"
+        if entry.references:
+            text = f"{text}\n(Shared reference photos: {', '.join(entry.references)}.)"
+        if entry.critique is not None:
+            text = f"(Feedback on the photo.)\n{entry.critique.describe()}"
         if entry.role == "user" and pending_events:
             text = events_note(pending_events) + text
             pending_events = []
@@ -922,33 +1081,79 @@ class AgentService:
         renders: RenderCache,
         model: ModelClient,
         screen: safety.Screen | None = None,
+        taste: style.StyleStore | None = None,
     ) -> None:
         self.store = store
         self.renders = renders
         self.model = model
         self.screen = screen or safety.Screen()
+        self.taste = taste
         self._locks: dict[str, asyncio.Lock] = {}
 
-    async def run_turn(self, doc_id: str, request: str, emit: Emit) -> Document:
-        """Handle one chat message: let Claude edit, then record the turn and its reply."""
+    async def run_turn(
+        self,
+        doc_id: str,
+        request: str,
+        emit: Emit,
+        approve_plan: bool = False,
+        shared: Sequence[str] = (),
+    ) -> Document:
+        """Handle one chat message: let Claude edit, then record the turn and its reply.
+
+        With `approve_plan`, the person went ahead with the plan in the agent's last reply.
+        `shared` are ids of reference photos sent with the message.
+        """
         lock = self._locks.setdefault(doc_id, asyncio.Lock())
         async with lock:
             doc = self.store.get(doc_id)
+            plan = doc.pending_plan if approve_plan else None
+            folder = self.store.folder(doc_id)
+            found: list[references.Reference] = []
+            for ref_id in dict.fromkeys(shared):
+                try:
+                    found.append(references.get(folder, ref_id))
+                except references.ReferenceNotFoundError:
+                    continue
+
+            def stats_of(ref_id: str) -> ReferenceStats | None:
+                try:
+                    return references.get(folder, ref_id).stats
+                except references.ReferenceNotFoundError:
+                    return None
+
             await emit(TurnStarted())
             loaded = self.store.image(doc_id)
+            profile = self.taste.load() if self.taste else None
             editor = Editor(
                 doc.state,
                 default_layer_name=layer_name(request),
                 framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
                 model_for=self.store.model_for,
                 screen=self.screen,
+                taste=profile,
+                reference_stats=stats_of,
                 render_state=lambda state: self.renders.get_or_render(
                     doc_id, loaded.proxy, state, loaded.proxy_context
                 ),
             )
-            reply = await self._converse(doc, request, editor, emit)
+            editor.plan_approved = plan is not None
+            asked = request if plan is None else f"Approved plan:\n{plan.describe()}\n\n{request}"
+            shown = [
+                block
+                for ref in found
+                for block in (
+                    {"type": "text", "text": f"Reference photo {ref.id} ({ref.filename}):"},
+                    image_block(references.pixels(folder, ref.id)),
+                )
+            ]
+            tier = choose_tier(
+                request, plan_approved=plan is not None, shared_references=bool(found)
+            )
+            reply = await self._converse(doc, asked, editor, emit, shown, tier)
 
-            doc.chat.append(ChatEntry(role="user", text=request))
+            doc.chat.append(
+                ChatEntry(role="user", text=request, references=[ref.id for ref in found])
+            )
             step_id = None
             if editor.state != doc.state:
                 step = Step(
@@ -960,7 +1165,9 @@ class AgentService:
                 )
                 doc.commit(step)
                 step_id = step.id
-            doc.chat.append(ChatEntry(role="assistant", text=reply, step_id=step_id))
+            doc.chat.append(
+                ChatEntry(role="assistant", text=reply, step_id=step_id, plan=editor.plan)
+            )
             self.store.save(doc)
             await emit(TurnDone(document=DocumentView.of(doc)))
             return doc
@@ -990,18 +1197,30 @@ class AgentService:
             image_block(rendered),
         ]
 
-    async def _converse(self, doc: Document, request: str, editor: Editor, emit: Emit) -> str:
+    async def _converse(
+        self,
+        doc: Document,
+        request: str,
+        editor: Editor,
+        emit: Emit,
+        shown: Sequence[Any] = (),
+        tier: Tier = "deep",
+    ) -> str:
         history, events = history_messages(doc.chat)
         preview = await self._render(doc, editor.state)
         baseline = diagnostics.measure(await self._render(doc, EditState()))
         state_seen = editor.state.model_copy(deep=True)
         intro = events_note(events)
+        taste = editor.taste.describe() if editor.taste else None
+        if taste:
+            intro = f"{taste}\n\n{intro}"
         messages: list[BetaMessageParam] = [
             *history,
             {
                 "role": "user",
                 "content": [
                     image_block(preview),
+                    *shown,
                     {
                         "type": "text",
                         "text": f"{describe_state(editor.state)}\n\n{intro}Request: {request}",
@@ -1024,7 +1243,7 @@ class AgentService:
             # Text from separate model calls reads as separate paragraphs.
             new_paragraph = True
             response = await self.model.create(
-                system=SYSTEM_PROMPT, tools=TOOLS, messages=messages, on_text=on_text
+                system=SYSTEM_PROMPT, tools=TOOLS, messages=messages, on_text=on_text, tier=tier
             )
             messages.append({"role": "assistant", "content": response.content})
 
@@ -1057,6 +1276,12 @@ class AgentService:
                 if editor.images:
                     content = [{"type": "text", "text": text}, *map(image_block, editor.images)]
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
+            if editor.plan is not None:
+                # Wait for the person's go-ahead before anything else.
+                break
+            if tier == "routine" and all(r.get("is_error") for r in results):
+                # The smaller model is struggling with this one; hand it to the main model.
+                tier = "deep"
             if editor.state != state_seen:
                 state_seen = editor.state.model_copy(deep=True)
                 await self._attach_self_check(doc, editor, results, baseline)
@@ -1066,5 +1291,8 @@ class AgentService:
             await on_text("I stopped here to keep things quick; tell me if you want more changes.")
 
         if not "".join(reply_parts).strip():
-            await on_text("Done." if editor.state != doc.state else "OK.")
+            if editor.plan is not None:
+                await on_text("Here is my plan. Shall I go ahead?")
+            else:
+                await on_text("Done." if editor.state != doc.state else "OK.")
         return "".join(reply_parts).strip()

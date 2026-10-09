@@ -6,13 +6,25 @@ import { describe, expect, it } from 'vitest'
 import type { DocumentView } from '../api/documents'
 import { useChat } from '../hooks/useChat'
 import { FakeSocket } from '../test/fakeSocket'
-import { makeDoc, makeStep } from '../test/fixtures'
+import { makeDoc, makeStep, stubApi } from '../test/fixtures'
 import { ChatPanel } from './ChatPanel'
 
-function Harness({ initial }: { initial: DocumentView }) {
+function Harness({
+  initial,
+  editable = false,
+}: {
+  initial: DocumentView
+  editable?: boolean
+}) {
   const [doc, setDoc] = useState(initial)
   const chat = useChat(doc.id, setDoc, FakeSocket.factory)
-  return <ChatPanel doc={doc} chat={chat} />
+  return (
+    <ChatPanel
+      doc={doc}
+      chat={chat}
+      onDocument={editable ? setDoc : undefined}
+    />
+  )
 }
 
 async function sendMessage(text: string) {
@@ -127,5 +139,134 @@ describe('ChatPanel', () => {
     const box = screen.getByRole('textbox', { name: 'Message' })
     await userEvent.type(box, 'line one{Shift>}{Enter}{/Shift}line two')
     expect(box).toHaveValue('line one\nline two')
+  })
+})
+
+describe('ChatPanel plans', () => {
+  it('shows a proposed plan and sends the go-ahead', async () => {
+    const plan = {
+      id: 'p1',
+      steps: [
+        { text: 'Replace the sky', kind: 'generative' as const },
+        { text: 'Warm it up', kind: 'adjust' as const },
+      ],
+    }
+    const doc = makeDoc({
+      chat: [
+        { role: 'user', text: 'sunset and warmer', created_at: '' },
+        {
+          role: 'assistant',
+          text: 'Here is my plan.',
+          plan,
+          created_at: '',
+        },
+      ],
+      pending_plan: plan,
+    })
+    render(<Harness initial={doc} />)
+    expect(screen.getByText('Replace the sky')).toBeVisible()
+    expect(screen.getByText('Generates new pixels')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Go ahead' }))
+    act(() => FakeSocket.last!.open())
+    expect(FakeSocket.last!.sent).toEqual([
+      { type: 'message', text: 'Go ahead', approve_plan: true },
+    ])
+  })
+
+  it('drops the button once the plan is no longer pending', () => {
+    const plan = { id: 'p1', steps: [{ text: 'Sky', kind: 'ai' as const }] }
+    const doc = makeDoc({
+      chat: [
+        { role: 'assistant', text: 'Plan.', plan, created_at: '' },
+        { role: 'user', text: 'no thanks', created_at: '' },
+      ],
+    })
+    render(<Harness initial={doc} />)
+    expect(screen.getByText('Sky')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Go ahead' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatPanel feedback', () => {
+  it('asks for a critique and sends a fix to the agent', async () => {
+    const critique = {
+      summary: 'A lovely moment, a little dark.',
+      source: 'claude' as const,
+      points: [
+        {
+          aspect: 'subject' as const,
+          verdict: 'good' as const,
+          text: 'Her smile carries it.',
+          fix: null,
+          fix_label: null,
+        },
+        {
+          aspect: 'exposure' as const,
+          verdict: 'improve' as const,
+          text: 'The faces are in shadow.',
+          fix: 'Brighten the faces a little',
+          fix_label: 'Brighten faces',
+        },
+      ],
+    }
+    const after = makeDoc({
+      head: 'x',
+      chat: [
+        {
+          role: 'user',
+          text: 'What do you think of this photo?',
+          created_at: '',
+        },
+        {
+          role: 'assistant',
+          text: critique.summary,
+          critique,
+          created_at: '',
+        },
+      ],
+    })
+    stubApi({
+      'POST /api/documents/abc123abc123/critique': () => Response.json(after),
+    })
+    render(<Harness initial={makeDoc({ head: 'x' })} editable />)
+    await userEvent.click(screen.getByRole('button', { name: 'Get feedback' }))
+
+    expect(await screen.findByText('Her smile carries it.')).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Brighten faces' }),
+    )
+    act(() => FakeSocket.last!.open())
+    expect(FakeSocket.last!.sent).toEqual([
+      { type: 'message', text: 'Brighten the faces a little' },
+    ])
+  })
+})
+
+describe('ChatPanel reference photos', () => {
+  it('shares a reference photo with the next message', async () => {
+    stubApi({
+      'POST /api/documents/abc123abc123/references': () =>
+        Response.json(
+          {
+            id: 'r1',
+            filename: 'sunset.jpg',
+            stats: { lab_mean: [], lab_std: [], tone: [] },
+          },
+          { status: 201 },
+        ),
+    })
+    render(<Harness initial={makeDoc({ head: 'x' })} />)
+    await userEvent.upload(
+      screen.getByLabelText('Reference photo file'),
+      new File(['x'], 'sunset.jpg', { type: 'image/jpeg' }),
+    )
+    expect(await screen.findByText('sunset.jpg')).toBeVisible()
+    const socket = await sendMessage('make it look like this')
+    expect(socket.sent).toEqual([
+      { type: 'message', text: 'make it look like this', references: ['r1'] },
+    ])
+    expect(screen.queryByText('sunset.jpg')).not.toBeInTheDocument()
   })
 })
