@@ -2,6 +2,7 @@
 
     <data_dir>/documents/<id>/original.<ext>   the uploaded bytes, never modified
     <data_dir>/documents/<id>/document.json    the edit graph
+    <data_dir>/documents/<id>/vision/          cached model results (semantic masks, ...)
 
 Decoded originals and preview proxies are kept in a small in-memory cache so a chat turn
 does not re-decode the file on every render.
@@ -18,6 +19,9 @@ from pathlib import Path
 from photo_agent import imaging
 from photo_agent.graph import Document, new_id
 from photo_agent.render import RenderContext
+from photo_agent.vision.backends import BackendMode
+from photo_agent.vision.selection import DocumentVision
+from photo_agent.vision.worker import ModelWorker
 
 EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "HEIF": ".heic"}
 _ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -35,24 +39,41 @@ class MismatchError(ValueError):
 class LoadedImage:
     source: imaging.DecodedImage
     proxy: imaging.Array
+    vision: DocumentVision | None = None
+    """Runs the models behind semantic masks; None when the store has no model worker."""
+
+    @property
+    def proxy_scale(self) -> float:
+        src_h, src_w = self.source.pixels.shape[:2]
+        return float(max(self.proxy.shape[:2]) / max(src_h, src_w))
 
     @property
     def proxy_context(self) -> RenderContext:
         """How to render the proxy so it matches a full-resolution render."""
-        src_h, src_w = self.source.pixels.shape[:2]
         return RenderContext(
-            scale=max(self.proxy.shape[:2]) / max(src_h, src_w),
-            source_aspect=src_w / src_h,
+            scale=self.proxy_scale,
+            source_aspect=self.source.width / self.source.height,
+            vision=self.vision,
         )
 
     @property
     def full_context(self) -> RenderContext:
-        return RenderContext(scale=1.0, source_aspect=self.source.width / self.source.height)
+        return RenderContext(
+            scale=1.0, source_aspect=self.source.width / self.source.height, vision=self.vision
+        )
 
 
 class DocumentStore:
-    def __init__(self, root: Path, cache_size: int = 4) -> None:
+    def __init__(
+        self,
+        root: Path,
+        cache_size: int = 4,
+        worker: ModelWorker | None = None,
+        backends: BackendMode = "auto",
+    ) -> None:
         self.root = root / "documents"
+        self.worker = worker
+        self.backends = backends
         self._cache: OrderedDict[str, LoadedImage] = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()
@@ -82,7 +103,7 @@ class DocumentStore:
         folder.mkdir(parents=True)
         (folder / f"original{EXTENSIONS[decoded.format]}").write_bytes(data)
         self.save(doc)
-        self._remember(doc.id, LoadedImage(decoded, imaging.make_proxy(decoded.pixels)))
+        self._remember(doc.id, self._loaded(doc.id, decoded))
         return doc
 
     def exists(self, doc_id: str) -> bool:
@@ -119,8 +140,22 @@ class DocumentStore:
                 self._cache.move_to_end(doc_id)
                 return cached
         decoded = imaging.decode(self.original_file(doc_id).read_bytes())
-        loaded = LoadedImage(decoded, imaging.make_proxy(decoded.pixels))
+        loaded = self._loaded(doc_id, decoded)
         self._remember(doc_id, loaded)
+        return loaded
+
+    def _loaded(self, doc_id: str, decoded: imaging.DecodedImage) -> LoadedImage:
+        loaded = LoadedImage(decoded, imaging.make_proxy(decoded.pixels))
+        if self.worker is not None:
+            loaded.vision = DocumentVision(
+                doc_id,
+                loaded.proxy,
+                source_aspect=decoded.width / decoded.height,
+                scale=loaded.proxy_scale,
+                worker=self.worker,
+                folder=self._folder(doc_id) / "vision",
+                backends=self.backends,
+            )
         return loaded
 
     def _remember(self, doc_id: str, loaded: LoadedImage) -> None:

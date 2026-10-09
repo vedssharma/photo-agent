@@ -121,6 +121,35 @@ describe('LayersPanel', () => {
 })
 
 describe('LayersPanel masks', () => {
+  it('selects the sky with AI', async () => {
+    const { sent } = setup('Lwarm')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Mask' }),
+      'Sky',
+    )
+    expect(sent[0].label).toBe('Select sky for “Warmer”')
+    expect(sent[0].state.layers[0].mask).toEqual({
+      kind: 'semantic',
+      target: 'sky',
+      points: [],
+      description: '',
+      invert: false,
+    })
+  })
+
+  it('waits for a click on the photo to select an object', async () => {
+    const { sent, onMaskTool } = setup('Lwarm')
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Mask' }),
+      'An object (click it)',
+    )
+    expect(sent).toEqual([])
+    expect(onMaskTool).toHaveBeenLastCalledWith({
+      ...DEFAULT_MASK_TOOL,
+      picking: true,
+    })
+  })
+
   it('adds a mask to the selected layer and tunes it', async () => {
     const { sent } = setup('Lwarm')
     await userEvent.selectOptions(

@@ -963,7 +963,7 @@ export interface components {
              * Mask
              * @description Limits the layer to part of the photo; null applies it everywhere.
              */
-            mask?: (components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"]) | null;
+            mask?: (components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"] | components["schemas"]["SemanticMask"]) | null;
             /**
              * Operations
              * @default []
@@ -1221,6 +1221,61 @@ export interface components {
             op: "saturation";
             /** Amount */
             amount: number;
+        };
+        /** SelectPoint */
+        SelectPoint: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /**
+             * Include
+             * @description False marks a spot that is not part of it.
+             * @default true
+             */
+            include: boolean;
+        };
+        /**
+         * SemanticMask
+         * @description Selects something by what it is, found by an AI model: the sky, the main subject,
+         *     people, a particular object, or parts of a face. For `object`, give a `box` around it
+         *     (and optionally `points` on it), in fractions of the photo as you see it.
+         */
+        SemanticMask: {
+            /**
+             * Invert
+             * @description Swap where the layer applies and where it does not.
+             * @default false
+             */
+            invert: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "semantic";
+            /**
+             * Target
+             * @description subject: the main subject, as a cutout would keep it; people: every person; sky; object: one thing you point at with `box` and/or `points` (a particular person, a dog, a car); and parts of faces for portraits: skin (face and visible skin), face, eyes, lips, teeth, hair.
+             * @enum {string}
+             */
+            target: "subject" | "people" | "sky" | "object" | "skin" | "face" | "eyes" | "lips" | "teeth" | "hair";
+            /**
+             * Box
+             * @description For object: [left, top, right, bottom] around it, fractions of the photo.
+             */
+            box?: number[] | null;
+            /**
+             * Points
+             * @description For object: spots on it (or, with include false, not).
+             * @default []
+             */
+            points: components["schemas"]["SelectPoint"][];
+            /**
+             * Description
+             * @description What is selected, in plain words: "the dog".
+             * @default
+             */
+            description: string;
         };
         /**
          * Shadows

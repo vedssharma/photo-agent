@@ -1,5 +1,14 @@
-import type { Layer, Mask, MaskKind } from '../api/documents'
-import { MASK_KINDS, type MaskTool, defaultMask, maskLabel } from '../lib/masks'
+import type { Layer, Mask } from '../api/documents'
+import {
+  MASK_KINDS,
+  type MaskTool,
+  SEMANTIC_TARGETS,
+  type SemanticTarget,
+  defaultMask,
+  maskChoice,
+  maskLabel,
+  semanticMask,
+} from '../lib/masks'
 import { Slider } from './Slider'
 
 interface Props {
@@ -24,10 +33,26 @@ export function MaskControls({
   const mask = layer.mask ?? null
   const name = `“${layer.name}”`
 
-  function setKind(kind: MaskKind | '') {
-    if (kind === '') onMask(null, `Remove mask from ${name}`)
-    else onMask(defaultMask(kind), `${maskLabel(kind)} mask on ${name}`)
+  function setChoice(choice: string) {
+    onTool({ ...tool, picking: false })
+    if (choice === '') return onMask(null, `Remove mask from ${name}`)
+    if (choice.startsWith('semantic:')) {
+      const target = choice.slice('semantic:'.length) as SemanticTarget
+      // An object is selected by clicking it, which commits the mask.
+      if (target === 'object') return onTool({ ...tool, picking: true })
+      return onMask(
+        semanticMask(target),
+        `Select ${maskLabel('semantic', target).toLowerCase()} for ${name}`,
+      )
+    }
+    const kind = choice as Exclude<Mask['kind'], 'semantic'>
+    onMask(defaultMask(kind), `${maskLabel(kind)} mask on ${name}`)
   }
+
+  const picking =
+    tool.picking && !(mask?.kind === 'semantic' && mask.target === 'object')
+  const choice = picking ? 'semantic:object' : maskChoice(mask)
+  const groups = [...new Set(SEMANTIC_TARGETS.map((t) => t.group))]
 
   function tweak(changes: Partial<Mask>, what: string, key: string) {
     if (!mask) return
@@ -38,18 +63,29 @@ export function MaskControls({
     <fieldset className="mask-controls" disabled={disabled}>
       <label className="field">
         <span>Mask</span>
-        <select
-          value={mask?.kind ?? ''}
-          onChange={(e) => setKind(e.target.value as MaskKind | '')}
-        >
+        <select value={choice} onChange={(e) => setChoice(e.target.value)}>
           <option value="">None (whole photo)</option>
           {MASK_KINDS.map((m) => (
             <option key={m.kind} value={m.kind}>
               {m.label}
             </option>
           ))}
+          {groups.map((group) => (
+            <optgroup key={group} label={group}>
+              {SEMANTIC_TARGETS.filter((t) => t.group === group).map((t) => (
+                <option key={t.target} value={`semantic:${t.target}`}>
+                  {t.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
         </select>
       </label>
+      {picking && (
+        <p className="hint">
+          Click the thing to select on the photo, or drag a box around it.
+        </p>
+      )}
       {mask && (
         <>
           <div className="checks">
@@ -122,6 +158,14 @@ export function MaskControls({
                 onCommit={(hardness) => onTool({ ...tool, hardness })}
               />
             </>
+          )}
+          {mask.kind === 'semantic' && (
+            <p className="hint">
+              {mask.target === 'object'
+                ? 'Click more of it to add to the selection, Shift-click to leave a part out, or drag a new box.'
+                : 'Found with AI. Invert to change everything else instead.'}
+              {mask.description && ` Selected: ${mask.description}.`}
+            </p>
           )}
           {mask.kind === 'linear' && (
             <p className="hint">

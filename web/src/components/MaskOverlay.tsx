@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 import type { Mask } from '../api/documents'
-import type { MaskTool } from '../lib/masks'
+import type { MaskTool, SemanticMask } from '../lib/masks'
 
 type Point = [number, number]
 type BrushMask = Extract<Mask, { kind: 'brush' }>
@@ -22,11 +22,14 @@ interface Props {
 }
 
 const HANDLE_PX = 14
+/** How far (in fractions of the photo) a press must move to draw a box, not click. */
+const BOX_DRAG = 0.01
 const MIN_STEP = 0.003
 const MAX_POINTS = 4000
 
 type Drag =
   | { kind: 'brush'; points: Point[] }
+  | { kind: 'pick'; start: Point; moved: boolean }
   | { kind: 'line'; handle: 'start' | 'end' }
   | { kind: 'ellipse-new'; center: Point }
   | { kind: 'ellipse-move'; offset: Point }
@@ -41,7 +44,8 @@ function toUnit(e: ReactPointerEvent<Element>): Point {
 
 /**
  * Draws the selected layer's mask over the photo and lets the user shape it by dragging:
- * paint brush strokes, place a linear gradient, or draw and move a radial one.
+ * paint brush strokes, place a linear gradient, draw and move a radial one, or click (or
+ * drag a box around) an object for an AI selection.
  * Coordinates are fractions of the framed photo, like the server's.
  */
 export function MaskOverlay({
@@ -68,7 +72,9 @@ export function MaskOverlay({
     e.stopPropagation()
     e.currentTarget.setPointerCapture?.(e.pointerId)
     const p = toUnit(e)
-    if (mask.kind === 'brush') {
+    if (mask.kind === 'semantic') {
+      drag.current = { kind: 'pick', start: p, moved: false }
+    } else if (mask.kind === 'brush') {
       drag.current = { kind: 'brush', points: [p] }
       setDraft(withStroke(mask, [p], tool))
     } else if (mask.kind === 'linear') {
@@ -96,7 +102,14 @@ export function MaskOverlay({
     if (!d) return
     e.stopPropagation()
     const p = toUnit(e)
-    if (d.kind === 'brush' && mask.kind === 'brush') {
+    if (d.kind === 'pick' && mask.kind === 'semantic') {
+      const far =
+        Math.abs(p[0] - d.start[0]) > BOX_DRAG ||
+        Math.abs(p[1] - d.start[1]) > BOX_DRAG
+      if (!d.moved && !far) return
+      d.moved = true
+      setDraft({ ...mask, box: boxOf(d.start, p), points: [] })
+    } else if (d.kind === 'brush' && mask.kind === 'brush') {
       const last = d.points[d.points.length - 1]
       if (Math.hypot(p[0] - last[0], p[1] - last[1]) < MIN_STEP) return
       if (d.points.length >= MAX_POINTS) return
@@ -128,6 +141,15 @@ export function MaskOverlay({
     if (!d) return
     e.stopPropagation()
     drag.current = null
+    if (d.kind === 'pick' && mask.kind === 'semantic') {
+      if (d.moved && draft) return onChange(draft, 'Select object')
+      const [x, y] = clampUnit(toUnit(e))
+      const include = !(e.shiftKey || e.altKey)
+      return onChange(
+        { ...mask, points: [...mask.points, { x, y, include }] },
+        include ? 'Select object' : 'Leave out of selection',
+      )
+    }
     if (!draft) return
     const label =
       d.kind === 'brush'
@@ -178,6 +200,7 @@ export function MaskOverlay({
               longEdge={Math.max(width, height)}
             />
           )}
+        {shown.kind === 'semantic' && <SelectionGuide mask={shown} px={px} />}
         {shown.kind === 'linear' && <LinearGuide mask={shown} px={px} />}
         {shown.kind === 'radial' && (
           <RadialGuide mask={shown} px={px} width={width} height={height} />
@@ -218,6 +241,55 @@ function withStroke(mask: BrushMask, points: Point[], tool: MaskTool): Mask {
       },
     ],
   }
+}
+
+function clampUnit(p: Point): Point {
+  const c = (v: number) => Math.min(1, Math.max(0, v))
+  return [c(p[0]), c(p[1])]
+}
+
+/** [left, top, right, bottom] of the box dragged from `a` to `b`, inside the photo. */
+function boxOf(a: Point, b: Point): number[] {
+  const [x0, y0] = clampUnit([Math.min(a[0], b[0]), Math.min(a[1], b[1])])
+  const [x1, y1] = clampUnit([Math.max(a[0], b[0]), Math.max(a[1], b[1])])
+  return [x0, y0, Math.max(x1, x0 + 0.005), Math.max(y1, y0 + 0.005)]
+}
+
+function SelectionGuide({
+  mask,
+  px,
+}: {
+  mask: SemanticMask
+  px: (p: readonly number[]) => Point
+}) {
+  const box = mask.box
+  const [x0, y0] = box ? px(box.slice(0, 2)) : [0, 0]
+  const [x1, y1] = box ? px(box.slice(2)) : [0, 0]
+  return (
+    <g className="guide">
+      {box && (
+        <rect
+          x={x0}
+          y={y0}
+          width={x1 - x0}
+          height={y1 - y0}
+          className="dashed"
+        />
+      )}
+      {mask.points.map((p, i) => {
+        const [cx, cy] = px([p.x, p.y])
+        return (
+          <circle
+            key={i}
+            cx={cx}
+            cy={cy}
+            r={6}
+            className={`handle ${p.include ? 'include' : 'exclude'}`}
+          />
+        )
+      })}
+    </g>
+  )
 }
 
 /** Keep positions within what the server accepts. */

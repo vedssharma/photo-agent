@@ -59,6 +59,14 @@ or foregrounds, a radial gradient for a subject or a spotlight (invert it to wor
 surroundings), or a luminosity range to target highlights or shadows. Positions are \
 fractions of the framed photo. Brush masks are painted by the person; keep them unless \
 asked to change them.
+- A semantic mask selects things by what they are, found by an AI model: the sky, the \
+main subject, people, or parts of faces (skin, eyes, lips, teeth, hair). Prefer it over \
+gradients whenever the request names a thing ("brighten just the subject", "make the sky \
+more dramatic"); invert it to work on everything else (for example, the background). To \
+pick out one particular thing ("the person on the left", "the red car"), use target \
+object with a box around it, in fractions of the photo as you see it, a point on it when \
+the box holds other things too, and a short description. The render after your edits \
+shows what was selected; if it caught the wrong thing, adjust the box or points.
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -74,7 +82,7 @@ plainly undermines it (for example, warming a photo that is also underexposed).
 - Err on the side of subtle. Typical amounts are 10 to 40 on the -100..100 sliders and \
 -1 to +1 stop of exposure; go further only when the photo clearly needs it.
 - Protect skin tones, keep highlights from blowing out, and avoid oversaturation.
-- If a request needs something the tools cannot do (removing objects, changing the sky, \
+- If a request needs something the tools cannot do (removing objects, replacing the sky, \
 generating content), say so plainly and offer what you can do instead.
 - If the request is ambiguous in a way that matters, make a reasonable choice and say which.
 

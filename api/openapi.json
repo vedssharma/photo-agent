@@ -1940,6 +1940,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/LuminosityMask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SemanticMask"
                   }
                 ],
                 "discriminator": {
@@ -1948,7 +1951,8 @@
                     "brush": "#/components/schemas/BrushMask",
                     "linear": "#/components/schemas/LinearGradientMask",
                     "luminosity": "#/components/schemas/LuminosityMask",
-                    "radial": "#/components/schemas/RadialGradientMask"
+                    "radial": "#/components/schemas/RadialGradientMask",
+                    "semantic": "#/components/schemas/SemanticMask"
                   }
                 }
               },
@@ -2525,6 +2529,111 @@
         ],
         "title": "Saturation",
         "description": "Uniformly increase or decrease color intensity; -100 makes black and white."
+      },
+      "SelectPoint": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "include": {
+            "type": "boolean",
+            "title": "Include",
+            "description": "False marks a spot that is not part of it.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "SelectPoint"
+      },
+      "SemanticMask": {
+        "properties": {
+          "invert": {
+            "type": "boolean",
+            "title": "Invert",
+            "description": "Swap where the layer applies and where it does not.",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "semantic",
+            "title": "Kind",
+            "default": "semantic"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "subject",
+              "people",
+              "sky",
+              "object",
+              "skin",
+              "face",
+              "eyes",
+              "lips",
+              "teeth",
+              "hair"
+            ],
+            "title": "Target",
+            "description": "subject: the main subject, as a cutout would keep it; people: every person; sky; object: one thing you point at with `box` and/or `points` (a particular person, a dog, a car); and parts of faces for portraits: skin (face and visible skin), face, eyes, lips, teeth, hair."
+          },
+          "box": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number",
+                  "maximum": 1.0,
+                  "minimum": 0.0
+                },
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box",
+            "description": "For object: [left, top, right, bottom] around it, fractions of the photo."
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SelectPoint"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Points",
+            "description": "For object: spots on it (or, with include false, not).",
+            "default": []
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Description",
+            "description": "What is selected, in plain words: \"the dog\".",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "title": "SemanticMask",
+        "description": "Selects something by what it is, found by an AI model: the sky, the main subject,\npeople, a particular object, or parts of a face. For `object`, give a `box` around it\n(and optionally `points` on it), in fractions of the photo as you see it."
       },
       "Shadows": {
         "properties": {

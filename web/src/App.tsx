@@ -26,7 +26,12 @@ import { type SocketFactory, useChat } from './hooks/useChat'
 import { jobText, useJobs } from './hooks/useJobs'
 import { useManualEdit } from './hooks/useManualEdit'
 import { useOperationSpecs } from './hooks/useOperationSpecs'
-import { DEFAULT_MASK_TOOL, type MaskTool, isDrawn } from './lib/masks'
+import {
+  DEFAULT_MASK_TOOL,
+  EMPTY_OBJECT,
+  type MaskTool,
+  isDrawn,
+} from './lib/masks'
 import { liveTarget } from './lib/livePreview'
 import { type Preview, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
@@ -100,8 +105,16 @@ function Editor({
   const locked = chat.busy
   const job = useJobs(doc.id, chat.busy || manual.working)
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
-  const mask = layer?.mask ?? null
-  const showOverlay = layer && mask && (isDrawn(mask.kind) || maskTool.show)
+  // Picking an object starts from an empty selection that the first click fills in.
+  const picking =
+    maskTool.picking &&
+    !(layer?.mask?.kind === 'semantic' && layer.mask.target === 'object')
+  const mask = picking ? EMPTY_OBJECT : (layer?.mask ?? null)
+  const showOverlay = layer && mask && (isDrawn(mask) || maskTool.show)
+  const select = (layerId: string | null) => {
+    setSelectedLayer(layerId)
+    setMaskTool((tool) => ({ ...tool, picking: false }))
+  }
   // A slider being dragged, shown instantly until the server's render of it arrives.
   const [preview, setPreview] = useState<
     (Preview & { revision: string }) | null
@@ -118,7 +131,7 @@ function Editor({
           onEdit={manual.edit}
           disabled={locked}
           selected={selectedLayer}
-          onSelect={setSelectedLayer}
+          onSelect={select}
           maskTool={maskTool}
           onMaskTool={setMaskTool}
           specs={specs}

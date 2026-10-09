@@ -29,7 +29,7 @@ from photo_agent.layers import EditState, Layer
 from photo_agent.render import RenderCache, render_layer_mask
 from photo_agent.settings import Settings, get_settings
 from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
-from photo_agent.vision.backends import WorkerConfig
+from photo_agent.vision.backends import BackendMode, WorkerConfig
 from photo_agent.vision.worker import JobStatus, Mode, ModelWorker
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
@@ -40,30 +40,6 @@ previews = RenderCache()
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
 recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
-
-
-@lru_cache
-def _store_for(data_dir: Path) -> DocumentStore:
-    return DocumentStore(data_dir)
-
-
-def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentStore:
-    return _store_for(settings.data_dir)
-
-
-Store = Annotated[DocumentStore, Depends(get_store)]
-
-
-@lru_cache
-def _recipes_for(data_dir: Path) -> recipes.RecipeStore:
-    return recipes.RecipeStore(data_dir)
-
-
-def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes.RecipeStore:
-    return _recipes_for(settings.data_dir)
-
-
-Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
 
 
 @lru_cache
@@ -81,6 +57,30 @@ def get_worker(settings: Annotated[Settings, Depends(get_settings)]) -> ModelWor
 
 
 Worker = Annotated[ModelWorker, Depends(get_worker)]
+
+
+@lru_cache
+def _store_for(data_dir: Path, worker: ModelWorker, backends: BackendMode) -> DocumentStore:
+    return DocumentStore(data_dir, worker=worker, backends=backends)
+
+
+def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentStore:
+    return _store_for(settings.data_dir, get_worker(settings), settings.model_backends)
+
+
+Store = Annotated[DocumentStore, Depends(get_store)]
+
+
+@lru_cache
+def _recipes_for(data_dir: Path) -> recipes.RecipeStore:
+    return recipes.RecipeStore(data_dir)
+
+
+def get_recipes(settings: Annotated[Settings, Depends(get_settings)]) -> recipes.RecipeStore:
+    return _recipes_for(settings.data_dir)
+
+
+Recipes = Annotated[recipes.RecipeStore, Depends(get_recipes)]
 
 
 def load(store: DocumentStore, doc_id: str) -> Document:
@@ -235,6 +235,7 @@ def edit_by_hand(doc_id: str, edit: ManualEdit, store: Store) -> DocumentView:
     doc = load(store, doc_id)
     if doc.edit_by_hand(edit.label, edit.state, edit.coalesce):
         store.save(doc)
+        warm_preview(store, doc)
     return DocumentView.of(doc)
 
 
@@ -252,6 +253,7 @@ def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> D
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None
     if doc.edit_by_hand(f"Apply recipe “{recipe.name}”", recipes.apply(recipe, doc.state)):
         store.save(doc)
+        warm_preview(store, doc)
     return DocumentView.of(doc)
 
 
@@ -386,6 +388,13 @@ def list_jobs(doc_id: str, store: Store, worker: Worker) -> list[JobStatus]:
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
     loaded = store.image(doc.id)
     return previews.get_or_render(doc.id, loaded.proxy, doc.state, loaded.proxy_context)
+
+
+def warm_preview(store: DocumentStore, doc: Document) -> None:
+    """Render the new state before answering, so any model jobs it needs (finding the sky,
+    say) run while the change is in flight and show their progress, and the preview the
+    browser asks for next is already cached."""
+    render_preview(store, doc)
 
 
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:
