@@ -33,7 +33,7 @@ import {
   isDrawn,
 } from './lib/masks'
 import { liveTarget } from './lib/livePreview'
-import { type Preview, updateLayer } from './lib/state'
+import { CUTOUT, type Preview, setCutout, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
 import { RecentProjects } from './components/RecentProjects'
 import { RecipesPanel } from './components/RecipesPanel'
@@ -105,12 +105,22 @@ function Editor({
   const locked = chat.busy
   const job = useJobs(doc.id, chat.busy || manual.working)
   const layer = doc.state.layers.find((l) => l.id === selectedLayer) ?? null
+  const cutout = doc.state.cutout ?? null
+  // What the mask tools work on: the selected layer's mask, or the cutout's.
+  const target =
+    selectedLayer === CUTOUT && cutout
+      ? { id: CUTOUT, name: 'the cutout', mask: cutout.mask ?? null }
+      : layer && {
+          id: layer.id,
+          name: `“${layer.name}”`,
+          mask: layer.mask ?? null,
+        }
   // Picking an object starts from an empty selection that the first click fills in.
   const picking =
     maskTool.picking &&
-    !(layer?.mask?.kind === 'semantic' && layer.mask.target === 'object')
-  const mask = picking ? EMPTY_OBJECT : (layer?.mask ?? null)
-  const showOverlay = layer && mask && (isDrawn(mask) || maskTool.show)
+    !(target?.mask?.kind === 'semantic' && target.mask.target === 'object')
+  const mask = picking ? EMPTY_OBJECT : (target?.mask ?? null)
+  const showOverlay = target && mask && (isDrawn(mask) || maskTool.show)
   const select = (layerId: string | null) => {
     setSelectedLayer(layerId)
     setMaskTool((tool) => ({ ...tool, picking: false }))
@@ -202,21 +212,24 @@ function Editor({
                     )}
                     {showOverlay && (
                       <MaskOverlay
-                        key={`${layer.id}:${doc.revision}`}
+                        key={`${target.id}:${doc.revision}`}
                         mask={mask}
                         width={frame.width}
                         height={frame.height}
                         tool={maskTool}
                         maskSrc={
                           maskTool.show
-                            ? layerMaskUrl(doc, layer.id)
+                            ? layerMaskUrl(doc, target.id)
                             : undefined
                         }
                         onChange={(next, label) =>
                           manual.edit(
-                            `${label} on “${layer.name}”`,
-                            (s) => updateLayer(s, layer.id, { mask: next }),
-                            `layer:${layer.id}:mask:draw`,
+                            `${label} on ${target.name}`,
+                            (s) =>
+                              target.id === CUTOUT
+                                ? setCutout(s, (c) => ({ ...c, mask: next }))
+                                : updateLayer(s, target.id, { mask: next }),
+                            `layer:${target.id}:mask:draw`,
                           )
                         }
                       />

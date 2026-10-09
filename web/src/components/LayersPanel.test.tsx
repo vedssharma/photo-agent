@@ -275,3 +275,17 @@ describe('LayersPanel removal', () => {
     })
   })
 })
+
+describe('LayersPanel cutout', () => {
+  it('removes the background, keeping the main subject', async () => {
+    const { sent, onSelect } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Cut out' }))
+    expect(sent[0].label).toBe('Remove the background')
+    expect(sent[0].state.cutout).toMatchObject({
+      visible: true,
+      background: null,
+      mask: { kind: 'semantic', target: 'subject' },
+    })
+    expect(onSelect).toHaveBeenCalledWith('cutout')
+  })
+})

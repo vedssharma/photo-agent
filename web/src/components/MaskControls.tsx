@@ -1,4 +1,4 @@
-import type { Layer, Mask } from '../api/documents'
+import type { Mask } from '../api/documents'
 import {
   MASK_KINDS,
   type MaskTool,
@@ -12,7 +12,11 @@ import {
 import { Slider } from './Slider'
 
 interface Props {
-  layer: Layer
+  /** What the mask belongs to, for history labels (a layer's name, or "the cutout"). */
+  name: string
+  mask: Mask | null
+  /** The mask cannot be removed (a cutout always keeps something). */
+  required?: boolean
   disabled?: boolean
   tool: MaskTool
   onTool: (tool: MaskTool) => void
@@ -22,17 +26,16 @@ interface Props {
 
 const pct = (v: number) => `${Math.round(v)}%`
 
-/** Choose and tune the selected layer's mask. Brushes and gradients are drawn on the photo. */
+/** Choose and tune a mask. Brushes, gradients, and object selections are drawn on the photo. */
 export function MaskControls({
-  layer,
+  name,
+  mask,
+  required = false,
   disabled = false,
   tool,
   onTool,
   onMask,
 }: Props) {
-  const mask = layer.mask ?? null
-  const name = `“${layer.name}”`
-
   function setChoice(choice: string) {
     onTool({ ...tool, picking: false })
     if (choice === '') return onMask(null, `Remove mask from ${name}`)
@@ -64,7 +67,7 @@ export function MaskControls({
       <label className="field">
         <span>Mask</span>
         <select value={choice} onChange={(e) => setChoice(e.target.value)}>
-          <option value="">None (whole photo)</option>
+          {!required && <option value="">None (whole photo)</option>}
           {MASK_KINDS.map((m) => (
             <option key={m.kind} value={m.kind}>
               {m.label}

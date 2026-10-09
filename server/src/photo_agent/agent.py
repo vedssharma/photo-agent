@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
-from photo_agent.layers import BLEND_MODE_HELP, EditState, Layer, new_layer_id
+from photo_agent.layers import BLEND_MODE_HELP, Cutout, EditState, Layer, new_layer_id
 from photo_agent.masks import describe_mask
 from photo_agent.operations import (
     GEOMETRY_TYPES,
@@ -73,6 +73,9 @@ for it ("Remove the person on the left") with a mask selecting it, usually a sem
 object with a box, then call remove. It must be the only operation in that layer. Removal \
 layers apply first, before any adjustment, wherever they sit in the stack. Check the \
 render: if traces remain (an outline, a shadow), raise grow or widen the selection.
+- To remove the background or cut out the subject, call cut_out: by default it keeps \
+the main subject on a transparent background (the person downloads a PNG); give a color \
+such as "#ffffff" for a clean product shot, or a different mask to keep something else.
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.
@@ -311,6 +314,33 @@ def tool_definitions() -> list[BetaToolParam]:
             "eager_input_streaming": True,
         }
     )
+    cutout_schema = Cutout.model_json_schema()
+    cutout_props = {k: v for k, v in cutout_schema["properties"].items() if k != "visible"}
+    cut_out_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": cutout_props,
+        "additionalProperties": False,
+    }
+    if "$defs" in cutout_schema:
+        cut_out_schema["$defs"] = _referenced_defs(cutout_props, cutout_schema["$defs"])
+    tools.append(
+        {
+            "name": "cut_out",
+            "description": "Remove the background: keep only what the mask selects (by "
+            "default the main subject, found by an AI model) and make the rest transparent, "
+            "or a solid color. Replaces any earlier cutout.",
+            "input_schema": _plain_unions(cut_out_schema),
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
+            "name": "restore_background",
+            "description": "Undo the cutout and bring the background back.",
+            "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "eager_input_streaming": True,
+        }
+    )
     tools.append(
         {
             "name": "update_operation",
@@ -369,6 +399,8 @@ class Editor:
             "add_layer": self._add_layer,
             "update_layer": self._update_layer,
             "remove_layer": self._remove_layer,
+            "cut_out": self._cut_out,
+            "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
             return handler(args)
@@ -467,6 +499,25 @@ class Editor:
             action="updated", summary=f"Layer: {updated.name} ({describe_layer(updated)})"
         )
 
+    def _cut_out(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            cutout = Cutout.model_validate({k: v for k, v in args.items() if k != "visible"})
+        except ValidationError as exc:
+            raise ToolError(f"Invalid cutout: {_problems(exc)}") from None
+        self.state.cutout = cutout
+        background = cutout.background or "transparent"
+        return f"Cut out with a {background} background.", OperationEvent(
+            action="added", summary=f"Background removed ({background})"
+        )
+
+    def _restore_background(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        if self.state.cutout is None:
+            raise ToolError("There is no cutout to undo.")
+        self.state.cutout = None
+        return "Restored the background.", OperationEvent(
+            action="removed", summary="Background removal"
+        )
+
     def _remove_layer(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
         layer = self._find_layer(args.get("id"))
         self.state.layers.remove(layer)
@@ -532,6 +583,14 @@ def describe_state(state: EditState) -> str:
             lines += [f"    {_op_json(op)}" for op in layer.operations] or ["    (empty)"]
     else:
         lines.append("Layers: none.")
+    cutout = state.cutout
+    if cutout is not None:
+        hidden = "" if cutout.visible else " (hidden)"
+        background = cutout.background or "transparent"
+        lines.append(
+            f"Cutout{hidden}, applied last: keeps the {describe_mask(cutout.mask)}, "
+            f"{background} background."
+        )
     return "\n".join(lines)
 
 

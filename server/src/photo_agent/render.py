@@ -73,13 +73,44 @@ def render(pixels: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) 
 
 def render_state(pixels: Array, state: EditState, ctx: RenderContext) -> Array:
     """Apply the framing, then the removal layers, then blend in each visible adjustment
-    layer from the bottom up."""
+    layer from the bottom up. A cutout's background shows as its color, or as a
+    checkerboard where it is transparent."""
+    rgb, alpha = render_cutout(pixels, state, ctx)
+    if alpha is None or state.cutout is None:
+        return rgb
+    backdrop = _backdrop(rgb.shape[:2], state.cutout.background)
+    return cast(Array, backdrop + (rgb - backdrop) * alpha[..., None])
+
+
+def render_cutout(
+    pixels: Array, state: EditState, ctx: RenderContext
+) -> tuple[Array, Array | None]:
+    """The rendered photo and, when a visible cutout is set, its alpha (1 keeps a pixel)."""
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)
     out = _apply_removals(out, state.layers, ctx)
     for layer in state.layers:
         out = _apply_layer(out, layer, ctx)
-    return np.clip(out, 0.0, 1.0, out=out)
+    out = np.clip(out, 0.0, 1.0, out=out)
+    if state.cutout is None or not state.cutout.visible:
+        return out, None
+    return out, np.clip(ctx.mask(state.cutout.mask, out), 0.0, 1.0)
+
+
+CHECKER = (0.8, 0.6)
+"""Light and dark squares behind a transparent background in previews."""
+
+
+def _backdrop(shape: tuple[int, int], color: str | None) -> Array:
+    h, w = shape
+    if color is not None:
+        rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        return np.broadcast_to(np.array(rgb, np.float32), (h, w, 3)).astype(np.float32)
+    cell = max(4, round(max(h, w) * 0.015))
+    ys, xs = np.mgrid[0:h, 0:w]
+    dark = ((ys // cell + xs // cell) % 2).astype(bool)
+    gray = np.where(dark, CHECKER[1], CHECKER[0]).astype(np.float32)
+    return np.repeat(gray[..., None], 3, axis=2)
 
 
 def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
@@ -91,6 +122,9 @@ def _apply_layer(x: Array, layer: Layer, ctx: RenderContext) -> Array:
         weight = ctx.mask(layer.mask, x)[..., None] * weight
     return cast(Array, x + (adjusted - x) * weight)
 
+
+CUTOUT_ID = "cutout"
+"""Stands for the cutout where a layer id is expected (layer ids start with "L")."""
 
 REMOVAL_THRESHOLD = 0.35
 """Where a removal layer's mask is at least this strong, the photo is filled in."""
@@ -126,7 +160,18 @@ def _apply_removals(x: Array, layers: Sequence[Layer], ctx: RenderContext) -> Ar
 
 
 def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: RenderContext) -> Array:
-    """Where a layer applies (0..1 per pixel), for showing its mask. Raises KeyError."""
+    """Where a layer applies (0..1 per pixel), for showing its mask. The id "cutout" shows
+    what the cutout keeps. Raises KeyError."""
+    if layer_id == CUTOUT_ID:
+        if state.cutout is None:
+            raise KeyError(layer_id)
+        _, alpha = render_cutout(
+            pixels,
+            state.model_copy(update={"cutout": state.cutout.model_copy(update={"visible": True})}),
+            ctx,
+        )
+        assert alpha is not None
+        return alpha
     target = state.layer(layer_id)
     ctx = replace(ctx, framing=tuple(state.framing))
     out = apply_operations(pixels.astype(np.float32, copy=True), state.framing, ctx)

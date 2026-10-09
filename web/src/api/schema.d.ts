@@ -650,6 +650,28 @@ export interface components {
             aspect: "free" | "original" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
         };
         /**
+         * Cutout
+         * @description Keeps only what the mask selects (the main subject unless told otherwise) and
+         *     replaces everything else with transparency or a solid color.
+         */
+        Cutout: {
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Mask
+             * @description What to keep.
+             */
+            mask?: components["schemas"]["BrushMask"] | components["schemas"]["LinearGradientMask"] | components["schemas"]["RadialGradientMask"] | components["schemas"]["LuminosityMask"] | components["schemas"]["SemanticMask"];
+            /**
+             * Background
+             * @description Null for a transparent background (PNG export), or a color like "#ffffff".
+             */
+            background?: string | null;
+        };
+        /**
          * Dehaze
          * @description Cut through haze or fog (positive), or add atmosphere (negative).
          */
@@ -746,6 +768,7 @@ export interface components {
              * @default []
              */
             layers: components["schemas"]["Layer"][];
+            cutout?: components["schemas"]["Cutout"] | null;
         };
         /** ExportOptions */
         ExportOptions: {

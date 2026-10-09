@@ -4,6 +4,7 @@ import type { components } from './schema'
 export type DocumentView = components['schemas']['DocumentView']
 export type EditState = components['schemas']['EditState']
 export type Layer = components['schemas']['Layer']
+export type Cutout = components['schemas']['Cutout']
 export type BlendMode = Layer['blend_mode']
 export type Mask = NonNullable<Layer['mask']>
 export type MaskKind = Mask['kind']

@@ -1302,6 +1302,63 @@
         "title": "Crop",
         "description": "Crop to a region of the current frame, optionally locked to an aspect ratio.\n\nThe box is given as fractions of the current width and height (0 = left/top edge,\n1 = right/bottom edge). With an aspect ratio, the result is the largest rectangle of that\nratio centered inside the box, so a full-frame box plus \"4:5\" is a centered Instagram crop."
       },
+      "Cutout": {
+        "properties": {
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "mask": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BrushMask"
+              },
+              {
+                "$ref": "#/components/schemas/LinearGradientMask"
+              },
+              {
+                "$ref": "#/components/schemas/RadialGradientMask"
+              },
+              {
+                "$ref": "#/components/schemas/LuminosityMask"
+              },
+              {
+                "$ref": "#/components/schemas/SemanticMask"
+              }
+            ],
+            "title": "Mask",
+            "description": "What to keep.",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "brush": "#/components/schemas/BrushMask",
+                "linear": "#/components/schemas/LinearGradientMask",
+                "luminosity": "#/components/schemas/LuminosityMask",
+                "radial": "#/components/schemas/RadialGradientMask",
+                "semantic": "#/components/schemas/SemanticMask"
+              }
+            }
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background",
+            "description": "Null for a transparent background (PNG export), or a color like \"#ffffff\"."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Cutout",
+        "description": "Keeps only what the mask selects (the main subject unless told otherwise) and\nreplaces everything else with transparency or a solid color."
+      },
       "Dehaze": {
         "properties": {
           "id": {
@@ -1560,6 +1617,16 @@
             "type": "array",
             "title": "Layers",
             "default": []
+          },
+          "cutout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cutout"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,

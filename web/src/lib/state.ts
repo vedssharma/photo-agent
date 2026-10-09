@@ -1,9 +1,12 @@
-import type { EditState, Layer } from '../api/documents'
+import type { Cutout, EditState, Layer } from '../api/documents'
 
 /** Helpers that return an updated copy of an edit state, for manual edits. */
 
 /** Selection value for the framing section (layer ids always start with "L"). */
 export const FRAMING = 'framing'
+
+/** Selection value for the cutout; the server takes it as a layer id for its mask. */
+export const CUTOUT = 'cutout'
 
 /** A slider being dragged, for live previews before the change is committed. */
 export interface Preview {
@@ -74,6 +77,7 @@ export function updateOperation(
   const update = <T extends AnyOperation>(op: T): T =>
     op.id === opId ? ({ ...op, ...changes } as T) : op
   return {
+    ...state,
     framing: state.framing.map(update),
     layers: state.layers.map((layer) => ({
       ...layer,
@@ -84,6 +88,7 @@ export function updateOperation(
 
 export function removeOperation(state: EditState, opId: string): EditState {
   return {
+    ...state,
     framing: state.framing.filter((op) => op.id !== opId),
     layers: state.layers.map((layer) => ({
       ...layer,
@@ -114,4 +119,14 @@ export function addOperation(
 /** Add an empty layer on top of the stack. */
 export function addLayer(state: EditState, layer: Layer): EditState {
   return { ...state, layers: [...state.layers, layer] }
+}
+
+/** Set, change, or (with null) remove the cutout. */
+export function setCutout(
+  state: EditState,
+  cutout: Cutout | null | ((current: Cutout) => Cutout),
+): EditState {
+  if (typeof cutout === 'function')
+    return state.cutout ? { ...state, cutout: cutout(state.cutout) } : state
+  return { ...state, cutout }
 }

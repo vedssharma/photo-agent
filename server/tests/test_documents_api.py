@@ -20,7 +20,7 @@ def test_upload_heic_creates_a_document(upload: Upload, settings: Settings) -> N
     assert doc["filename"] == "phone.heic"
     assert doc["format"] == "HEIF"
     assert (doc["width"], doc["height"]) == (451, 300)
-    assert doc["state"] == {"framing": [], "layers": []}
+    assert doc["state"] == {"framing": [], "layers": [], "cutout": None}
     assert doc["revision"] == "original"
     assert (settings.data_dir / "documents" / doc["id"] / "original.heic").is_file()
 

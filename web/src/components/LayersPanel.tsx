@@ -8,6 +8,7 @@ import type { OperationSpec } from '../api/operations'
 import type { EditFn } from '../hooks/useManualEdit'
 import type { MaskTool } from '../lib/masks'
 import {
+  CUTOUT,
   FRAMING,
   addLayer,
   addOperation,
@@ -17,6 +18,7 @@ import {
   type Preview,
   removeLayer,
   removeOperation,
+  setCutout,
   updateLayer,
   updateOperation,
 } from '../lib/state'
@@ -113,6 +115,30 @@ export function LayersPanel({
     )
   }
 
+  const cutout = state.cutout ?? null
+  const BACKGROUNDS: { value: string; label: string }[] = [
+    { value: '', label: 'Transparent' },
+    { value: '#ffffff', label: 'White' },
+    { value: '#000000', label: 'Black' },
+  ]
+
+  function cutOut() {
+    onSelect(CUTOUT)
+    void apply('Remove the background', (s) =>
+      setCutout(s, {
+        visible: true,
+        background: null,
+        mask: {
+          kind: 'semantic',
+          target: 'subject',
+          points: [],
+          description: '',
+          invert: false,
+        },
+      }),
+    )
+  }
+
   /** A removal layer, waiting for a click on what to remove. */
   function removeSomething() {
     const layer: Layer = {
@@ -155,6 +181,17 @@ export function LayersPanel({
     <section className="panel layers-panel" aria-label="Layers">
       <div className="panel-head">
         <h2>Layers</h2>
+        {!cutout && (
+          <button
+            type="button"
+            className="icon"
+            disabled={locked}
+            title="Keep the subject and remove the background"
+            onClick={cutOut}
+          >
+            Cut out
+          </button>
+        )}
         <button
           type="button"
           className="icon"
@@ -179,6 +216,127 @@ export function LayersPanel({
         </p>
       )}
       <ol className="layer-list">
+        {cutout && (
+          <li
+            className={`layer cutout${selected === CUTOUT ? ' selected' : ''}${cutout.visible ? '' : ' hidden'}`}
+          >
+            <div className="layer-head">
+              <input
+                type="checkbox"
+                checked={cutout.visible}
+                disabled={locked}
+                aria-label="Show background removal"
+                onChange={(e) =>
+                  apply(
+                    e.target.checked
+                      ? 'Remove the background again'
+                      : 'Show the background',
+                    (s) =>
+                      setCutout(s, (c) => ({
+                        ...c,
+                        visible: e.target.checked,
+                      })),
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="layer-name"
+                aria-expanded={selected === CUTOUT}
+                onClick={() => onSelect(selected === CUTOUT ? null : CUTOUT)}
+              >
+                Background removed
+              </button>
+              <button
+                type="button"
+                className="icon"
+                aria-label="Bring back the background"
+                disabled={locked}
+                onClick={() => {
+                  if (selected === CUTOUT) onSelect(null)
+                  void apply('Bring back the background', (s) =>
+                    setCutout(s, null),
+                  )
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {selected === CUTOUT && (
+              <div className="layer-body">
+                <label className="field">
+                  <span>Background</span>
+                  <select
+                    value={
+                      BACKGROUNDS.some(
+                        (b) => b.value === (cutout.background ?? ''),
+                      )
+                        ? (cutout.background ?? '')
+                        : 'custom'
+                    }
+                    disabled={locked}
+                    onChange={(e) => {
+                      const value =
+                        e.target.value === 'custom'
+                          ? '#808080'
+                          : e.target.value || null
+                      void apply(
+                        `Background: ${e.target.selectedOptions[0]?.text ?? value}`,
+                        (s) =>
+                          setCutout(s, (c) => ({ ...c, background: value })),
+                      )
+                    }}
+                  >
+                    {BACKGROUNDS.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                    <option value="custom">Color…</option>
+                  </select>
+                </label>
+                {cutout.background &&
+                  !BACKGROUNDS.some((b) => b.value === cutout.background) && (
+                    <label className="field">
+                      <span>Color</span>
+                      <input
+                        type="color"
+                        value={cutout.background}
+                        disabled={locked}
+                        onChange={(e) =>
+                          apply(
+                            `Background color ${e.target.value}`,
+                            (s) =>
+                              setCutout(s, (c) => ({
+                                ...c,
+                                background: e.target.value,
+                              })),
+                            'cutout:color',
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                <MaskControls
+                  name="the cutout"
+                  mask={cutout.mask ?? null}
+                  required
+                  disabled={locked}
+                  tool={maskTool}
+                  onTool={onMaskTool}
+                  onMask={(mask, label, key) =>
+                    mask &&
+                    apply(
+                      label,
+                      (s) => setCutout(s, (c) => ({ ...c, mask })),
+                      key ? `cutout:mask:${key}` : undefined,
+                    )
+                  }
+                />
+              </div>
+            )}
+          </li>
+        )}
         {topFirst.map((layer, i) => {
           const isSelected = layer.id === selected
           const removes = layer.operations.some((op) => op.op === 'remove')
@@ -300,7 +458,8 @@ export function LayersPanel({
                     </p>
                   )}
                   <MaskControls
-                    layer={layer}
+                    name={`“${layer.name}”`}
+                    mask={layer.mask ?? null}
                     disabled={locked}
                     tool={maskTool}
                     onTool={onMaskTool}
