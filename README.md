@@ -23,13 +23,16 @@ Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it f
 
 1. Open a JPEG, PNG, or HEIC photo (choose one or drop it on the page).
 2. Tell the agent what you want, e.g. "make this look warmer and less washed out, and crop it for Instagram". It streams its reply and lists the edits as it makes them. Each request becomes its own layer.
-3. Fine-tune in **Layers**: hide a layer, change its opacity or blend mode, drag any adjustment's slider (light and color sliders preview instantly), add adjustments by hand, or limit a layer to part of the photo with a mask (paint with a brush, or use a linear gradient, radial gradient, or brightness range).
-4. **History** lists every agent turn and manual change as a named step. Click one to go back to it; editing from there starts a new branch and keeps the old one. **Undo** / **Redo** (Ctrl/⌘+Z, Shift+Ctrl/⌘+Z) step along the current branch.
-5. **Recipes** saves a photo's layers as a named look, to apply to other photos in one click. Crops and painted masks stay with the photo they were made for.
-6. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
-7. **Download** renders the edits at full resolution as JPEG or PNG. Camera EXIF is kept; GPS location is removed unless you ask to keep it.
+3. Fine-tune in **Layers**: hide a layer, change its opacity or blend mode, drag any adjustment's slider (light and color sliders preview instantly), add adjustments by hand, or limit a layer to part of the photo with a mask (paint with a brush, use a linear gradient, radial gradient, or brightness range, or let AI find the sky, the subject, people, parts of a face, or any object you click). Tick **Touch up with brush** to paint in what an AI selection missed or erase what it caught by mistake.
+4. One-click tools: **Remove…** then click a person or thing to erase it from the photo; **Cut out** keeps the subject on a transparent background (download as PNG) or a solid color; **Retouch** smooths skin, heals blemishes, and brightens eyes and teeth, subtly; **Auto straighten** (under Crop & rotate) levels the horizon and squares up leaning buildings. The agent can do all of these too: "remove the person on the left and make the sky bluer".
+5. **History** lists every agent turn and manual change as a named step. Click one to go back to it; editing from there starts a new branch and keeps the old one. **Undo** / **Redo** (Ctrl/⌘+Z, Shift+Ctrl/⌘+Z) step along the current branch.
+6. **Recipes** saves a photo's layers as a named look, to apply to other photos in one click. Crops and painted masks stay with the photo they were made for.
+7. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
+8. **Download** renders the edits at full resolution as JPEG or PNG. Camera EXIF is kept; GPS location is removed unless you ask to keep it.
 
 Your work is autosaved in the browser: close the tab and the project reopens where you left off, and the start page lists recent projects. The start page has two options: **Choose a photo** to start fresh, or **Open a project** to reopen a saved `.photoagent` file. **Save project** downloads a `.photoagent` file (the original plus every layer and the full history) that you can open again later, here or on another computer.
+
+AI models are optional. Without them, AI selections, removal, and cutouts use rougher classical fallbacks so everything still works; for model quality run `cd server && uv sync --extra models` (PyTorch, Transformers, ONNX Runtime). Weights download from the Hugging Face Hub on first use into `.data/models/` and run on your GPU (CUDA or Apple MPS) when there is one, else the CPU. See [docs/architecture.md](docs/architecture.md#ai-local-edits-phase-3) for the models and their licenses, and `.env.example` for the settings.
 
 Photos and their edit histories are kept in `.data/` at the repo root. A downsized preview of the photo is sent to Claude with each request so the agent can see it; the original never leaves your computer. Set `ANTHROPIC_MODEL` in `.env` to use a different Claude model.
 

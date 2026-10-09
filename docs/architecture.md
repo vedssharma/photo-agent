@@ -5,7 +5,7 @@ photo-agent is a monorepo with two halves:
 | Path | What | Stack |
 | --- | --- | --- |
 | `web/` | Browser app: chat, canvas, layers, history, recipes | Vite, React, TypeScript |
-| `server/` | Agent service, edit graph, render engine, model workers | Python, FastAPI, uv |
+| `server/` | Agent service, edit graph, render engine, model worker | Python, FastAPI, uv |
 | `api/` | OpenAPI contract, generated from the server; the web client types are generated from it | JSON |
 | `docs/` | Design notes | Markdown |
 
@@ -59,3 +59,41 @@ PhotoPicker  ── POST /api/projects ──────▶ projects.py   reope
 **Projects (`projects.py`).** A `.photoagent` file is a zip of `manifest.json`, `document.json` (the step tree and chat), and the untouched original. Reopening keeps the document id when it is free. The browser autosaves the graph and the original to IndexedDB after each change (up to 8 projects) and remembers the open project, so a closed tab reopens where it was, even if the server's data folder was cleared.
 
 **Recipes (`recipes.py`).** A recipe is a named copy of a document's layers. Saving drops brush masks, since they only fit the photo they were painted on; framing is never part of a recipe. Applying one adds its layers on top, with fresh ids, as one manual step.
+
+## AI local edits (Phase 3)
+
+```
+Browser                                     Backend (server/src/photo_agent)
+───────                                     ─────────────────────────────────
+MaskControls, MaskOverlay ─ POST …/edits ─▶ masks.py           semantic masks: what to select, plus touch-ups
+PhotoCanvas badge ── GET …/jobs ──────────▶ vision/worker.py   model jobs with progress, in their own process
+LayersPanel: Cut out, Remove…              vision/selection.py run, cache, and look up model results
+LayersPanel: Retouch ── POST …/retouch ───▶ portrait.py        skin, eyes, and teeth layers
+Crop & rotate ── POST …/straighten ───────▶ geometry.py        tilt and converging verticals from line segments
+GET /api/models                             vision/tasks.py    which backend serves each task
+```
+
+**Model worker (`vision/worker.py`, `vision/tasks.py`).** Models run in a separate process (a thread in tests, `MODEL_WORKER=inline`), so a slow or crashing model never blocks the API. Each task (segment the sky, the subject, people, an object; parse faces; inpaint) lists backends best first: an open-source model from the Hugging Face Hub when the optional `models` extra is installed (`uv sync --extra models`), then a classical OpenCV fallback that always works. A model that fails to load or run is set aside and the next backend takes over. Weights download once into `MODEL_DIR` (default `.data/models`) and stay loaded between jobs; `MODEL_DEVICE` picks CUDA, Apple MPS, or CPU. The browser polls `GET …/jobs` while a render waits on the worker and shows the job and its progress over the photo. `GET /api/models` reports which backend serves each task.
+
+| Task | Model (license) | Fallback |
+| --- | --- | --- |
+| Object at a click or box | SAM 2.1 hiera-small (Apache-2.0) | GrabCut in the box |
+| Sky, people | UperNet ConvNeXt on ADE20K (MIT) | color, texture, and position; skin-color faces |
+| Main subject, cutouts | BiRefNet (MIT) | GrabCut on the center |
+| Face parts | SegFormer face parsing (CelebAMask-HQ, non-commercial) | skin-color face finder with fixed proportions |
+| Removal fill | LaMa, ONNX export (Apache-2.0) | multi-scale Telea inpainting with matched grain |
+
+The face-parsing weights are the one non-commercial dependency; swap them before this becomes a product.
+
+**Semantic masks (`masks.py`, `vision/selection.py`).** A new mask kind, `semantic`, stores what to select (a target such as `sky` or `teeth`, or for `object` a box and include/exclude points), never the pixels. The model runs on the framed original at a 1024 px working size; the result is cached in memory and as a PNG under `.data/<doc>/vision/`, keyed by task, backend, framing, and the box and points, and resized to whatever resolution is rendering. So a semantic mask is as editable as a gradient: re-click to change it, invert it, or touch it up. Touch-ups are brush strokes stored on the mask and applied after the model's result (`max(found × kept, painted)`), so painting or erasing never re-runs the model. Recipes keep target masks (the sky is the sky in any photo) but drop object selections and touch-ups.
+
+**Removal (`render.py`).** A layer whose only operation is `remove` fills what its mask selects. Removal layers render before every adjustment layer, wherever they sit in the stack, so later looks apply to the filled photo. The mask is grown by `grow`, the bounding box around it is cropped with margin and sent to the inpainting task, and the patch is cached by the framing and every removal mask up to that one.
+
+**Cutout (`layers.py`, `export.py`).** `EditState.cutout` keeps what its mask selects (the main subject by default) and is applied last. The preview shows a checkerboard; a PNG export carries the alpha channel, and a JPEG export puts the subject on white. A cutout can also have a solid background color.
+
+**Portrait retouching (`portrait.py`).** Two operations, `smooth_skin` (a guided filter with the finest texture added back) and `heal_blemishes` (small dark or red spots, filtered by size and shape, filled from their surroundings), plus a retouch that adds subtle layers masked to skin, eyes, and teeth. Each part stays its own layer to fade or hide.
+
+**Straightening and lens fixes (`geometry.py`).** Two framing operations, `perspective` (stretch the narrow side of converging lines back out to the frame) and `lens_correction` (radial barrel or pincushion undo, scaled so no edge is empty), join crop, rotate, straighten, and flip. Auto straighten runs OpenCV's line segment detector on the framed photo: the tilt most level and plumb lines agree on becomes a `straighten`, and walls on both sides converging at the same rate become a `perspective`. Photos with no clear lines are left alone.
+
+**Agent.** The agent can give any layer a semantic mask (`"brighten just the subject"`), remove things in their own layer, cut out the subject (`cut_out`, `restore_background`), retouch portraits (`retouch_portrait`), and straighten (`auto_straighten`). Its self-check render after each round shows what a selection actually caught, so it can move the box or add points when the model picked the wrong thing. When it adjusts a selection the person touched up, it keeps their strokes.
+

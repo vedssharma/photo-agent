@@ -193,7 +193,7 @@ These run alongside every phase rather than being a phase of their own.
 
 ## Open questions to settle as we go
 
-1. **Where models run during the personal phase:** local GPU, a rented GPU box, or a hosted inference API for the heaviest models? Affects Phase 3 and 4 setup.
+1. **Where models run during the personal phase:** local GPU, a rented GPU box, or a hosted inference API for the heaviest models? Affects Phase 3 and 4 setup. *Phase 3: locally, in a separate worker process on the GPU when there is one (CUDA or Apple MPS) and the CPU otherwise; Phase 3's models are small enough for either, and every task has a classical fallback. Revisit for Phase 4's diffusion models.*
 2. **How much of the render engine lives on the client:** WebGL for live core adjustments only (the current plan), or more? *Phase 2 shipped the core-adjustment shaders only; revisit if dragging other sliders feels slow.*
 3. **Project file format:** a single bundled file (zip of original + JSON) versus a folder. *Settled in Phase 2: one `.photoagent` zip with `manifest.json`, `document.json`, and the untouched original.*
 4. **Which diffusion base** for generative work, weighed on quality, speed, and license.
