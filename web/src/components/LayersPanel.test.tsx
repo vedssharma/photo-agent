@@ -304,7 +304,7 @@ describe('LayersPanel manual controls', () => {
 
   it('creates a new empty layer and selects it', async () => {
     const { sent, onSelect } = setup()
-    await userEvent.click(screen.getByRole('button', { name: '+ New layer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'New layer' }))
     expect(sent[0].label).toBe('New layer')
     const added = sent[0].state.layers[2]
     expect(added).toMatchObject({ name: 'Layer 3', operations: [] })
@@ -315,7 +315,7 @@ describe('LayersPanel manual controls', () => {
 describe('LayersPanel removal', () => {
   it('adds a removal layer and waits for a click on what to remove', async () => {
     const { sent, onSelect, onMaskTool } = setup()
-    await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
     expect(sent[0].label).toBe('Remove an object')
     const added = sent[0].state.layers[2]
     expect(added).toMatchObject({ name: 'Remove object', mask: null })
@@ -365,7 +365,7 @@ describe('LayersPanel framing', () => {
 describe('LayersPanel generative fill', () => {
   it('asks what to add, then adds a layer to paint it into', async () => {
     const { sent, onSelect } = setup()
-    await userEvent.click(screen.getByRole('button', { name: 'Generate…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate' }))
     await userEvent.type(
       screen.getByRole('textbox', { name: 'What to add' }),
       'a potted fern{Enter}',
@@ -403,7 +403,7 @@ describe('LayersPanel new background', () => {
   it('replaces everything but the subject with a described scene', async () => {
     const { sent } = setup()
     await userEvent.click(
-      screen.getByRole('button', { name: 'New background…' }),
+      screen.getByRole('button', { name: 'New background' }),
     )
     await userEvent.type(
       screen.getByRole('textbox', { name: 'New background' }),
@@ -422,7 +422,7 @@ describe('LayersPanel new background', () => {
 
   it('relights from the chosen direction in a layer of its own', async () => {
     const { sent } = setup()
-    await userEvent.click(screen.getByRole('button', { name: 'Relight…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Relight' }))
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Where the light comes from' }),
       'top',
@@ -445,9 +445,9 @@ describe('LayersPanel new background', () => {
 
   it('restores faces and colorizes in layers of their own', async () => {
     const { sent } = setup()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Restore' }),
-      'colorize',
+    await userEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Colorize black and white' }),
     )
     expect(sent[0].label).toBe('Colorize')
     const added = sent[0].state.layers.at(-1)
