@@ -52,6 +52,18 @@ def test_rejects_unsupported_formats() -> None:
         imaging.decode(buf.getvalue())
 
 
+def test_decodes_mpo_as_its_primary_jpeg() -> None:
+    # iPhone JPEGs embed a depth or gain map as a second frame, which Pillow reads as MPO.
+    buf = io.BytesIO()
+    primary = Image.new("RGB", (6, 4), (200, 40, 40))
+    primary.save(buf, format="MPO", save_all=True, append_images=[Image.new("RGB", (3, 2))])
+    assert Image.open(io.BytesIO(buf.getvalue())).format == "MPO"
+    img = imaging.decode(buf.getvalue())
+    assert img.format == "JPEG"
+    assert (img.width, img.height) == (6, 4)
+    assert img.pixels[0, 0, 0] > 0.7
+
+
 def test_flattens_alpha_and_remembers_it() -> None:
     buf = io.BytesIO()
     Image.new("RGBA", (4, 4), (255, 0, 0, 128)).save(buf, format="PNG")
