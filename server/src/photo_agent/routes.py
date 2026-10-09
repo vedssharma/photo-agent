@@ -46,6 +46,7 @@ from photo_agent.agent import (
     ModelClient,
     image_block,
 )
+from photo_agent.analyses import AnalysisCache
 from photo_agent.diagnostics import measure
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
@@ -105,7 +106,8 @@ def _screen_for(api_key: str | None, model: str) -> safety.Screen:
 
 def get_screen(settings: Annotated[Settings, Depends(get_settings)]) -> safety.Screen:
     key = settings.anthropic_api_key
-    return _screen_for(key.get_secret_value() if key else None, settings.anthropic_model)
+    # A yes/no screen of a short prompt: the routine model is plenty.
+    return _screen_for(key.get_secret_value() if key else None, settings.anthropic_routine_model)
 
 
 Screen = Annotated[safety.Screen, Depends(get_screen)]
@@ -617,15 +619,28 @@ def warm_preview(store: DocumentStore, doc: Document) -> None:
 
 def get_model(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient | None:
     key = settings.anthropic_api_key
-    return ClaudeModel(key.get_secret_value(), settings.anthropic_model) if key else None
+    if key is None:
+        return None
+    return ClaudeModel(
+        key.get_secret_value(), settings.anthropic_model, settings.anthropic_routine_model
+    )
 
 
 def get_advisor(settings: Annotated[Settings, Depends(get_settings)]) -> Advisor | None:
     key = settings.anthropic_api_key
-    return ClaudeAdvisor(key.get_secret_value(), settings.anthropic_model) if key else None
+    if key is None:
+        return None
+    return ClaudeAdvisor(
+        key.get_secret_value(), settings.anthropic_model, settings.anthropic_routine_model
+    )
 
 
 AdvisorDep = Annotated[Advisor | None, Depends(get_advisor)]
+
+
+def _analyst(advisor: Advisor | None) -> str:
+    """Who makes an analysis, for caching it: the model, or the built-in fallback."""
+    return "built-in" if advisor is None else str(getattr(advisor, "model", "claude"))
 
 
 class SuggestionsRequest(BaseModel):
@@ -657,9 +672,12 @@ async def suggest_edits(
     pick from and refine. Proposed by Claude when an API key is set, else built in. The
     answer is kept, so asking again for the same edits is free."""
     doc = load(store, doc_id)
-    stored = _stored_suggestions(store, doc_id)
-    if stored and stored.revision == doc.revision and not (request and request.refresh):
-        return stored
+    cache = AnalysisCache(store.folder(doc_id))
+    who = _analyst(advisor)
+    cached = cache.get("suggestions", doc.revision, who, suggestions.SuggestionSet)
+    if cached is not None and not (request and request.refresh):
+        store.file(doc_id, "suggestions.json").write_text(cached.model_dump_json())
+        return cached
     loaded = store.image(doc_id)
     pixels = await asyncio.to_thread(
         previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
@@ -678,6 +696,7 @@ async def suggest_edits(
         revision=doc.revision, source=source, suggestions=suggestions.suggestions_from(directions)
     )
     store.file(doc_id, "suggestions.json").write_text(made.model_dump_json())
+    cache.put("suggestions", doc.revision, who, made)
     return made
 
 
@@ -751,17 +770,23 @@ async def critique_photo(doc_id: str, store: Store, advisor: AdvisorDep) -> Docu
     could be better with a fix the agent can carry out. Added to the conversation, so the
     agent knows what it said."""
     doc = load(store, doc_id)
-    loaded = store.image(doc_id)
-    pixels = await asyncio.to_thread(
-        previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
-    )
-    if advisor is None:
-        found = critique.built_in(pixels)
-    else:
-        try:
-            found = await critique.ask_claude(advisor, dict(image_block(pixels)), measure(pixels))
-        except (AdvisorError, ValueError) as exc:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from None
+    cache = AnalysisCache(store.folder(doc_id))
+    who = _analyst(advisor)
+    found = cache.get("critique", doc.revision, who, critique.Critique)
+    if found is None:
+        loaded = store.image(doc_id)
+        pixels = await asyncio.to_thread(
+            previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
+        )
+        if advisor is None:
+            found = critique.built_in(pixels)
+        else:
+            try:
+                block = dict(image_block(pixels))
+                found = await critique.ask_claude(advisor, block, measure(pixels))
+            except (AdvisorError, ValueError) as exc:
+                raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from None
+        cache.put("critique", doc.revision, who, found)
     doc = load(store, doc_id)  # it may have changed while Claude looked
     doc.chat.append(ChatEntry(role="user", text=CRITIQUE_REQUEST))
     doc.chat.append(ChatEntry(role="assistant", text=found.summary, critique=found))

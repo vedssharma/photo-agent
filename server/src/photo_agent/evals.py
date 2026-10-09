@@ -40,7 +40,7 @@ from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolParam
 from pydantic import BaseModel
 
 from photo_agent import diagnostics, imaging
-from photo_agent.advisor import Advisor, ClaudeAdvisor
+from photo_agent.advisor import Advisor, ClaudeAdvisor, Tier
 from photo_agent.agent import AgentEvent, AgentService, ClaudeModel, ModelClient, image_block
 from photo_agent.graph import Document
 from photo_agent.render import RenderCache, luma
@@ -365,6 +365,7 @@ class ScriptedModel:
         tools: Sequence[BetaToolParam],
         messages: Sequence[BetaMessageParam],
         on_text: Callable[[str], Awaitable[None]],
+        tier: Tier = "deep",
     ) -> BetaMessage:
         blocks: list[dict[str, Any]] = []
         for i, item in enumerate(self.rounds.pop(0) if self.rounds else []):
@@ -552,12 +553,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Live evals need ANTHROPIC_API_KEY; use --replay to run offline.")
             return 2
         mode, model_name = "live", settings.anthropic_model
-        live = ClaudeModel(key.get_secret_value(), settings.anthropic_model)
+        live = ClaudeModel(
+            key.get_secret_value(), settings.anthropic_model, settings.anthropic_routine_model
+        )
 
         def model_for(case: Case) -> ModelClient:
             return live
 
-        judge = ClaudeAdvisor(key.get_secret_value(), settings.anthropic_model)
+        judge = ClaudeAdvisor(
+            key.get_secret_value(), settings.anthropic_model, settings.anthropic_routine_model
+        )
 
     harness = Harness(model_for, judge if args.judge else None)
     report = asyncio.run(harness.run(cases, mode, model_name))

@@ -22,7 +22,12 @@ class Settings(BaseSettings):
     """Key for the Claude API. Without it the app opens photos but the agent cannot edit."""
 
     anthropic_model: str = "claude-opus-5-5"
-    """Claude model that drives the editing agent."""
+    """Claude model that drives the editing agent: planning, critique, suggestions, and any
+    turn that needs judgment or AI edits."""
+
+    anthropic_routine_model: str = "claude-sonnet-5-5"
+    """A smaller, faster Claude model for routine turns (simple slider-style requests) and
+    quick checks. Set it to the main model to use one model for everything."""
 
     style_memory: bool = True
     """Learn the person's taste from the edits they keep and undo (kept in

@@ -38,12 +38,13 @@ class Advisor(Protocol):
 
 
 class ClaudeAdvisor:
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, routine_model: str | None = None) -> None:
         self.client = AsyncAnthropic(api_key=api_key, max_retries=2, timeout=120)
         self.model = model
+        self.routine_model = routine_model or model
 
     def model_for(self, tier: Tier) -> str:
-        return self.model
+        return self.model if tier == "deep" else self.routine_model
 
     async def ask(
         self,

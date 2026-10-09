@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Annotated, Any, Literal, Protocol
 
@@ -23,6 +24,7 @@ from anthropic.types.beta import (
 from pydantic import BaseModel, Field, ValidationError
 
 from photo_agent import diagnostics, imaging, looks, references, safety, style, variants
+from photo_agent.advisor import Tier
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Plan, Step
@@ -49,7 +51,10 @@ from photo_agent.operations import (
 )
 from photo_agent.portrait import Retouch, retouch_layers
 from photo_agent.render import RenderCache, render
+from photo_agent.routing import choose_tier
 from photo_agent.store import DocumentStore
+
+log = logging.getLogger(__name__)
 
 MAX_MODEL_CALLS = 8
 """Upper bound on model round trips in one turn, so a confused agent cannot loop forever."""
@@ -250,13 +255,18 @@ class ModelClient(Protocol):
         tools: Sequence[BetaToolParam],
         messages: Sequence[BetaMessageParam],
         on_text: Callable[[str], Awaitable[None]],
+        tier: Tier = "deep",
     ) -> BetaMessage: ...
 
 
 class ClaudeModel:
-    def __init__(self, api_key: str, model: str) -> None:
+    """Claude, with the main model for turns that need judgment and a smaller one for
+    routine turns (see `photo_agent.routing`)."""
+
+    def __init__(self, api_key: str, model: str, routine_model: str | None = None) -> None:
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
+        self.routine_model = routine_model or model
 
     async def create(
         self,
@@ -265,25 +275,46 @@ class ClaudeModel:
         tools: Sequence[BetaToolParam],
         messages: Sequence[BetaMessageParam],
         on_text: Callable[[str], Awaitable[None]],
+        tier: Tier = "deep",
     ) -> BetaMessage:
+        model = self.model if tier == "deep" else self.routine_model
+        # Server-side fallbacks exist for the larger models only.
+        fallback: dict[str, Any] = (
+            {}
+            if "haiku" in model
+            else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+        )
         for attempt in range(3):
             try:
                 async with self.client.beta.messages.stream(
-                    model=self.model,
+                    model=model,
                     max_tokens=16000,
-                    system=system,
+                    # The system prompt and tools are the same every call: cache them, and
+                    # the conversation so far, so each round only pays for what is new.
+                    system=[
+                        {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+                    ],
+                    cache_control={"type": "ephemeral"},
                     tools=list(tools),
                     messages=list(messages),
                     thinking={"type": "adaptive"},
-                    output_config={"effort": "medium"},
-                    # If a safety classifier declines, retry on Anthropic's recommended model.
-                    betas=["server-side-fallback-2026-07-01"],
-                    fallbacks="default",
+                    output_config={"effort": "medium" if tier == "deep" else "low"},
+                    **fallback,
                 ) as stream:
                     async for event in stream:
                         if event.type == "text":
                             await on_text(event.text)
-                    return await stream.get_final_message()
+                    message = await stream.get_final_message()
+                    usage = message.usage
+                    log.info(
+                        "%s turn on %s: %s input (%s cached), %s output tokens",
+                        tier,
+                        message.model,
+                        usage.input_tokens,
+                        usage.cache_read_input_tokens,
+                        usage.output_tokens,
+                    )
+                    return message
             except ValueError:
                 # Tool input JSON the SDK could not parse at all; re-issue the call.
                 if attempt == 2:
@@ -1115,7 +1146,10 @@ class AgentService:
                     image_block(references.pixels(folder, ref.id)),
                 )
             ]
-            reply = await self._converse(doc, asked, editor, emit, shown)
+            tier = choose_tier(
+                request, plan_approved=plan is not None, shared_references=bool(found)
+            )
+            reply = await self._converse(doc, asked, editor, emit, shown, tier)
 
             doc.chat.append(
                 ChatEntry(role="user", text=request, references=[ref.id for ref in found])
@@ -1170,6 +1204,7 @@ class AgentService:
         editor: Editor,
         emit: Emit,
         shown: Sequence[Any] = (),
+        tier: Tier = "deep",
     ) -> str:
         history, events = history_messages(doc.chat)
         preview = await self._render(doc, editor.state)
@@ -1208,7 +1243,7 @@ class AgentService:
             # Text from separate model calls reads as separate paragraphs.
             new_paragraph = True
             response = await self.model.create(
-                system=SYSTEM_PROMPT, tools=TOOLS, messages=messages, on_text=on_text
+                system=SYSTEM_PROMPT, tools=TOOLS, messages=messages, on_text=on_text, tier=tier
             )
             messages.append({"role": "assistant", "content": response.content})
 
@@ -1244,6 +1279,9 @@ class AgentService:
             if editor.plan is not None:
                 # Wait for the person's go-ahead before anything else.
                 break
+            if tier == "routine" and all(r.get("is_error") for r in results):
+                # The smaller model is struggling with this one; hand it to the main model.
+                tier = "deep"
             if editor.state != state_seen:
                 state_seen = editor.state.model_copy(deep=True)
                 await self._attach_self_check(doc, editor, results, baseline)
