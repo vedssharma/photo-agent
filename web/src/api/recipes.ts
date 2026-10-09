@@ -43,3 +43,27 @@ export async function applyRecipe(
   )
   return data ?? fail(response)
 }
+
+export type Look = components['schemas']['Look']
+
+/** The built-in looks. */
+export async function listLooks(): Promise<Look[]> {
+  const { data, response } = await api.GET('/api/looks')
+  return data ?? fail(response)
+}
+
+/** Add a look's layer to a photo, as one step in its history. */
+export async function applyLook(
+  docId: string,
+  lookId: string,
+  strength = 100,
+): Promise<DocumentView> {
+  const { data, response } = await api.POST(
+    '/api/documents/{doc_id}/looks/{look_id}',
+    {
+      params: { path: { doc_id: docId, look_id: lookId } },
+      body: { strength },
+    },
+  )
+  return data ?? fail(response)
+}

@@ -2,10 +2,13 @@ import { type FormEvent, useEffect, useState } from 'react'
 
 import type { DocumentView } from '../api/documents'
 import {
+  type Look,
   type Recipe,
+  applyLook,
   applyRecipe,
   createRecipe,
   deleteRecipe,
+  listLooks,
   listRecipes,
 } from '../api/recipes'
 
@@ -16,9 +19,11 @@ interface Props {
   disabled?: boolean
 }
 
-/** Save this photo's layers as a reusable look, and apply saved looks to it. */
+/** Add a built-in look, save this photo's layers as a reusable recipe, and apply saved
+ * recipes to it. */
 export function RecipesPanel({ doc, onDocument, disabled = false }: Props) {
   const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [looks, setLooks] = useState<Look[]>([])
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
   const [working, setWorking] = useState(false)
@@ -33,6 +38,12 @@ export function RecipesPanel({ doc, onDocument, disabled = false }: Props) {
       .catch((err: Error) => {
         if (live) setError(`Could not load recipes: ${err.message}`)
       })
+    // Without the looks the panel still works; the picker just stays hidden.
+    listLooks()
+      .then((found) => {
+        if (live) setLooks(found)
+      })
+      .catch(() => {})
     return () => {
       live = false
     }
@@ -83,6 +94,27 @@ export function RecipesPanel({ doc, onDocument, disabled = false }: Props) {
           </button>
         )}
       </div>
+      {looks.length > 0 && (
+        <label className="look-picker">
+          Add a look{' '}
+          <select
+            value=""
+            disabled={locked}
+            onChange={(e) => {
+              const id = e.target.value
+              if (id)
+                void run(async () => onDocument(await applyLook(doc.id, id)))
+            }}
+          >
+            <option value="">Choose…</option>
+            {looks.map((look) => (
+              <option key={look.id} value={look.id} title={look.description}>
+                {look.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {naming && (
         <form className="recipe-form" onSubmit={save}>
           <input

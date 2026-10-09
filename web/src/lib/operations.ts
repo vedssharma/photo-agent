@@ -56,4 +56,5 @@ export const CONTENT_OPS = new Set<string>([
   'relight',
   'restore_faces',
   'colorize',
+  'restyle',
 ])

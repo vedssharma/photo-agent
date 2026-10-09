@@ -22,7 +22,7 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from photo_agent import generative, geometry, imaging, portrait, projects, recipes
+from photo_agent import generative, geometry, imaging, looks, portrait, projects, recipes
 from photo_agent.agent import AgentError, AgentEvent, AgentService, ClaudeModel, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import Document, DocumentView
@@ -41,6 +41,7 @@ previews = RenderCache()
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 projects_router = APIRouter(prefix="/api/projects", tags=["projects"])
 recipes_router = APIRouter(prefix="/api/recipes", tags=["recipes"])
+looks_router = APIRouter(prefix="/api/looks", tags=["looks"])
 
 
 @lru_cache
@@ -257,6 +258,40 @@ def apply_recipe(doc_id: str, recipe_id: str, store: Store, saved: Recipes) -> D
         store.save(doc)
         warm_preview(store, doc)
     return DocumentView.of(doc)
+
+
+class LookStrength(BaseModel):
+    strength: float = Field(100, ge=0, le=100, description="How much of the look to use.")
+
+
+@router.post(
+    "/{doc_id}/looks/{look_id}",
+    operation_id="applyLook",
+    responses={404: {"description": "No such document or look"}},
+)
+def apply_look(
+    doc_id: str,
+    look_id: str,
+    store: Store,
+    options: Annotated[LookStrength | None, Body()] = None,
+) -> DocumentView:
+    """Add a look's layer on top of the current edits, as one step in the history."""
+    doc = load(store, doc_id)
+    try:
+        look = looks.get(look_id)
+    except looks.LookNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such look.") from None
+    strength = (options or LookStrength()).strength
+    if doc.edit_by_hand(f"Look: {look.name}", looks.apply(look, doc.state, strength)):
+        store.save(doc)
+        warm_preview(store, doc)
+    return DocumentView.of(doc)
+
+
+@looks_router.get("", operation_id="listLooks")
+def list_looks() -> list[looks.Look]:
+    """The built-in looks, each a layer of ordinary adjustments."""
+    return looks.LOOKS
 
 
 @router.post("/{doc_id}/retouch", operation_id="retouchPortrait")

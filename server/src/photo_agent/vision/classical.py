@@ -330,12 +330,32 @@ def inpaint(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Array:
 # with, so these do the closest honest thing and the app says which backend ran.
 
 
-def generate(image: Array, mask: npt.NDArray[Any] | None = None, seed: int = 0, **_: Any) -> Array:
-    """Generative fill without a model: fill the area from its surroundings, as a removal
-    would. The prompt cannot be followed."""
+def generate(
+    image: Array,
+    mask: npt.NDArray[Any] | None = None,
+    seed: int = 0,
+    backdrop: bool = False,
+    restyle: bool = False,
+    strength: float = 0.5,
+    **_: Any,
+) -> Array:
+    """Generative edits without a model; the prompt cannot be followed. A fill continues
+    the surroundings into the area, as a removal would; a new background is a plain studio
+    backdrop; a restyle is a painterly rendering of the photo."""
+    if restyle:
+        return stylize(image, strength)
     if mask is None:
         return image
+    if backdrop:
+        return studio_backdrop(image, mask, seed=seed)
     return inpaint(image, mask, seed=seed)
+
+
+def stylize(image: Array, strength: float = 0.5) -> Array:
+    """A painterly version of the photo: flattened color regions with soft edges."""
+    x = (np.clip(image, 0, 1) * 255).astype(np.uint8)
+    painted = cv2.stylization(x, sigma_s=20 + 100 * strength, sigma_r=0.25 + 0.3 * strength)
+    return (painted.astype(np.float32) / 255).astype(np.float32)
 
 
 def studio_backdrop(image: Array, mask: npt.NDArray[Any], seed: int = 0) -> Array:

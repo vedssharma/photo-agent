@@ -181,6 +181,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/looks/{look_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Look
+         * @description Add a look's layer on top of the current edits, as one step in the history.
+         */
+        post: operations["applyLook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/retouch": {
         parameters: {
             query?: never;
@@ -434,6 +454,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/looks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Looks
+         * @description The built-in looks, each a layer of ordinary adjustments.
+         */
+        get: operations["listLooks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -640,6 +680,65 @@ export interface components {
             op: "clarity";
             /** Amount */
             amount: number;
+        };
+        /**
+         * ColorGrade
+         * @description Split toning, as colorists grade film: tint the shadows, midtones, and highlights
+         *     each toward a hue (degrees: 0 red, 30 orange, 60 yellow, 120 green, 180 cyan, 210 teal
+         *     blue, 240 blue, 300 magenta) by its own amount, keeping brightness. Teal shadows with
+         *     orange highlights is the blockbuster look; warm highlights and cool shadows read as
+         *     film.
+         */
+        ColorGrade: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "color_grade";
+            /**
+             * Shadows Hue
+             * @default 210
+             */
+            shadows_hue: number;
+            /**
+             * Shadows
+             * @description How strongly the shadows take their hue.
+             * @default 0
+             */
+            shadows: number;
+            /**
+             * Midtones Hue
+             * @default 30
+             */
+            midtones_hue: number;
+            /**
+             * Midtones
+             * @description How strongly the midtones take their hue.
+             * @default 0
+             */
+            midtones: number;
+            /**
+             * Highlights Hue
+             * @default 40
+             */
+            highlights_hue: number;
+            /**
+             * Highlights
+             * @description How strongly the highlights take their hue.
+             * @default 0
+             */
+            highlights: number;
+            /**
+             * Balance
+             * @description Moves the split: positive gives highlights more of the range.
+             * @default 0
+             */
+            balance: number;
         };
         /**
          * Colorize
@@ -1229,7 +1328,7 @@ export interface components {
              * Operations
              * @default []
              */
-            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"])[];
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
         };
         /**
          * LensCorrection
@@ -1281,6 +1380,26 @@ export interface components {
              * @description [x, y] as fractions of the photo.
              */
             end: number[];
+        };
+        /** Look */
+        Look: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Operations */
+            operations: (components["schemas"]["Exposure"] | components["schemas"]["Contrast"] | components["schemas"]["Highlights"] | components["schemas"]["Shadows"] | components["schemas"]["Whites"] | components["schemas"]["Blacks"] | components["schemas"]["WhiteBalance"] | components["schemas"]["Vibrance"] | components["schemas"]["Saturation"] | components["schemas"]["HSL"] | components["schemas"]["Sharpen"] | components["schemas"]["NoiseReduction"] | components["schemas"]["Clarity"] | components["schemas"]["Dehaze"] | components["schemas"]["Vignette"] | components["schemas"]["ColorGrade"] | components["schemas"]["Grain"] | components["schemas"]["ToneCurve"] | components["schemas"]["Remove"] | components["schemas"]["SmoothSkin"] | components["schemas"]["HealBlemishes"] | components["schemas"]["Generate"] | components["schemas"]["ReplaceBackground"] | components["schemas"]["Relight"] | components["schemas"]["RestoreFaces"] | components["schemas"]["Colorize"] | components["schemas"]["Restyle"])[];
+        };
+        /** LookStrength */
+        LookStrength: {
+            /**
+             * Strength
+             * @description How much of the look to use.
+             * @default 100
+             */
+            strength: number;
         };
         /**
          * LuminosityMask
@@ -1646,6 +1765,47 @@ export interface components {
              * @default 70
              */
             amount: number;
+        };
+        /**
+         * Restyle
+         * @description Redraw the whole photo in a style ("watercolor painting", "1970s film photo",
+         *     "Studio Ghibli anime") with an image generation model, keeping its composition. Use
+         *     only when asked for a new style or medium; for a color look, use color_grade and the
+         *     other adjustments instead. The only operation in its layer.
+         */
+        Restyle: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * Seed
+             * @description The same prompt and seed give the same result; leave it out for a fresh one, or change it for a different take.
+             */
+            seed?: number | null;
+            /**
+             * Model
+             * @description The model that generates it, recorded by the app.
+             * @default
+             */
+            model: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "restyle";
+            /**
+             * Prompt
+             * @description The style to redraw it in.
+             */
+            prompt: string;
+            /**
+             * Strength
+             * @description How far it may stray from the photo; higher is more stylized.
+             * @default 50
+             */
+            strength: number;
         };
         /**
          * Retouch
@@ -2470,6 +2630,49 @@ export interface operations {
             };
         };
     };
+    applyLook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                look_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LookStrength"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentView"];
+                };
+            };
+            /** @description No such document or look */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retouchPortrait: {
         parameters: {
             query?: never;
@@ -2913,6 +3116,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listLooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Look"][];
                 };
             };
         };

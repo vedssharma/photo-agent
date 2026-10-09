@@ -23,6 +23,7 @@ from photo_agent.operations import (
     Relight,
     ReplaceBackground,
     RestoreFaces,
+    Restyle,
 )
 from photo_agent.vision.worker import PREFER
 
@@ -33,6 +34,7 @@ TASKS: dict[type[OpBase], str] = {
     Relight: "relight",
     RestoreFaces: "restore_faces",
     Colorize: "colorize",
+    Restyle: "generate",
 }
 """The model worker task behind each generative operation."""
 

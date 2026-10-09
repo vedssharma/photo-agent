@@ -320,6 +320,28 @@ class Vignette(OpBase):
     midpoint: Strength = Field(50, description="How far in the effect reaches; lower is wider.")
 
 
+Hue = Annotated[float, Field(ge=0, le=360)]
+
+
+class ColorGrade(OpBase):
+    """Split toning, as colorists grade film: tint the shadows, midtones, and highlights
+    each toward a hue (degrees: 0 red, 30 orange, 60 yellow, 120 green, 180 cyan, 210 teal
+    blue, 240 blue, 300 magenta) by its own amount, keeping brightness. Teal shadows with
+    orange highlights is the blockbuster look; warm highlights and cool shadows read as
+    film."""
+
+    op: Literal["color_grade"] = "color_grade"
+    shadows_hue: Hue = 210
+    shadows: Strength = Field(0, description="How strongly the shadows take their hue.")
+    midtones_hue: Hue = 30
+    midtones: Strength = Field(0, description="How strongly the midtones take their hue.")
+    highlights_hue: Hue = 40
+    highlights: Strength = Field(0, description="How strongly the highlights take their hue.")
+    balance: Amount = Field(
+        0, description="Moves the split: positive gives highlights more of the range."
+    )
+
+
 class Grain(OpBase):
     """Add film-like grain."""
 
@@ -418,6 +440,19 @@ class Colorize(GenerativeBase):
         return "Colorize"
 
 
+class Restyle(GenerativeBase):
+    """Redraw the whole photo in a style ("watercolor painting", "1970s film photo",
+    "Studio Ghibli anime") with an image generation model, keeping its composition. Use
+    only when asked for a new style or medium; for a color look, use color_grade and the
+    other adjustments instead. The only operation in its layer."""
+
+    op: Literal["restyle"] = "restyle"
+    prompt: str = Field(min_length=1, max_length=400, description="The style to redraw it in.")
+    strength: Strength = Field(
+        50, description="How far it may stray from the photo; higher is more stylized."
+    )
+
+
 class SmoothSkin(OpBase):
     """Soften skin while keeping its natural texture (pores, fine lines stay, blotches and
     uneven tone go). Use on a layer masked to skin; subtle amounts (20-40) look natural."""
@@ -472,6 +507,7 @@ Operation = Annotated[
     | Perspective
     | LensCorrection
     | Vignette
+    | ColorGrade
     | Grain
     | ToneCurve
     | Remove
@@ -482,7 +518,8 @@ Operation = Annotated[
     | ReplaceBackground
     | Relight
     | RestoreFaces
-    | Colorize,
+    | Colorize
+    | Restyle,
     Field(discriminator="op"),
 ]
 
@@ -508,6 +545,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Perspective,
     LensCorrection,
     Vignette,
+    ColorGrade,
     Grain,
     ToneCurve,
     Remove,
@@ -519,6 +557,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Relight,
     RestoreFaces,
     Colorize,
+    Restyle,
 )
 
 OperationAdapter: TypeAdapter[Operation] = TypeAdapter(Operation)
@@ -557,6 +596,7 @@ AdjustmentOperation = Annotated[
     | Clarity
     | Dehaze
     | Vignette
+    | ColorGrade
     | Grain
     | ToneCurve
     | Remove
@@ -566,7 +606,8 @@ AdjustmentOperation = Annotated[
     | ReplaceBackground
     | Relight
     | RestoreFaces
-    | Colorize,
+    | Colorize
+    | Restyle,
     Field(discriminator="op"),
 ]
 """Everything that changes the look rather than the framing; these live in layers."""
@@ -578,6 +619,7 @@ CONTENT_TYPES: tuple[type[OpBase], ...] = (
     Relight,
     RestoreFaces,
     Colorize,
+    Restyle,
 )
 """Operations that change what is in the photo rather than how it looks. Each is the only
 operation in its layer, and content layers render before every adjustment layer."""

@@ -22,7 +22,7 @@ from anthropic.types.beta import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from photo_agent import diagnostics, imaging
+from photo_agent import diagnostics, imaging, looks
 from photo_agent.generative import stamp, task_for
 from photo_agent.geometry import AutoStraighten, Framed, auto_level
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
@@ -113,6 +113,13 @@ part of the framing, so masks and later crops refer to the expanded frame.
 - To remove the background or cut out the subject, call cut_out: by default it keeps \
 the main subject on a transparent background (the person downloads a PNG); give a color \
 such as "#ffffff" for a clean product shot, or a different mask to keep something else.
+- For a style or mood ("make it look like 70s film", "teal and orange", "moody", \
+"Wes Anderson colors"), build it from adjustments, never a generative model: call apply_look \
+when one of its looks fits (then tune its sliders to the photo), or grade it yourself with \
+color_grade (split toning), white_balance, tone_curve, hsl, grain, and vignette in a layer \
+named for the look. Only when the person asks for a new medium or art style ("make it a \
+watercolor", "anime style", "oil painting") call restyle, which redraws the photo with an \
+image generation model; it starts its own layer.
 - For portraits ("make me look good", "fix my skin"), call retouch_portrait. Keep it \
 subtle: people should look like themselves on a good day. Its defaults are a good start; \
 tone them down for close-ups and children.
@@ -412,6 +419,30 @@ def tool_definitions() -> list[BetaToolParam]:
     )
     tools.append(
         {
+            "name": "apply_look",
+            "description": "Add a ready-made look as one layer of ordinary adjustments "
+            "(color grade, tone, grain, vignette), which can then be tuned like any other. "
+            "Looks: "
+            + "; ".join(f"{look.id}: {look.name}, {look.description}" for look in looks.LOOKS),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "look": {"type": "string", "enum": [look.id for look in looks.LOOKS]},
+                    "strength": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "How much of the look to use (the layer's opacity).",
+                    },
+                },
+                "required": ["look"],
+                "additionalProperties": False,
+            },
+            "eager_input_streaming": True,
+        }
+    )
+    tools.append(
+        {
             "name": "restore_background",
             "description": "Undo the cutout and bring the background back.",
             "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -495,6 +526,7 @@ class Editor:
             "cut_out": self._cut_out,
             "retouch_portrait": self._retouch,
             "auto_straighten": self._auto_straighten,
+            "apply_look": self._apply_look,
             "restore_background": self._restore_background,
         }.get(name)
         if handler is not None:
@@ -649,6 +681,20 @@ class Editor:
         names = ", ".join(f"{layer.id} ({layer.name})" for layer in layers)
         return f"Added retouch layers {names}.", OperationEvent(
             action="added", summary="Portrait retouch: " + ", ".join(lay.name for lay in layers)
+        )
+
+    def _apply_look(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:
+        try:
+            look = looks.get(str(args.get("look")))
+        except looks.LookNotFoundError:
+            raise ToolError(f"Unknown look {args.get('look')!r}.") from None
+        strength = float(args.get("strength", 100))
+        if not 0 <= strength <= 100:
+            raise ToolError("strength must be between 0 and 100.")
+        layer = looks.layer(look, strength)
+        self.state.layers.append(layer)
+        return f"Added look layer {layer.id} ({layer.name}).", OperationEvent(
+            action="added", summary=f"Look: {look.name}"
         )
 
     def _auto_straighten(self, args: dict[str, Any]) -> tuple[str, OperationEvent]:

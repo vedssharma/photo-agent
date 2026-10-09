@@ -60,7 +60,7 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'soft_light', label: 'Soft light' },
 ]
 
-type GenerativeTool = 'generate' | 'background' | 'light'
+type GenerativeTool = 'generate' | 'background' | 'light' | 'style'
 
 type LightDirection = Extract<Operation, { op: 'relight' }>['direction']
 
@@ -104,6 +104,11 @@ const GENERATIVE_TOOLS: Record<
     placeholder: 'warm sunset light, cool moonlight, neon…',
     submit: 'Relight',
     directions: true,
+  },
+  style: {
+    label: 'New style',
+    placeholder: 'a watercolor painting, anime, oil on canvas…',
+    submit: 'Restyle',
   },
 }
 
@@ -351,6 +356,30 @@ export function LayersPanel({
     void apply(`Relight: “${prompt}”`, (s) => addLayer(s, layer))
   }
 
+  /** The whole photo redrawn in a new style or medium. */
+  function restyle(prompt: string) {
+    const layer: Layer = {
+      id: newLayerId(),
+      name: `Style: ${layerTitle(prompt)}`,
+      visible: true,
+      opacity: 100,
+      blend_mode: 'normal',
+      operations: [
+        {
+          id: newOpId(),
+          op: 'restyle',
+          prompt,
+          seed: newSeed(),
+          strength: 50,
+          model: '',
+        },
+      ],
+      mask: null,
+    }
+    onSelect(layer.id)
+    void apply(`Restyle: “${prompt}”`, (s) => addLayer(s, layer))
+  }
+
   /** A whole-photo model edit (face restoration, colorizing) in a layer of its own. */
   function restore(op: 'restore_faces' | 'colorize') {
     const name = op === 'colorize' ? 'Colorize' : 'Restore faces'
@@ -470,6 +499,16 @@ export function LayersPanel({
         >
           Relight…
         </button>
+        <button
+          type="button"
+          className="icon"
+          disabled={locked}
+          aria-expanded={asking === 'style'}
+          title="Redraw the photo in a new style, like a painting (for color looks, see Recipes)"
+          onClick={() => setAsking(asking === 'style' ? null : 'style')}
+        >
+          Restyle…
+        </button>
         <select
           className="icon"
           aria-label="Restore"
@@ -515,6 +554,7 @@ export function LayersPanel({
             setAsking(null)
             if (asking === 'generate') generate(prompt)
             else if (asking === 'light') relight(prompt, direction)
+            else if (asking === 'style') restyle(prompt)
             else replaceBackground(prompt)
           }}
         />

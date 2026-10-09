@@ -25,6 +25,7 @@ GROUPS: dict[str, Group] = {
     "vibrance": "color",
     "saturation": "color",
     "hsl": "color",
+    "color_grade": "color",
     "sharpen": "detail",
     "noise_reduction": "detail",
     "clarity": "detail",
@@ -47,6 +48,7 @@ GROUPS: dict[str, Group] = {
     "relight": "generative",
     "restore_faces": "generative",
     "colorize": "generative",
+    "restyle": "generative",
 }
 
 

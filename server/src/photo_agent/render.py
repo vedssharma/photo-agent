@@ -243,6 +243,12 @@ def _apply_generative(
             task_for(op), np.clip(x, 0.0, 1.0), None, job_params(op), _chain_key(chain)
         )
         return _blend_whole(x, keep_luminance(x, made), layer, op.amount, ctx)
+    if isinstance(op, ops.Restyle):
+        params = {**job_params(op), "strength": 0.25 + 0.7 * op.strength / 100, "restyle": True}
+        made = ctx.vision.generate(
+            task_for(op), np.clip(x, 0.0, 1.0), None, params, _chain_key(chain)
+        )
+        return _blend_whole(x, made, layer, 100, ctx)
     return x
 
 
@@ -794,6 +800,35 @@ def _seed(op: ops.OpBase) -> int:
     return int.from_bytes(hashlib.sha256(op.id.encode()).digest()[:8], "little")
 
 
+def hue_tint(hue: float) -> npt.NDArray[np.float32]:
+    """The color offset that tints toward `hue` (degrees) without changing brightness."""
+    hsv = np.array([[[hue % 360, 1.0, 1.0]]], np.float32)
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)[0, 0]
+    return np.asarray(rgb - float(rgb @ LUMA), np.float32)
+
+
+GRADE_STRENGTH = 0.22
+"""How far a full-strength grade moves a tone toward its hue."""
+
+
+def _color_grade(x: Array, op: ops.ColorGrade, ctx: RenderContext) -> Array:
+    lum = np.clip(luma(x), 0.0, 1.0)
+    pivot = 0.5 - op.balance / 100 * 0.25
+    shadows = np.clip(1.0 - lum / pivot, 0.0, 1.0) ** 1.5
+    highlights = np.clip((lum - pivot) / (1.0 - pivot), 0.0, 1.0) ** 1.5
+    midtones = np.clip(1.0 - shadows - highlights, 0.0, 1.0) * 4 * lum * (1 - lum)
+    out = x
+    for weight, hue, amount in (
+        (shadows, op.shadows_hue, op.shadows),
+        (midtones, op.midtones_hue, op.midtones),
+        (highlights, op.highlights_hue, op.highlights),
+    ):
+        if amount > 0:
+            tint = hue_tint(hue) * (GRADE_STRENGTH * amount / 100)
+            out = out + weight[..., None] * tint
+    return out
+
+
 def _grain(x: Array, op: ops.Grain, ctx: RenderContext) -> Array:
     h, w = x.shape[:2]
     grain_px = max(1.0, long_edge(x) * (0.0004 + 0.0016 * op.size / 100))
@@ -929,6 +964,8 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Relight: lambda x, op, ctx: x,
     ops.RestoreFaces: lambda x, op, ctx: x,
     ops.Colorize: lambda x, op, ctx: x,
+    ops.Restyle: lambda x, op, ctx: x,
+    ops.ColorGrade: _color_grade,
     # Expanding needs the framing before it, so `apply_operations` handles it.
     ops.Expand: lambda x, op, ctx: x,
     ops.SmoothSkin: _smooth_skin,
