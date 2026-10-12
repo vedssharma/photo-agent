@@ -830,7 +830,7 @@
           "documents"
         ],
         "summary": "Preview",
-        "description": "The photo with the current edits applied, at preview size, as JPEG.\n\nAdd `?revision=<document revision>` to make the URL unique per edit state; the response\nis the current state either way.",
+        "description": "The photo with the current edits applied, at preview size, as JPEG.\n\nAdd `?revision=<document revision>` to make the URL unique per edit state; the response\nis the current state either way. `proof` soft-proofs it: shows it as it will look\nsaved in sRGB or Display P3, and with `gamut_warning`, paints the colors that will not\nfit in magenta.",
         "operationId": "getPreview",
         "parameters": [
           {
@@ -840,6 +840,36 @@
             "schema": {
               "type": "string",
               "title": "Doc Id"
+            }
+          },
+          {
+            "name": "proof",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "srgb",
+                    "display-p3"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proof"
+            }
+          },
+          {
+            "name": "gamut_warning",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Gamut Warning"
             }
           }
         ],
@@ -937,6 +967,49 @@
             "description": "Successful Response",
             "content": {
               "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/gamut": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Gamut",
+        "description": "Which output spaces hold all of the edited photo's colors, for soft-proofing and for\nchoosing what to export in.",
+        "operationId": "getGamut",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GamutView"
+                }
+              }
             }
           },
           "422": {
@@ -4325,6 +4398,15 @@
             "type": "integer",
             "title": "Height"
           },
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "rec2020"
+            ],
+            "title": "Color Space",
+            "default": "srgb"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -4398,6 +4480,14 @@
           "height": {
             "type": "integer",
             "title": "Height"
+          },
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "rec2020"
+            ],
+            "title": "Color Space"
           },
           "revision": {
             "type": "string",
@@ -4490,6 +4580,7 @@
           "format",
           "width",
           "height",
+          "color_space",
           "revision",
           "state",
           "head",
@@ -4770,6 +4861,17 @@
             "title": "Upscale",
             "description": "Enlarge the export with an AI upscaler (up to 8000 pixels across).",
             "default": 1
+          },
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "display-p3",
+              "rec2020"
+            ],
+            "title": "Color Space",
+            "description": "The color space the file is saved in, with its ICC profile embedded. sRGB suits sharing and the web; Display P3 keeps the extra color of modern phone and laptop screens; Rec.2020 keeps every color a RAW file holds, for further editing (best with 16 bits).",
+            "default": "srgb"
           }
         },
         "type": "object",
@@ -4952,6 +5054,38 @@
         "type": "object",
         "title": "Flip",
         "description": "Mirror the photo."
+      },
+      "GamutView": {
+        "properties": {
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "rec2020"
+            ],
+            "title": "Color Space"
+          },
+          "outside_srgb": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Outside Srgb"
+          },
+          "outside_display_p3": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Outside Display P3"
+          }
+        },
+        "type": "object",
+        "required": [
+          "color_space",
+          "outside_srgb",
+          "outside_display_p3"
+        ],
+        "title": "GamutView",
+        "description": "How much of the edited photo's color fits each output space."
       },
       "Generate": {
         "properties": {

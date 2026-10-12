@@ -27,7 +27,7 @@ import rawpy
 import tifffile
 from PIL import Image, ImageCms, ImageOps, UnidentifiedImageError
 
-from photo_agent import color
+from photo_agent import color, icc
 
 pillow_heif.register_heif_opener()
 
@@ -136,18 +136,21 @@ def decode(data: bytes) -> DecodedImage:
         raise UnsupportedImageError("Could not read this file as an image.") from exc
     exif = img.info.get("exif", b"")
     exif = exif if isinstance(exif, bytes) else b""
-    icc = img.info.get("icc_profile")
+    embedded = img.info.get("icc_profile") or None
+    profile = icc.parse(embedded) if embedded else None
 
     deep = _high_bit_depth(fmt, data, img)
     if deep is not None:
         # 16-bit PNGs and 10- or 12-bit HEICs: keep every bit rather than Pillow's 8.
         values, deep_alpha = _split_alpha(_orient(deep, _orientation(img)))
+        values, space = apply_profile(values, profile)
         return DecodedImage(
             pixels=values,
             format=fmt,
             exif=exif,
             has_alpha=deep_alpha is not None,
             alpha=deep_alpha,
+            space=space,
         )
 
     upright = ImageOps.exif_transpose(img)
@@ -157,15 +160,34 @@ def decode(data: bytes) -> DecodedImage:
         alpha = np.asarray(rgba.getchannel("A"), dtype=np.float32) / 255.0
         upright = rgba.convert("RGB")
 
-    rgb = _to_srgb(upright, icc)
-    pixels = _to_float(rgb)
+    if profile is None:
+        # No profile, or one that is not a simple matrix profile: LittleCMS takes it to
+        # sRGB (in 8 bits, which is all these sources have).
+        pixels, space = _to_float(_to_srgb(upright, embedded)), "srgb"
+    else:
+        pixels, space = apply_profile(_to_float(_to_srgb(upright, None)), profile)
     return DecodedImage(
         pixels=pixels,
         format=fmt,
         exif=exif,
         has_alpha=alpha is not None,
         alpha=alpha,
+        space=space,
     )
+
+
+def apply_profile(
+    pixels: Array, profile: icc.MatrixProfile | None
+) -> tuple[Array, color.WorkingSpace]:
+    """Pixels encoded per an embedded profile, converted in float into the working space
+    that holds all their colors: sRGB when the profile fits inside it, else the wide one.
+    No profile means sRGB, as browsers assume."""
+    if profile is None or profile.is_srgb():
+        return pixels, "srgb"
+    space: color.WorkingSpace = "srgb" if profile.fits_in("srgb") else color.WIDE
+    to_space = np.linalg.inv(color.to_xyz_matrix(space)) @ profile.to_xyz
+    linear = profile.to_linear(pixels) @ to_space.T.astype(np.float32)
+    return color.encode_curve(np.clip(linear, 0.0, 1.0)), space
 
 
 def _high_bit_depth(fmt: str, data: bytes, img: Image.Image) -> Array | None:
@@ -228,6 +250,7 @@ def decode_tiff(data: bytes) -> DecodedImage:
             page = tif.pages.first
             raw = page.asarray()
             orientation = int(page.tags.valueof(274, 1) or 1)
+            embedded = page.tags.valueof(34675)
             extra = len(page.extrasamples or ())
             planar = page.planarconfig == tifffile.PLANARCONFIG.SEPARATE
     except (tifffile.TiffFileError, ValueError, OSError, IndexError) as exc:
@@ -256,12 +279,15 @@ def decode_tiff(data: bytes) -> DecodedImage:
         raise UnsupportedImageError("Only RGB and grayscale TIFFs are supported.")
     values = np.asarray(values[..., :4] if extra else values[..., :3], dtype=np.float32)
     pixels, alpha = _split_alpha(_orient(values, orientation))
+    profile = icc.parse(bytes(embedded)) if isinstance(embedded, (bytes, np.ndarray)) else None
+    pixels, space = apply_profile(pixels, profile)
     return DecodedImage(
         pixels=pixels,
         format="TIFF",
         exif=raw_exif(data),
         has_alpha=alpha is not None,
         alpha=alpha,
+        space=space,
     )
 
 
@@ -427,23 +453,33 @@ def to_uint8(pixels: Array) -> npt.NDArray[np.uint8]:
     return np.asarray(np.clip(pixels * 255.0 + 0.5, 0, 255), dtype=np.uint8)
 
 
-def encode_jpeg(pixels: Array, quality: int = 90, exif: bytes | None = None) -> bytes:
+def encode_jpeg(
+    pixels: Array, quality: int = 90, exif: bytes | None = None, profile: bytes = SRGB_ICC
+) -> bytes:
+    """Encode RGB pixels as JPEG, tagged with `profile` (the ICC profile of the space the
+    pixels are in; sRGB unless said otherwise)."""
     img = Image.fromarray(to_uint8(pixels), mode="RGB")
     buf = io.BytesIO()
-    kwargs: dict[str, object] = {"quality": quality, "optimize": True, "icc_profile": SRGB_ICC}
+    kwargs: dict[str, object] = {"quality": quality, "optimize": True, "icc_profile": profile}
     if exif:
         kwargs["exif"] = exif
     img.save(buf, format="JPEG", **kwargs)
     return buf.getvalue()
 
 
-def encode_png(pixels: Array, exif: bytes | None = None, alpha: Array | None = None) -> bytes:
-    """Encode RGB pixels as PNG, with transparency when `alpha` (0..1) is given."""
+def encode_png(
+    pixels: Array,
+    exif: bytes | None = None,
+    alpha: Array | None = None,
+    profile: bytes = SRGB_ICC,
+) -> bytes:
+    """Encode RGB pixels as PNG, with transparency when `alpha` (0..1) is given, tagged
+    with `profile`."""
     img = Image.fromarray(to_uint8(pixels), mode="RGB")
     if alpha is not None:
         img.putalpha(Image.fromarray(to_uint8(alpha), mode="L"))
     buf = io.BytesIO()
-    kwargs: dict[str, object] = {"icc_profile": SRGB_ICC}
+    kwargs: dict[str, object] = {"icc_profile": profile}
     if exif:
         kwargs["exif"] = exif
     img.save(buf, format="PNG", **kwargs)

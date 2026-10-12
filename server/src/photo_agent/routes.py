@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
+import numpy as np
 from fastapi import (
     APIRouter,
     Body,
@@ -23,9 +24,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from photo_agent import (
+    color,
     critique,
     generative,
     geometry,
+    icc,
     imaging,
     looks,
     portrait,
@@ -545,15 +548,22 @@ def original(doc_id: str, store: Store) -> Response:
     response_class=Response,
     responses={200: {"content": {"image/jpeg": {}}}},
 )
-def preview(doc_id: str, store: Store) -> Response:
+def preview(
+    doc_id: str,
+    store: Store,
+    proof: ProofSpace | None = None,
+    gamut_warning: bool = False,
+) -> Response:
     """The photo with the current edits applied, at preview size, as JPEG.
 
     Add `?revision=<document revision>` to make the URL unique per edit state; the response
-    is the current state either way.
+    is the current state either way. `proof` soft-proofs it: shows it as it will look
+    saved in sRGB or Display P3, and with `gamut_warning`, paints the colors that will not
+    fit in magenta.
     """
     doc = load(store, doc_id)
     return Response(
-        preview_jpeg(store.image(doc_id), render_preview(store, doc)),
+        preview_jpeg(store.image(doc_id), render_preview(store, doc), proof, gamut_warning),
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache"},
     )
@@ -600,6 +610,31 @@ def before(doc_id: str, store: Store) -> Response:
     )
 
 
+class GamutView(BaseModel):
+    """How much of the edited photo's color fits each output space."""
+
+    color_space: color.WorkingSpace
+    """The space the photo is edited in."""
+    outside_srgb: float = Field(ge=0, le=1)
+    """Share of the photo whose colors do not fit sRGB (and will be mapped into it)."""
+    outside_display_p3: float = Field(ge=0, le=1)
+    """Share of the photo whose colors do not fit Display P3."""
+
+
+@router.get("/{doc_id}/gamut", operation_id="getGamut")
+def gamut(doc_id: str, store: Store) -> GamutView:
+    """Which output spaces hold all of the edited photo's colors, for soft-proofing and for
+    choosing what to export in."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    pixels = render_preview(store, doc)
+    return GamutView(
+        color_space=loaded.space,
+        outside_srgb=float(color.out_of_gamut(pixels, loaded.space, "srgb").mean()),
+        outside_display_p3=float(color.out_of_gamut(pixels, loaded.space, "display-p3").mean()),
+    )
+
+
 @router.get(
     "/{doc_id}/layers/{layer_id}/mask",
     operation_id="getLayerMask",
@@ -630,9 +665,29 @@ def list_jobs(doc_id: str, store: Store, worker: Worker) -> list[JobStatus]:
     return worker.jobs(doc_id)
 
 
-def preview_jpeg(loaded: LoadedImage, pixels: imaging.Array) -> bytes:
-    """A rendered preview as JPEG for the browser, with the output transform to sRGB."""
-    return imaging.encode_jpeg(loaded.to_srgb(pixels), PREVIEW_QUALITY)
+ProofSpace = Literal["srgb", "display-p3"]
+
+GAMUT_WARNING = np.array([1.0, 0.0, 1.0], dtype=np.float32)
+"""Paints colors that will not fit when soft-proofing: a magenta no photo is made of."""
+
+
+def preview_jpeg(
+    loaded: LoadedImage,
+    pixels: imaging.Array,
+    proof: ProofSpace | None = None,
+    gamut_warning: bool = False,
+) -> bytes:
+    """A rendered preview as JPEG for the browser, through the output transform.
+
+    Wide-gamut photos are shown in Display P3, tagged so, which wide-gamut screens show in
+    full and others map down. Soft-proofing (`proof`) shows the photo as it will look saved
+    in that space instead, and `gamut_warning` paints the colors that do not fit it."""
+    space: color.Space = proof or ("srgb" if loaded.space == "srgb" else "display-p3")
+    out = color.convert(pixels, loaded.space, space)
+    if proof is not None and gamut_warning:
+        outside = color.out_of_gamut(pixels, loaded.space, proof)[..., None]
+        out = np.asarray(out * (1 - outside) + GAMUT_WARNING * outside, dtype=np.float32)
+    return imaging.encode_jpeg(out, PREVIEW_QUALITY, profile=icc.profile(space))
 
 
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:

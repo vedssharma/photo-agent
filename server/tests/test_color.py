@@ -104,7 +104,11 @@ def test_tiff_orientation_and_alpha() -> None:
     rgba[..., 3] = 30000
     buf = io.BytesIO()
     tifffile.imwrite(
-        buf, rgba, photometric="rgb", extrasamples=["unassalpha"], extratags=[(274, "H", 1, 6, True)]
+        buf,
+        rgba,
+        photometric="rgb",
+        extrasamples=["unassalpha"],
+        extratags=[(274, "H", 1, 6, True)],
     )
     img = imaging.decode(buf.getvalue())
     assert (img.width, img.height) == (10, 20)  # Orientation 6: turned a quarter clockwise.
@@ -116,7 +120,9 @@ def test_previews_of_a_raw_are_srgb(client: TestClient, photos: Path) -> None:
     res = client.post("/api/documents", files={"file": ("green.dng", data)})
     assert res.status_code == 201, res.text
     doc_id = res.json()["id"]
-    preview = imaging.decode(client.get(f"/api/documents/{doc_id}/preview").content)
+    proofed = client.get(f"/api/documents/{doc_id}/preview", params={"proof": "srgb"})
+    preview = imaging.decode(proofed.content)
+    assert preview.space == "srgb"
     green = preview.pixels[:, 70:110].mean(axis=(0, 1))
     assert green[1] > 0.6 and green[0] < 0.5  # Mapped into sRGB, still vividly green.
     exported = client.post(f"/api/documents/{doc_id}/export", json={"format": "png"})

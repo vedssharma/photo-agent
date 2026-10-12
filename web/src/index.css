@@ -1843,3 +1843,16 @@ button.label-dot.on {
   flex-direction: column;
   gap: 0.25rem;
 }
+
+.proof {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.proof label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

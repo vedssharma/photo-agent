@@ -12,6 +12,7 @@ import {
   layerMaskUrl,
   openProjectFile,
   previewUrl,
+  type Proof,
   restoreProject,
   retouchPortrait,
   saveFile,
@@ -25,6 +26,7 @@ import { LayersPanel } from './components/LayersPanel'
 import { LivePreview } from './components/LivePreview'
 import { MaskOverlay } from './components/MaskOverlay'
 import { PhotoCanvas } from './components/PhotoCanvas'
+import { ProofControl } from './components/ProofControl'
 import { type SocketFactory, useChat } from './hooks/useChat'
 import { jobText, useJobs } from './hooks/useJobs'
 import { useManualEdit } from './hooks/useManualEdit'
@@ -149,6 +151,8 @@ function Editor({
     setSelectedLayer(layerId)
     setMaskTool((tool) => ({ ...tool, picking: false, refining: false }))
   }
+  // Soft-proofing a wide-gamut photo for sRGB or Display P3, if asked.
+  const [proof, setProof] = useState<Proof | null>(null)
   // A slider being dragged, shown instantly until the server's render of it arrives.
   const [preview, setPreview] = useState<
     (Preview & { revision: string }) | null
@@ -205,6 +209,9 @@ function Editor({
             </span>
           )}
           <span className="spacer" />
+          {doc.color_space !== 'srgb' && (
+            <ProofControl doc={doc} proof={proof} onProof={setProof} />
+          )}
           <button
             type="button"
             onClick={saveProject}
@@ -223,7 +230,7 @@ function Editor({
           </button>
         </div>
         <PhotoCanvas
-          src={previewUrl(doc)}
+          src={previewUrl(doc, proof)}
           beforeSrc={beforeUrl(doc)}
           alt={doc.filename}
           busy={chat.busy || job !== null}

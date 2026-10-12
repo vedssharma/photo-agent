@@ -162,12 +162,17 @@ class DocumentStore:
                 format=decoded.format,
                 width=decoded.width,
                 height=decoded.height,
+                color_space=decoded.space,
             )
         else:
             if (edits.width, edits.height) != (decoded.width, decoded.height):
                 raise MismatchError("The photo does not match the edits saved with it.")
             doc = edits.model_copy(
-                update={"filename": _safe_filename(edits.filename), "format": decoded.format}
+                update={
+                    "filename": _safe_filename(edits.filename),
+                    "format": decoded.format,
+                    "color_space": decoded.space,
+                }
             )
             # Keep the id so links and browser autosaves still find it, unless it is taken.
             if not _ID_RE.match(doc.id) or self.exists(doc.id):

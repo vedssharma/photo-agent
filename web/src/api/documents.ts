@@ -217,9 +217,33 @@ export async function offerOptions(
   return data
 }
 
+export type ColorSpace = ExportOptions['color_space']
+export type ProofSpace = Exclude<ColorSpace, 'rec2020'>
+
+/** Show the photo as it will look saved in `space`, optionally painting the colors that
+ * will not fit it. */
+export interface Proof {
+  space: ProofSpace
+  warn: boolean
+}
+
+export type Gamut = components['schemas']['GamutView']
+
 /** URL of the edited photo at preview size; changes whenever the edits do. */
-export function previewUrl(doc: DocumentView): string {
-  return `/api/documents/${doc.id}/preview?revision=${doc.revision}`
+export function previewUrl(doc: DocumentView, proof?: Proof | null): string {
+  const url = `/api/documents/${doc.id}/preview?revision=${doc.revision}`
+  if (!proof) return url
+  return `${url}&proof=${proof.space}${proof.warn ? '&gamut_warning=true' : ''}`
+}
+
+/** How much of the edited photo's color fits sRGB and Display P3. */
+export async function fetchGamut(docId: string): Promise<Gamut> {
+  const { data, error, response } = await api.GET(
+    '/api/documents/{doc_id}/gamut',
+    { params: { path: { doc_id: docId } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
 }
 
 /** AI model jobs running (or just finished) for a document. */

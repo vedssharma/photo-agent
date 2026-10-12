@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from photo_agent.color import WorkingSpace
 from photo_agent.critique import Critique
 from photo_agent.layers import EditState
 from photo_agent.operations import Operation, OperationAdapter
@@ -121,10 +122,12 @@ class Document(BaseModel):
     id: str = Field(default_factory=new_id)
     filename: str
     format: str
-    """Source format: JPEG, PNG, HEIF, or RAW."""
+    """Source format: JPEG, PNG, HEIF, TIFF, or RAW."""
     width: int
     height: int
     """Upright size of the original, in pixels."""
+    color_space: WorkingSpace = "srgb"
+    """The working color space the photo is edited in (see `photo_agent.color`)."""
     created_at: datetime = Field(default_factory=now)
     steps: list[Step] = Field(default_factory=list)
     """Every step ever made, in the order they were made. Parents come before children."""
@@ -303,6 +306,9 @@ class DocumentView(BaseModel):
     format: str
     width: int
     height: int
+    color_space: WorkingSpace
+    """sRGB for ordinary photos; Rec.2020 for RAW and wide-gamut ones, whose colors can go
+    beyond what sRGB (and most screens) can show."""
     revision: str
     """Identifies the current edit state; changes whenever the rendered result would."""
     state: EditState
@@ -329,6 +335,7 @@ class DocumentView(BaseModel):
             format=doc.format,
             width=doc.width,
             height=doc.height,
+            color_space=doc.color_space,
             revision=doc.revision,
             state=doc.state,
             head=doc.head,

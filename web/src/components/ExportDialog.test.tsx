@@ -56,6 +56,7 @@ describe('ExportDialog', () => {
       quality: 92,
       keep_location: false,
       upscale: 1,
+      color_space: 'srgb',
     })
     expect(onClose).toHaveBeenCalled()
   })
@@ -85,6 +86,39 @@ describe('ExportDialog', () => {
       format: 'png',
       keep_location: true,
       upscale: 2,
+    })
+  })
+
+  it('offers wide color spaces only for wide-gamut photos', async () => {
+    const fetchMock = stubApi({
+      'POST /api/documents/abc123abc123/export': () => new Response('tif'),
+    })
+    const { unmount } = render(
+      <ExportDialog doc={makeDoc()} onClose={vi.fn()} save={vi.fn()} />,
+    )
+    expect(
+      screen.queryByRole('combobox', { name: /Colors/ }),
+    ).not.toBeInTheDocument()
+    unmount()
+
+    const save = vi.fn()
+    render(
+      <ExportDialog
+        doc={makeDoc({ color_space: 'rec2020', format: 'RAW' })}
+        onClose={vi.fn()}
+        save={save}
+      />,
+    )
+    expect(screen.getByText(/gently toned down to fit/)).toBeInTheDocument()
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /Colors/ }),
+      'display-p3',
+    )
+    expect(screen.getByText(/keeps colors beyond sRGB/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Download' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(await fetchMock.mock.calls[0][0].json()).toMatchObject({
+      color_space: 'display-p3',
     })
   })
 

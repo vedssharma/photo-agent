@@ -360,6 +360,7 @@ export function LibraryView({
           quality: 92,
           keep_location: false,
           upscale: 1,
+          color_space: 'srgb',
         }),
       )
     } catch (err) {

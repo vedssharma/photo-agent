@@ -33,6 +33,9 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
         layer.operations.some((op) => 'seed' in op),
     )
   const [upscale, setUpscale] = useState<ExportOptions['upscale']>(1)
+  const wide = doc.color_space !== 'srgb'
+  const [colorSpace, setColorSpace] =
+    useState<ExportOptions['color_space']>('srgb')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,6 +57,7 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           quality,
           keep_location: keepLocation,
           upscale,
+          color_space: colorSpace,
         }),
       )
       onClose()
@@ -140,6 +144,33 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           <p className="hint">
             Good for prints. Enlarging adds new fine detail and takes longer.
           </p>
+        )}
+
+        {wide && (
+          <>
+            <label className="color-space">
+              Colors{' '}
+              <select
+                value={colorSpace}
+                onChange={(e) =>
+                  setColorSpace(e.target.value as ExportOptions['color_space'])
+                }
+              >
+                <option value="srgb">sRGB, for sharing and the web</option>
+                <option value="display-p3">
+                  Display P3, for phone and laptop screens
+                </option>
+                <option value="rec2020">
+                  Rec.2020, every color, for further editing
+                </option>
+              </select>
+            </label>
+            <p className="hint">
+              {colorSpace === 'srgb'
+                ? 'This photo has colors beyond sRGB; they are gently toned down to fit.'
+                : 'The file keeps colors beyond sRGB and says so in its color profile.'}
+            </p>
+          </>
         )}
 
         <label>

@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from photo_agent import credentials, imaging
+from photo_agent import color, credentials, icc, imaging
 from photo_agent.graph import Document
 from photo_agent.render import render_cutout, render_state
 from photo_agent.store import LoadedImage
@@ -31,6 +31,13 @@ class ExportOptions(BaseModel):
     )
     upscale: Literal[1, 2, 4] = Field(
         1, description="Enlarge the export with an AI upscaler (up to 8000 pixels across)."
+    )
+    color_space: color.Space = Field(
+        "srgb",
+        description="The color space the file is saved in, with its ICC profile embedded. "
+        "sRGB suits sharing and the web; Display P3 keeps the extra color of modern phone "
+        "and laptop screens; Rec.2020 keeps every color a RAW file holds, for further "
+        "editing (best with 16 bits).",
     )
 
 
@@ -67,11 +74,14 @@ def _encode(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes
         pixels, alpha = render_state(loaded.source.pixels, state, ctx), None
     if options.upscale > 1:
         pixels, alpha = enlarge(loaded, pixels, alpha, options.upscale)
-    pixels = loaded.to_srgb(pixels)
+    # The output transform: into the chosen space, with colors that do not fit mapped
+    # onto its edge, and that space's profile embedded.
+    pixels = color.convert(pixels, loaded.space, options.color_space)
+    profile = icc.profile(options.color_space)
     exif = export_exif(loaded.source.exif, pixels.shape[1], pixels.shape[0], options.keep_location)
     if options.format == "png":
-        return imaging.encode_png(pixels, exif=exif, alpha=alpha)
-    return imaging.encode_jpeg(pixels, quality=options.quality, exif=exif)
+        return imaging.encode_png(pixels, exif=exif, alpha=alpha, profile=profile)
+    return imaging.encode_jpeg(pixels, quality=options.quality, exif=exif, profile=profile)
 
 
 def enlarge(

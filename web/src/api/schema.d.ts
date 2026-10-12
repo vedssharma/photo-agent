@@ -338,7 +338,9 @@ export interface paths {
          * @description The photo with the current edits applied, at preview size, as JPEG.
          *
          *     Add `?revision=<document revision>` to make the URL unique per edit state; the response
-         *     is the current state either way.
+         *     is the current state either way. `proof` soft-proofs it: shows it as it will look
+         *     saved in sRGB or Display P3, and with `gamut_warning`, paints the colors that will not
+         *     fit in magenta.
          */
         get: operations["getPreview"];
         put?: never;
@@ -382,6 +384,27 @@ export interface paths {
          *     up with the preview for before/after comparison.
          */
         get: operations["getBefore"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/gamut": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamut
+         * @description Which output spaces hold all of the edited photo's colors, for soft-proofing and for
+         *     choosing what to export in.
+         */
+        get: operations["getGamut"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1879,6 +1902,12 @@ export interface components {
             /** Height */
             height: number;
             /**
+             * Color Space
+             * @default srgb
+             * @enum {string}
+             */
+            color_space: "srgb" | "rec2020";
+            /**
              * Created At
              * Format: date-time
              */
@@ -1907,6 +1936,11 @@ export interface components {
             width: number;
             /** Height */
             height: number;
+            /**
+             * Color Space
+             * @enum {string}
+             */
+            color_space: "srgb" | "rec2020";
             /** Revision */
             revision: string;
             state: components["schemas"]["EditState"];
@@ -2070,6 +2104,13 @@ export interface components {
              * @enum {integer}
              */
             upscale: 1 | 2 | 4;
+            /**
+             * Color Space
+             * @description The color space the file is saved in, with its ICC profile embedded. sRGB suits sharing and the web; Display P3 keeps the extra color of modern phone and laptop screens; Rec.2020 keeps every color a RAW file holds, for further editing (best with 16 bits).
+             * @default srgb
+             * @enum {string}
+             */
+            color_space: "srgb" | "display-p3" | "rec2020";
         };
         /**
          * Exposure
@@ -2153,6 +2194,21 @@ export interface components {
              * @enum {string}
              */
             axis: "horizontal" | "vertical";
+        };
+        /**
+         * GamutView
+         * @description How much of the edited photo's color fits each output space.
+         */
+        GamutView: {
+            /**
+             * Color Space
+             * @enum {string}
+             */
+            color_space: "srgb" | "rec2020";
+            /** Outside Srgb */
+            outside_srgb: number;
+            /** Outside Display P3 */
+            outside_display_p3: number;
         };
         /**
          * Generate
@@ -4575,7 +4631,10 @@ export interface operations {
     };
     getPreview: {
         parameters: {
-            query?: never;
+            query?: {
+                proof?: ("srgb" | "display-p3") | null;
+                gamut_warning?: boolean;
+            };
             header?: never;
             path: {
                 doc_id: string;
@@ -4658,6 +4717,37 @@ export interface operations {
                 };
                 content: {
                     "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getGamut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GamutView"];
                 };
             };
             /** @description Validation Error */
