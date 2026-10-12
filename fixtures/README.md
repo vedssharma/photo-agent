@@ -9,6 +9,7 @@ A small, license-clean set of photos covering the formats and situations the app
 | `landscape.png` | PNG | Wide outdoor scene at dusk with a big sky and point lights | DSCOVR launch, SpaceX; public domain |
 | `low-light.jpg` | JPEG | Indoor scene three stops underexposed with high-ISO noise and a cool cast (simulated from the original) | Coffee cup, Rachel Michetti; CC0 |
 | `phone.heic` | HEIC | iPhone-style HEIC with GPS in EXIF, which export should strip by default | Chelsea the cat, Stefan van der Walt; CC0 |
+| `raw.dng` | RAW (DNG) | 14-bit RGGB Bayer mosaic with a camera color matrix and as-shot white balance, which must be demosaiced and developed (re-shot from the coffee photo by a made-up camera) | Coffee cup, Rachel Michetti; CC0 |
 
 All sources are the sample images bundled with [scikit-image](https://scikit-image.org/docs/stable/api/skimage.data.html), which documents their licenses.
 

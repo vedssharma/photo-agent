@@ -26,7 +26,12 @@ describe('library imports', () => {
       file('.DS_Store'),
       file('trip.photoagent'),
       file('b.png'),
+      file('DSC_0042.NEF'),
     ])
-    expect(found.map((f) => f.name)).toEqual(['IMG_1.HEIC', 'b.png'])
+    expect(found.map((f) => f.name)).toEqual([
+      'IMG_1.HEIC',
+      'b.png',
+      'DSC_0042.NEF',
+    ])
   })
 })

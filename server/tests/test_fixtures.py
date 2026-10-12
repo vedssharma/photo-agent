@@ -5,6 +5,7 @@ from typing import Any
 
 import pillow_heif
 import pytest
+import rawpy
 from PIL import Image, ImageOps
 
 from photo_agent.settings import REPO_ROOT
@@ -21,12 +22,17 @@ EXIF_ORIENTATION = 0x0112
 def test_manifest_covers_required_kinds() -> None:
     formats = {entry["format"] for entry in MANIFEST}
     tags = {tag for entry in MANIFEST for tag in entry["tags"]}
-    assert {"JPEG", "PNG", "HEIF"} <= formats
+    assert {"JPEG", "PNG", "HEIF", "RAW"} <= formats
     assert {"portrait", "landscape", "low-light"} <= tags
 
 
 @pytest.mark.parametrize("entry", MANIFEST, ids=lambda e: e["file"])
 def test_fixture_decodes_as_described(entry: dict[str, Any]) -> None:
+    if entry["format"] == "RAW":
+        with rawpy.imread(str(PHOTOS / entry["file"])) as raw:
+            assert (raw.sizes.width, raw.sizes.height) == (entry["width"], entry["height"])
+            assert raw.raw_pattern is not None  # A Bayer mosaic still to be demosaiced.
+        return
     with Image.open(PHOTOS / entry["file"]) as img:
         assert img.format == entry["format"]
         assert img.getexif().get(EXIF_ORIENTATION, 1) == entry.get("orientation", 1)

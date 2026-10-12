@@ -60,7 +60,8 @@ from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchErro
 from photo_agent.vision.backends import BackendMode, WorkerConfig
 from photo_agent.vision.worker import JobStatus, Mode, ModelWorker
 
-MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+"""Big enough for the largest camera RAW files (uncompressed 60+ megapixel ones)."""
 PREVIEW_QUALITY = 88
 
 previews = RenderCache()
@@ -169,10 +170,11 @@ def load(store: DocumentStore, doc_id: str) -> Document:
     responses={413: {"description": "File too large"}, 415: {"description": "Not a photo"}},
 )
 async def create_document(file: UploadFile, store: Store, library: LibraryDep) -> DocumentView:
-    """Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too."""
+    """Upload a JPEG, PNG, HEIC, or camera RAW photo to start editing it. It joins the
+    library too."""
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Photos up to 64 MB are supported.")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Photos up to 200 MB are supported.")
     try:
         doc = store.create(file.filename or "photo", data)
     except imaging.UnsupportedImageError as exc:
@@ -527,7 +529,7 @@ def checkout(doc_id: str, body: Checkout, store: Store) -> DocumentView:
     responses={200: {"content": {"image/jpeg": {}}}},
 )
 def original(doc_id: str, store: Store) -> Response:
-    """The unedited photo at preview size, as JPEG (browsers cannot show HEIC)."""
+    """The unedited photo at preview size, as JPEG (browsers cannot show HEIC or RAW)."""
     load(store, doc_id)
     pixels = store.image(doc_id).proxy
     return Response(

@@ -15,14 +15,48 @@ export type StepView = DocumentView['history'][number]
 export type ManualEdit = components['schemas']['ManualEdit']
 export type JobStatus = components['schemas']['JobStatus']
 
-/** Photo types the backend can decode. HEIC often has no MIME type in browsers. */
-export const PHOTO_TYPES =
-  '.jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic'
+/** Camera RAW formats the backend can develop (it uses LibRaw, which reads many more). */
+export const RAW_EXTENSIONS = [
+  'dng',
+  'cr2',
+  'cr3',
+  'crw',
+  'nef',
+  'nrw',
+  'arw',
+  'srf',
+  'sr2',
+  'raf',
+  'orf',
+  'rw2',
+  'pef',
+  'srw',
+  'x3f',
+  '3fr',
+  'iiq',
+  'rwl',
+  'erf',
+  'mrw',
+  'kdc',
+  'dcr',
+  'mos',
+]
+
+/** Photo types the backend can decode. HEIC and RAW files often have no MIME type in
+ * browsers, so extensions are listed too. */
+export const PHOTO_TYPES = [
+  '.jpg,.jpeg,.png,.heic,.heif',
+  ...RAW_EXTENSIONS.map((ext) => `.${ext}`),
+  'image/jpeg,image/png,image/heic',
+].join(',')
 
 /** Saved projects, for the file dialog. */
 export const PROJECT_TYPES = '.photoagent'
 
-const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif|photoagent)$/i
+const ACCEPTED_EXTENSIONS = new RegExp(
+  `\\.(jpe?g|png|heic|heif|photoagent|${RAW_EXTENSIONS.join('|')})$`,
+  'i',
+)
 
 /** Saved projects (original photo plus edits) use this extension. */
 export function isProjectFile(file: File): boolean {

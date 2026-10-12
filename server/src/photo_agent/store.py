@@ -109,7 +109,7 @@ class DocumentStore:
                 doc.id = new_id()
         folder = self._folder(doc.id)
         folder.mkdir(parents=True)
-        (folder / f"original{EXTENSIONS[decoded.format]}").write_bytes(data)
+        (folder / f"original{original_extension(decoded.format, filename)}").write_bytes(data)
         self.save(doc)
         self._remember(doc.id, self._loaded(doc.id, decoded))
         return doc
@@ -207,6 +207,15 @@ class DocumentStore:
         if not _ID_RE.match(doc_id):
             raise DocumentNotFoundError(doc_id)
         return self.root / doc_id
+
+
+def original_extension(fmt: str, filename: str) -> str:
+    """The extension to keep an original under. RAW files keep their own (".cr2", ".nef",
+    ...), since there are many RAW formats; LibRaw reads them by content either way."""
+    if fmt == imaging.RAW:
+        suffix = Path(filename.replace("\\", "/")).suffix.lower()
+        return suffix if suffix in imaging.RAW_EXTENSIONS else ".raw"
+    return EXTENSIONS[fmt]
 
 
 def _safe_filename(name: str) -> str:

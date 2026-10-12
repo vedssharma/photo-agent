@@ -76,7 +76,7 @@ async def import_photos(files: list[UploadFile], library: LibraryDep) -> ImportR
         name = file.filename or "photo"
         data = await file.read(MAX_UPLOAD_BYTES + 1)
         if len(data) > MAX_UPLOAD_BYTES:
-            result.skipped.append(Skipped(filename=name, reason="Larger than 64 MB."))
+            result.skipped.append(Skipped(filename=name, reason="Larger than 200 MB."))
             continue
         try:
             outcome = await asyncio.to_thread(library.import_file, name, data)

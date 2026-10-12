@@ -20,6 +20,8 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
+from photo_agent import imaging
+
 EXIF_IFD = 0x8769
 GPS_IFD = 0x8825
 MAKE, MODEL = 0x010F, 0x0110
@@ -83,9 +85,15 @@ def read(data: bytes) -> PhotoMetadata:
     """Whatever metadata the file has; empty when it has none or cannot be read."""
     try:
         with Image.open(io.BytesIO(data)) as img:
-            exif = img.getexif()
+            exif, opened = img.getexif(), True
     except (UnidentifiedImageError, OSError):
-        return PhotoMetadata()
+        exif, opened = Image.Exif(), False
+    if not opened:
+        # Camera RAW formats Pillow cannot open still carry TIFF-style EXIF inside.
+        raw = imaging.raw_exif(data)
+        if not raw:
+            return PhotoMetadata()
+        exif.load(raw)
     sub = _ifd(exif, EXIF_IFD)
     gps = _ifd(exif, GPS_IFD)
     return PhotoMetadata(

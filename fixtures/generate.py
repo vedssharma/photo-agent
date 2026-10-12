@@ -1,6 +1,8 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["scikit-image==0.26.0", "pillow==12.*", "pillow-heif==1.*", "numpy==2.*"]
+# dependencies = [
+#   "scikit-image==0.26.0", "pillow==12.*", "pillow-heif==1.*", "numpy==2.*", "tifffile",
+# ]
 # ///
 """Regenerate the test photo fixtures in fixtures/photos/.
 
@@ -20,6 +22,7 @@ from typing import Any
 import numpy as np
 import pillow_heif
 import skimage.data
+import tifffile
 from PIL import Image
 
 pillow_heif.register_heif_opener()
@@ -82,6 +85,63 @@ def low_light(rgb: np.ndarray, seed: int) -> np.ndarray:
     noisy = linear + rng.normal(0.0, 0.004, linear.shape).astype(np.float32)
     out = np.clip(noisy, 0.0, 1.0) ** (1 / 2.2)
     return (out * 255.0).round().astype(np.uint8)
+
+
+XYZ_TO_REC2020 = np.array(
+    [
+        [1.7166512, -0.3556708, -0.2533663],
+        [-0.6666844, 1.6164812, 0.0157685],
+        [0.0176399, -0.0427706, 0.9421031],
+    ]
+)
+SRGB_TO_REC2020 = np.array(
+    [
+        [0.6274039, 0.3292830, 0.0433131],
+        [0.0690973, 0.9195404, 0.0113623],
+        [0.0163914, 0.0880133, 0.8955953],
+    ]
+)
+
+
+def raw_dng(rgb: np.ndarray, *, make: str, model: str, taken: str) -> bytes:
+    """Re-shoot an sRGB photo as a camera RAW: linear light through an RGGB Bayer filter
+    with a green-heavy sensor, 14-bit, described by a DNG color matrix and as-shot white
+    balance (the same made-up camera as server/tests/raw_helpers.py)."""
+    x = rgb.astype(np.float64) / 255.0
+    linear = np.where(x <= 0.04045, x / 12.92, ((x + 0.055) / 1.055) ** 2.4)
+    sensitivity = np.array([0.5, 1.0, 0.7])
+    h, w = (s - s % 2 for s in linear.shape[:2])
+    cam = (linear @ SRGB_TO_REC2020.T)[:h, :w] * sensitivity
+    mosaic = np.empty((h, w))
+    mosaic[0::2, 0::2] = cam[0::2, 0::2, 0]
+    mosaic[0::2, 1::2] = cam[0::2, 1::2, 1]
+    mosaic[1::2, 0::2] = cam[1::2, 0::2, 1]
+    mosaic[1::2, 1::2] = cam[1::2, 1::2, 2]
+    black, white = 512, 16383
+    raw = np.clip(mosaic * (white - black) + black, 0, white).astype(np.uint16)
+
+    def rationals(values: np.ndarray) -> list[int]:
+        return [n for v in values for n in (round(float(v) * 1_000_000), 1_000_000)]
+
+    tags = [
+        (50706, "B", 4, (1, 4, 0, 0), True),  # DNGVersion
+        (50707, "B", 4, (1, 1, 0, 0), True),  # DNGBackwardVersion
+        (50708, "s", 0, f"{make} {model}", True),  # UniqueCameraModel
+        (271, "s", 0, make, True),
+        (272, "s", 0, model, True),
+        (306, "s", 0, taken, True),
+        (33421, "H", 2, (2, 2), True),  # CFARepeatPatternDim
+        (33422, "B", 4, (0, 1, 1, 2), True),  # CFAPattern: RGGB
+        (50710, "B", 3, (0, 1, 2), True),  # CFAPlaneColor
+        (50714, "H", 1, (black,), True),  # BlackLevel
+        (50717, "H", 1, (white,), True),  # WhiteLevel
+        (50721, "2i", 9, rationals((np.diag(sensitivity) @ XYZ_TO_REC2020).flatten()), True),
+        (50778, "H", 1, (21,), True),  # CalibrationIlluminant1: D65
+        (50728, "2I", 3, rationals(sensitivity / sensitivity.max()), True),  # AsShotNeutral
+    ]
+    path = OUT / "raw.dng"
+    tifffile.imwrite(path, raw, photometric=32803, subfiletype=0, extratags=tags, metadata=None)
+    return path.read_bytes()
 
 
 def main() -> None:
@@ -184,6 +244,18 @@ def main() -> None:
         has_gps=True,
         tags=["heic", "phone", "pet", "gps"],
         source="chelsea",
+    )
+
+    # Camera RAW: a DNG like an enthusiast's camera writes, so LibRaw has to demosaic it,
+    # white balance it, and convert its colors with the camera matrix.
+    coffee_raw = skimage.data.coffee()
+    raw_dng(coffee_raw, make="Fixture", model="RAW Camera", taken="2026:10:12 09:30:00")
+    record(
+        "raw.dng",
+        Image.fromarray(coffee_raw),
+        format="RAW",
+        tags=["raw", "dng", "indoor"],
+        source="coffee",
     )
 
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

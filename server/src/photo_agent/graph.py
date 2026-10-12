@@ -121,7 +121,7 @@ class Document(BaseModel):
     id: str = Field(default_factory=new_id)
     filename: str
     format: str
-    """Source format: JPEG, PNG, or HEIF."""
+    """Source format: JPEG, PNG, HEIF, or RAW."""
     width: int
     height: int
     """Upright size of the original, in pixels."""

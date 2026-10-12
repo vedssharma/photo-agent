@@ -15,7 +15,8 @@ export interface paths {
         put?: never;
         /**
          * Create Document
-         * @description Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too.
+         * @description Upload a JPEG, PNG, HEIC, or camera RAW photo to start editing it. It joins the
+         *     library too.
          */
         post: operations["createDocument"];
         delete?: never;
@@ -314,7 +315,7 @@ export interface paths {
         };
         /**
          * Original
-         * @description The unedited photo at preview size, as JPEG (browsers cannot show HEIC).
+         * @description The unedited photo at preview size, as JPEG (browsers cannot show HEIC or RAW).
          */
         get: operations["getOriginal"];
         put?: never;
