@@ -1025,6 +1025,59 @@
         }
       }
     },
+    "/api/documents/{doc_id}/lens": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Lens Info",
+        "description": "The camera and lens the photo was taken with, and the Lensfun profile a\n`lens_profile` operation corrects it with (with `lens_name`, for that lens instead).",
+        "operationId": "getLens",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "lens_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Lens Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LensView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{doc_id}/layers/{layer_id}/mask": {
       "get": {
         "tags": [
@@ -4652,6 +4705,9 @@
                   "$ref": "#/components/schemas/LensCorrection"
                 },
                 {
+                  "$ref": "#/components/schemas/LensProfile"
+                },
+                {
                   "$ref": "#/components/schemas/Expand"
                 }
               ],
@@ -4662,6 +4718,7 @@
                   "expand": "#/components/schemas/Expand",
                   "flip": "#/components/schemas/Flip",
                   "lens_correction": "#/components/schemas/LensCorrection",
+                  "lens_profile": "#/components/schemas/LensProfile",
                   "perspective": "#/components/schemas/Perspective",
                   "rotate": "#/components/schemas/Rotate",
                   "straighten": "#/components/schemas/Straighten"
@@ -5717,6 +5774,118 @@
         "type": "object",
         "title": "LensCorrection",
         "description": "Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward\n(pincushion, telephoto). Scales up just enough that no edge is left empty."
+      },
+      "LensProfile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "lens_profile",
+            "title": "Op",
+            "default": "lens_profile"
+          },
+          "distortion": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Distortion",
+            "description": "How much of the distortion fix to use.",
+            "default": 100
+          },
+          "vignetting": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Vignetting",
+            "description": "How much of the vignetting fix to use.",
+            "default": 100
+          },
+          "chromatic_aberration": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Chromatic Aberration",
+            "description": "How much of the color fringing fix to use.",
+            "default": 100
+          },
+          "lens": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Lens",
+            "description": "A lens to use instead of the one the photo records (say, for an adapted manual lens); leave empty to use the photo's own.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LensProfile",
+        "description": "Correct the lens the photo was taken with, using its measured profile: straighten\nthe lines it bends, brighten the corners it darkens (vignetting), and remove the color\nfringes it adds at edges (chromatic aberration). The camera and lens come from the\nphoto itself, so the defaults are right; it does nothing when the lens is unknown or\nhas no profile. Prefer it to lens_correction when it applies."
+      },
+      "LensView": {
+        "properties": {
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "focal_length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Length"
+          },
+          "aperture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aperture"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          }
+        },
+        "type": "object",
+        "title": "LensView",
+        "description": "What is known about the lens a photo was taken with, and its profile."
       },
       "LibraryPhoto": {
         "properties": {

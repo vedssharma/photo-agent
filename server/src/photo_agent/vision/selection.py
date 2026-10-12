@@ -27,6 +27,7 @@ from PIL import Image
 
 from photo_agent import imaging
 from photo_agent.imaging import Array
+from photo_agent.lens import Shot
 from photo_agent.masks import SemanticMask
 from photo_agent.operations import OpBase
 from photo_agent.vision.backends import BackendMode
@@ -77,8 +78,11 @@ class DocumentVision:
         worker: ModelWorker,
         folder: Path,
         backends: BackendMode = "auto",
+        shot: Shot | None = None,
     ) -> None:
         self.doc_id = doc_id
+        self.shot = shot
+        """The photo's camera and lens, so a lens profile in the framing applies here too."""
         self.proxy = proxy
         self.source_aspect = source_aspect
         self.scale = scale
@@ -347,7 +351,9 @@ class DocumentVision:
         from photo_agent.render import RenderContext, apply_operations
 
         # With this vision, so an expanded canvas holds what the preview shows.
-        ctx = RenderContext(scale=self.scale, source_aspect=self.source_aspect, vision=self)
+        ctx = RenderContext(
+            scale=self.scale, source_aspect=self.source_aspect, vision=self, shot=self.shot
+        )
         out = apply_operations(self.proxy.astype(np.float32, copy=True), framing, ctx)
         return np.ascontiguousarray(
             imaging.resize_long_edge(np.clip(out, 0.0, 1.0), WORK_EDGE), np.float32

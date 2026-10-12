@@ -30,6 +30,7 @@ from photo_agent import (
     geometry,
     icc,
     imaging,
+    lens,
     looks,
     portrait,
     projects,
@@ -633,6 +634,14 @@ def gamut(doc_id: str, store: Store) -> GamutView:
         outside_srgb=float(color.out_of_gamut(pixels, loaded.space, "srgb").mean()),
         outside_display_p3=float(color.out_of_gamut(pixels, loaded.space, "display-p3").mean()),
     )
+
+
+@router.get("/{doc_id}/lens", operation_id="getLens")
+def lens_info(doc_id: str, store: Store, lens_name: str = "") -> lens.LensView:
+    """The camera and lens the photo was taken with, and the Lensfun profile a
+    `lens_profile` operation corrects it with (with `lens_name`, for that lens instead)."""
+    load(store, doc_id)
+    return lens.describe(store.image(doc_id).shot, lens_name)
 
 
 @router.get(

@@ -85,6 +85,7 @@ module = [
     "spandrel",
     "spandrel_extra_arches",
     "safetensors.*",
+    "lensfunpy",
 ]
 ignore_missing_imports = true
 

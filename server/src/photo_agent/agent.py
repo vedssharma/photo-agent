@@ -149,7 +149,9 @@ tone them down for close-ups and children.
 - When the horizon is tilted or a building leans ("straighten this", "fix the \
 horizon", "the walls look crooked"), call auto_straighten: it measures the straight lines in \
 the photo and adds a straighten and a perspective fix to the framing. If it finds nothing, \
-set straighten yourself. Use lens_correction for lines that bow (wide-angle barrel).
+set straighten yourself. For lens flaws (lines that bow, dark corners, color fringes at \
+edges), add lens_profile: it corrects the photo's own lens from its measured profile. Use \
+lens_correction by hand only when there is no profile for the lens.
 - update_operation and remove_operation change operations already present, in any layer; \
 update_layer and remove_layer change layers. Prefer adjusting what is already there over \
 stacking a second operation of the same kind for the same purpose.

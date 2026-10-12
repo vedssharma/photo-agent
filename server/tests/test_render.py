@@ -273,11 +273,13 @@ MODEL_OPERATIONS = {
     if issubclass(cls, ops.CONTENT_TYPES) or issubclass(cls, ops.GenerativeBase)
 }
 """Operations whose result comes from an AI model (tested in their own modules)."""
+NEEDS_THE_LENS = {"lens_profile"}
+"""Operations that depend on the photo's own EXIF (tested in test_lens.py)."""
 
 
 def test_golden_cases_cover_every_operation() -> None:
     covered = {op.op for case in GOLDEN_CASES.values() for op in case}  # type: ignore[attr-defined]
-    assert covered == set(ops.OPERATIONS_BY_NAME) - MODEL_OPERATIONS
+    assert covered == set(ops.OPERATIONS_BY_NAME) - MODEL_OPERATIONS - NEEDS_THE_LENS
 
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_CASES))

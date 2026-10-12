@@ -27,6 +27,7 @@ import numpy.typing as npt
 from photo_agent import color, imaging
 from photo_agent import operations as ops
 from photo_agent.graph import Document, new_id
+from photo_agent.lens import Shot, shot_from_exif
 from photo_agent.masks import SemanticMask
 from photo_agent.render import RenderContext, Vision
 from photo_agent.vision.backends import BackendMode
@@ -54,6 +55,8 @@ class LoadedImage:
     vision: DocumentVision | None = None
     """Runs the models behind semantic masks; None when the store has no model worker."""
     _srgb_proxy: imaging.Array | None = field(default=None, repr=False)
+    shot: Shot | None = None
+    """The camera and lens from the photo's EXIF, for lens profile corrections."""
 
     @property
     def space(self) -> color.WorkingSpace:
@@ -84,6 +87,7 @@ class LoadedImage:
             source_aspect=self.source.width / self.source.height,
             vision=self._vision_in_space,
             space=self.space,
+            shot=self.shot,
         )
 
     @property
@@ -93,6 +97,7 @@ class LoadedImage:
             source_aspect=self.source.width / self.source.height,
             vision=self._vision_in_space,
             space=self.space,
+            shot=self.shot,
         )
 
     @property
@@ -253,7 +258,9 @@ class DocumentStore:
         return loaded
 
     def _loaded(self, doc_id: str, decoded: imaging.DecodedImage) -> LoadedImage:
-        loaded = LoadedImage(decoded, imaging.make_proxy(decoded.pixels))
+        loaded = LoadedImage(
+            decoded, imaging.make_proxy(decoded.pixels), shot=shot_from_exif(decoded.exif)
+        )
         if self.worker is not None:
             loaded.vision = DocumentVision(
                 doc_id,
@@ -263,6 +270,7 @@ class DocumentStore:
                 worker=self.worker,
                 folder=self._folder(doc_id) / "vision",
                 backends=self.backends,
+                shot=loaded.shot,
             )
         return loaded
 

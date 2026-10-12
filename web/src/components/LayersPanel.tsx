@@ -40,6 +40,7 @@ import {
   RetouchIcon,
 } from './icons'
 import { MaskControls } from './MaskControls'
+import { LensNote } from './LensNote'
 import { OperationControls } from './OperationControls'
 import { Slider } from './Slider'
 
@@ -251,6 +252,11 @@ export function LayersPanel({
           onOptions && 'seed' in op ? () => onOptions(opId) : undefined
         }
         optionUrl={(seed) => optionUrl(doc, opId, seed)}
+        note={
+          op.op === 'lens_profile' ? (
+            <LensNote docId={doc.id} lensName={op.lens} />
+          ) : undefined
+        }
       />
     )
   }

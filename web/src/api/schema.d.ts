@@ -413,6 +413,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{doc_id}/lens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lens Info
+         * @description The camera and lens the photo was taken with, and the Lensfun profile a
+         *     `lens_profile` operation corrects it with (with `lens_name`, for that lens instead).
+         */
+        get: operations["getLens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{doc_id}/layers/{layer_id}/mask": {
         parameters: {
             query?: never;
@@ -1990,7 +2011,7 @@ export interface components {
              * Framing
              * @default []
              */
-            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"] | components["schemas"]["Expand"])[];
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"] | components["schemas"]["LensProfile"] | components["schemas"]["Expand"])[];
             /**
              * Layers
              * @default []
@@ -2483,6 +2504,66 @@ export interface components {
              * @default 0
              */
             distortion: number;
+        };
+        /**
+         * LensProfile
+         * @description Correct the lens the photo was taken with, using its measured profile: straighten
+         *     the lines it bends, brighten the corners it darkens (vignetting), and remove the color
+         *     fringes it adds at edges (chromatic aberration). The camera and lens come from the
+         *     photo itself, so the defaults are right; it does nothing when the lens is unknown or
+         *     has no profile. Prefer it to lens_correction when it applies.
+         */
+        LensProfile: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "lens_profile";
+            /**
+             * Distortion
+             * @description How much of the distortion fix to use.
+             * @default 100
+             */
+            distortion: number;
+            /**
+             * Vignetting
+             * @description How much of the vignetting fix to use.
+             * @default 100
+             */
+            vignetting: number;
+            /**
+             * Chromatic Aberration
+             * @description How much of the color fringing fix to use.
+             * @default 100
+             */
+            chromatic_aberration: number;
+            /**
+             * Lens
+             * @description A lens to use instead of the one the photo records (say, for an adapted manual lens); leave empty to use the photo's own.
+             * @default
+             */
+            lens: string;
+        };
+        /**
+         * LensView
+         * @description What is known about the lens a photo was taken with, and its profile.
+         */
+        LensView: {
+            /** Camera */
+            camera?: string | null;
+            /** Lens */
+            lens?: string | null;
+            /** Focal Length */
+            focal_length?: number | null;
+            /** Aperture */
+            aperture?: number | null;
+            /** Profile */
+            profile?: string | null;
         };
         /**
          * LibraryPhoto
@@ -4748,6 +4829,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GamutView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLens: {
+        parameters: {
+            query?: {
+                lens_name?: string;
+            };
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LensView"];
                 };
             };
             /** @description Validation Error */

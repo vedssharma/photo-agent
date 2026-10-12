@@ -246,6 +246,23 @@ export async function fetchGamut(docId: string): Promise<Gamut> {
   return data
 }
 
+export type LensInfo = components['schemas']['LensView']
+
+/** The camera and lens a photo was taken with, and the profile that corrects it. */
+export async function fetchLens(
+  docId: string,
+  lensName = '',
+): Promise<LensInfo> {
+  const { data, error, response } = await api.GET(
+    '/api/documents/{doc_id}/lens',
+    {
+      params: { path: { doc_id: docId }, query: { lens_name: lensName } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
 /** AI model jobs running (or just finished) for a document. */
 export async function fetchJobs(docId: string): Promise<JobStatus[]> {
   const { data, error, response } = await api.GET(
