@@ -717,7 +717,7 @@ export interface paths {
         };
         /**
          * List Photos
-         * @description Every photo in the library, newest import first.
+         * @description The library's photos, newest import first, narrowed down by any filters given.
          */
         get: operations["listLibraryPhotos"];
         put?: never;
@@ -765,6 +765,108 @@ export interface paths {
          * @description Delete photos from the library, with their edits. This cannot be undone.
          */
         post: operations["removeLibraryPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Photos
+         * @description Rate, flag (pick or reject), or color-label several photos at once.
+         */
+        post: operations["markPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Albums
+         * @description Every album, by name.
+         */
+        get: operations["listAlbums"];
+        put?: never;
+        /**
+         * Create Album
+         * @description Make an album, optionally with photos in it already.
+         */
+        post: operations["createAlbum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/albums/{album_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Album
+         * @description Delete an album. Its photos stay in the library.
+         */
+        delete: operations["deleteAlbum"];
+        options?: never;
+        head?: never;
+        /** Rename Album */
+        patch: operations["renameAlbum"];
+        trace?: never;
+    };
+    "/api/library/albums/{album_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add To Album */
+        post: operations["addToAlbum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/albums/{album_id}/photos/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove From Album
+         * @description Take photos out of an album. They stay in the library.
+         */
+        post: operations["removeFromAlbum"];
         delete?: never;
         options?: never;
         head?: never;
@@ -876,6 +978,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Album */
+        Album: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Count
+             * @description Photos in the album.
+             */
+            count: number;
+            /**
+             * Cover
+             * @description A photo to show for the album.
+             */
+            cover?: string | null;
+        };
+        /** AlbumChange */
+        AlbumChange: {
+            /** Name */
+            name: string;
+        };
         /**
          * AutoStraighten
          * @description What to fix automatically.
@@ -1813,6 +1942,25 @@ export interface components {
             revision: string;
             /** Edited */
             edited: boolean;
+            /**
+             * Rating
+             * @description Stars, 0 to 5.
+             * @default 0
+             */
+            rating: number;
+            /**
+             * Flag
+             * @default none
+             * @enum {string}
+             */
+            flag: "picked" | "rejected" | "none";
+            /** Label */
+            label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+            /**
+             * Albums
+             * @description Ids of albums it is in.
+             */
+            albums?: string[];
         };
         /**
          * LinearGradientMask
@@ -1911,6 +2059,33 @@ export interface components {
              */
             coalesce?: string | null;
         };
+        /** Marked */
+        Marked: {
+            /** Changed */
+            changed: number;
+            /** Photos */
+            photos: components["schemas"]["LibraryPhoto"][];
+        };
+        /**
+         * Marks
+         * @description Changes to apply to several photos at once; leave out what should stay as it is.
+         */
+        Marks: {
+            /** Ids */
+            ids: string[];
+            /**
+             * Rating
+             * @description Stars, 0 to clear.
+             */
+            rating?: number | null;
+            /** Flag */
+            flag?: ("picked" | "rejected" | "none") | null;
+            /**
+             * Label
+             * @description A color label, or "none" to clear it.
+             */
+            label?: ("red" | "yellow" | "green" | "blue" | "purple") | "none" | null;
+        };
         /**
          * MatchReference
          * @description Make the photo's color and tone look like a reference photo the person shared ("make
@@ -1953,6 +2128,13 @@ export interface components {
             tone: number;
             /** @description Recorded by the app. */
             stats?: components["schemas"]["ReferenceStats"] | null;
+        };
+        /** NewAlbum */
+        NewAlbum: {
+            /** Name */
+            name: string;
+            /** Photo Ids */
+            photo_ids?: string[];
         };
         /** NewRecipe */
         NewRecipe: {
@@ -4291,7 +4473,16 @@ export interface operations {
     };
     listLibraryPhotos: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only photos in this album. */
+                album?: string | null;
+                /** @description Only photos with at least this many stars. */
+                min_rating?: number;
+                /** @description Only picked, rejected, or unflagged photos. */
+                flag?: ("picked" | "rejected" | "none") | null;
+                /** @description Only photos with this color label. */
+                label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4305,6 +4496,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryPhoto"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4408,6 +4608,254 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Removed"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    markPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Marks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Marked"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listAlbums: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"][];
+                };
+            };
+        };
+    };
+    createAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAlbum"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renameAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    addToAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removeFromAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

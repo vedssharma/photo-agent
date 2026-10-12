@@ -1299,3 +1299,217 @@ button.link {
   width: 96px;
   height: 80px;
 }
+
+.library-side,
+.library-info {
+  width: 15rem;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  padding: 0.75rem;
+  background: var(--panel);
+}
+
+.library-side {
+  border-right: 1px solid var(--border);
+}
+
+.library-info {
+  border-left: 1px solid var(--border);
+}
+
+.library-side section + section,
+.library-info section {
+  margin-top: 1rem;
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.library-side h2,
+.library-info h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.info-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sources button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  background: none;
+  border-color: transparent;
+}
+
+.sources button[aria-pressed='true'] {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+.source-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-count {
+  color: var(--muted);
+}
+
+.source-actions {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.15rem 0 0.35rem 0.4rem;
+  font-size: 0.85rem;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-bar select,
+.library-info select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+}
+
+.marks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stars {
+  display: flex;
+}
+
+.star {
+  background: none;
+  border: none;
+  padding: 0 0.15rem;
+  font-size: 1.3rem;
+  color: var(--border);
+}
+
+.star.on {
+  color: #ffc94d;
+}
+
+.labels {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.label-dot {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+button.label-dot {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+button.label-dot.on {
+  border-color: white;
+}
+
+.label-dot.red {
+  background: #e5484d;
+}
+
+.label-dot.yellow {
+  background: #f5d90a;
+}
+
+.label-dot.green {
+  background: #46a758;
+}
+
+.label-dot.blue {
+  background: #3e63dd;
+}
+
+.label-dot.purple {
+  background: #8e4ec6;
+}
+
+.thumb-flag {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  padding: 0 0.3rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  background: rgb(0 0 0 / 60%);
+}
+
+.thumb-flag.picked {
+  color: #fff;
+}
+
+.thumb-flag.rejected {
+  color: var(--error);
+}
+
+.thumb-marks {
+  position: absolute;
+  bottom: 0.3rem;
+  left: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.3rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #ffc94d;
+  background: rgb(0 0 0 / 60%);
+}
+
+.chips {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.chips li {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 0.85rem;
+}

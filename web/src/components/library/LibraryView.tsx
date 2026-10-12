@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  type Album,
   type IndexStatus,
+  type Label,
   type LibraryPhoto,
+  type Marks,
+  type PhotoFilter,
+  addToAlbum,
+  createAlbum,
+  deleteAlbum,
+  filterQuery,
   libraryStatus,
+  listAlbums,
   listPhotos,
+  markPhotos,
+  removeFromAlbum,
   removePhotos,
+  renameAlbum,
 } from '../../api/library'
 import { useDropAnywhere } from '../../hooks/useDropAnywhere'
 import { type Importer, importText } from '../../hooks/useImporter'
@@ -20,9 +32,34 @@ import {
   selectAll,
   selectedIds,
 } from '../../lib/selection'
+import { Badges } from './Badges'
+import { FilterBar } from './FilterBar'
 import { ImportButtons } from './ImportButtons'
+import { LibrarySidebar } from './LibrarySidebar'
 import { Loupe } from './Loupe'
 import { PhotoGrid } from './PhotoGrid'
+import { PhotoInfo } from './PhotoInfo'
+
+/** Keys that mark the selection, as in other photo apps. */
+const MARK_KEYS: Record<string, Omit<Marks, 'ids'>> = {
+  '0': { rating: 0 },
+  '1': { rating: 1 },
+  '2': { rating: 2 },
+  '3': { rating: 3 },
+  '4': { rating: 4 },
+  '5': { rating: 5 },
+  p: { flag: 'picked' },
+  x: { flag: 'rejected' },
+  u: { flag: 'none' },
+  ...Object.fromEntries(
+    (['red', 'yellow', 'green', 'blue'] satisfies Label[]).map((label, i) => [
+      String(6 + i),
+      { label },
+    ]),
+  ),
+}
+
+const badges = (photo: LibraryPhoto) => <Badges photo={photo} />
 
 type View = 'grid' | 'loupe'
 
@@ -59,6 +96,8 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [picked, setSelection] = useState<Selection>(NOTHING)
   const [view, setView] = useState<View>('grid')
   const [status, setStatus] = useState<IndexStatus | null>(null)
+  const [filter, setFilter] = useState<PhotoFilter>({})
+  const [albums, setAlbums] = useState<Album[]>([])
   const main = useRef<HTMLDivElement>(null)
 
   // Bumped to fetch the photo list again.
@@ -67,10 +106,11 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
 
   useEffect(() => {
     let live = true
-    listPhotos().then(
-      (found) => {
+    Promise.all([listPhotos(filter), listAlbums()]).then(
+      ([found, albumList]) => {
         if (!live) return
         setPhotos(found)
+        setAlbums(albumList)
         setError(null)
       },
       (err: Error) => {
@@ -80,7 +120,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     return () => {
       live = false
     }
-  }, [version, importer.batches])
+  }, [version, importer.batches, filter])
 
   // Watch indexing while there is any, refreshing as photos finish.
   const lastPending = useRef<number | null>(null)
@@ -127,6 +167,50 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     setView('loupe')
   }
 
+  /** Run a change, then show the library as it is after it. */
+  async function change(what: string, run: () => Promise<unknown>) {
+    try {
+      await run()
+      reload()
+    } catch (err) {
+      setError(`Could not ${what}: ${(err as Error).message}`)
+    }
+  }
+
+  const mark = (marks: Omit<Marks, 'ids'>) => {
+    if (chosen.length)
+      void change('mark the photos', () =>
+        markPhotos({ ...marks, ids: chosen }),
+      )
+  }
+
+  function newAlbum() {
+    const name = window.prompt(
+      chosen.length
+        ? `Name the new album for the ${chosen.length} selected photo${chosen.length === 1 ? '' : 's'}:`
+        : 'Name the new album:',
+    )
+    if (name?.trim())
+      void change('make the album', () => createAlbum(name.trim(), chosen))
+  }
+
+  function rename(album: Album) {
+    const name = window.prompt('Rename the album:', album.name)
+    if (name?.trim() && name.trim() !== album.name)
+      void change('rename the album', () => renameAlbum(album.id, name.trim()))
+  }
+
+  function dropAlbum(album: Album) {
+    if (
+      !window.confirm(
+        `Delete the album “${album.name}”? Its photos stay in the library.`,
+      )
+    )
+      return
+    setFilter({})
+    void change('delete the album', () => deleteAlbum(album.id))
+  }
+
   async function remove(ids: string[]) {
     if (ids.length === 0) return
     const what = ids.length === 1 ? 'this photo' : `these ${ids.length} photos`
@@ -171,6 +255,9 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault()
       void remove(chosen)
+    } else if (e.key.toLowerCase() in MARK_KEYS && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault()
+      mark(MARK_KEYS[e.key.toLowerCase()])
     }
   }
   useEffect(() => {
@@ -197,6 +284,14 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
 
   return (
     <main className={`library${dragging ? ' dragging' : ''}`}>
+      <LibrarySidebar
+        albums={albums}
+        filter={filter}
+        onFilter={setFilter}
+        onNewAlbum={newAlbum}
+        onRenameAlbum={rename}
+        onDeleteAlbum={dropAlbum}
+      />
       <section className="library-main" ref={main}>
         <div className="library-toolbar">
           <ImportButtons
@@ -244,6 +339,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             Delete
           </button>
         </div>
+        <FilterBar filter={filter} onFilter={setFilter} />
         {(importing || indexing || error) && (
           <p className="library-status" role="status">
             {error && <span className="error">{error} </span>}
@@ -258,19 +354,35 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
           </p>
         )}
         {photos !== null && shown.length === 0 ? (
-          <div className="library-empty">
-            <h2>Your library is empty</h2>
-            <p>
-              Import a folder or a handful of photos, or drop them anywhere
-              here.
-            </p>
-          </div>
+          Object.keys(filterQuery(filter)).length > 0 ? (
+            <div className="library-empty">
+              <h2>No photos here</h2>
+              <p>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => setFilter({})}
+                >
+                  Show all photos
+                </button>
+              </p>
+            </div>
+          ) : (
+            <div className="library-empty">
+              <h2>Your library is empty</h2>
+              <p>
+                Import a folder or a handful of photos, or drop them anywhere
+                here.
+              </p>
+            </div>
+          )
         ) : view === 'grid' ? (
           <PhotoGrid
             photos={shown}
             selection={selection}
             onSelect={select}
             onOpen={lookAt}
+            badges={badges}
           />
         ) : (
           <Loupe
@@ -278,9 +390,23 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             selection={selection}
             onSelect={select}
             onEdit={onEdit}
+            badges={badges}
           />
         )}
       </section>
+      <PhotoInfo
+        photos={shown.filter((p) => selection.ids.has(p.id))}
+        albums={albums}
+        onMark={mark}
+        onAddToAlbum={(id) =>
+          void change('add to the album', () => addToAlbum(id, chosen))
+        }
+        onRemoveFromAlbum={(id) =>
+          void change('take out of the album', () =>
+            removeFromAlbum(id, chosen),
+          )
+        }
+      />
     </main>
   )
 }

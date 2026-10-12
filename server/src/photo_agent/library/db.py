@@ -45,6 +45,24 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (photo_id, stage)
     );
     """,
+    # 2: ratings, flags, color labels, and albums.
+    """
+    ALTER TABLE photos ADD COLUMN rating INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE photos ADD COLUMN flag TEXT NOT NULL DEFAULT 'none';
+    ALTER TABLE photos ADD COLUMN label TEXT;
+    CREATE TABLE albums (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE album_photos (
+        album_id TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+        photo_id TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (album_id, photo_id)
+    );
+    CREATE INDEX album_photos_photo ON album_photos (photo_id);
+    """,
 ]
 
 Row = sqlite3.Row

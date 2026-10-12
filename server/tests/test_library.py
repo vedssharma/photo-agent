@@ -5,9 +5,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from library_helpers import PHOTOS, files, import_photos, mean
 from PIL import Image
 
 from photo_agent.library import Library
@@ -16,23 +16,6 @@ from photo_agent.library.indexer import Indexer, Stage
 from photo_agent.render import RenderCache
 from photo_agent.settings import Settings
 from photo_agent.store import DocumentStore
-
-PHOTOS = ["landscape.png", "portrait.jpg", "low-light.jpg"]
-
-
-def files(photos: Path, *names: str) -> list[tuple[str, tuple[str, bytes]]]:
-    return [("files", (name, (photos / name).read_bytes())) for name in names]
-
-
-def mean(image: Image.Image) -> float:
-    return float(np.asarray(image.convert("L"), np.float32).mean())
-
-
-def import_photos(client: TestClient, photos: Path, *names: str) -> dict[str, Any]:
-    res = client.post("/api/library/photos", files=files(photos, *names))
-    assert res.status_code == 201, res.text
-    body: dict[str, Any] = res.json()
-    return body
 
 
 def test_imports_many_photos_at_once(client: TestClient, photos: Path) -> None:

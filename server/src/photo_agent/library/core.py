@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from photo_agent import imaging
 from photo_agent.graph import Document
 from photo_agent.library.db import LibraryDB, Row, placeholders
+from photo_agent.library.filters import Flag, Label, PhotoFilter, where
 from photo_agent.library.indexer import Indexer, IndexingMode
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentNotFoundError, DocumentStore
@@ -45,6 +46,10 @@ class LibraryPhoto(BaseModel):
     revision: str
     """The document's current revision ("original" when unedited), for thumbnail URLs."""
     edited: bool
+    rating: int = Field(0, description="Stars, 0 to 5.")
+    flag: Flag = "none"
+    label: Label | None = None
+    albums: list[str] = Field(default_factory=list, description="Ids of albums it is in.")
 
 
 class Skipped(BaseModel):
@@ -179,12 +184,24 @@ class Library:
         row = self.db.one("SELECT * FROM photos WHERE id = ?", (photo_id,))
         if row is None:
             raise PhotoNotFoundError(photo_id)
-        return photo_of(row)
+        return self._with_albums([photo_of(row)])[0]
 
-    def photos(self) -> list[LibraryPhoto]:
-        """Every photo, newest import first."""
-        rows = self.db.all("SELECT * FROM photos ORDER BY imported_at DESC, id DESC")
-        return [photo_of(row) for row in rows]
+    def photos(self, f: PhotoFilter | None = None) -> list[LibraryPhoto]:
+        """The photos a filter lets through (all of them by default), newest import first."""
+        clause, params = where(f or PhotoFilter())
+        rows = self.db.all(
+            f"SELECT p.* FROM photos p WHERE {clause} ORDER BY p.imported_at DESC, p.id DESC",
+            params,
+        )
+        return self._with_albums([photo_of(row) for row in rows])
+
+    def _with_albums(self, photos: list[LibraryPhoto]) -> list[LibraryPhoto]:
+        member: dict[str, list[str]] = {}
+        for r in self.db.all("SELECT album_id, photo_id FROM album_photos ORDER BY album_id"):
+            member.setdefault(r["photo_id"], []).append(r["album_id"])
+        for photo in photos:
+            photo.albums = member.get(photo.id, [])
+        return photos
 
     # Thumbnails
 
@@ -232,4 +249,7 @@ def photo_of(row: Row) -> LibraryPhoto:
         imported_at=datetime.fromisoformat(row["imported_at"]),
         revision=row["revision"],
         edited=row["revision"] != "original",
+        rating=row["rating"],
+        flag=row["flag"],
+        label=row["label"],
     )

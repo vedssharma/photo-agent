@@ -9,7 +9,13 @@ import {
   rememberOpenProject,
 } from './lib/projectStore'
 import { FakeSocket } from './test/fakeSocket'
-import { healthy, idle, makeDoc, makePhoto, stubApi } from './test/fixtures'
+import {
+  healthy,
+  libraryRoutes,
+  makeDoc,
+  makePhoto,
+  stubApi,
+} from './test/fixtures'
 
 function stubFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -250,9 +256,7 @@ describe('Projects', () => {
     const doc = makeDoc()
     stubApi({
       'GET /api/health': healthy,
-      'GET /api/library/photos': () =>
-        Response.json([makePhoto(doc.id, { filename: 'cat.heic' })]),
-      'GET /api/library/status': idle,
+      ...libraryRoutes(() => [makePhoto(doc.id, { filename: 'cat.heic' })]),
       [`GET /api/documents/${doc.id}`]: () => Response.json(doc),
     })
     render(<App />)

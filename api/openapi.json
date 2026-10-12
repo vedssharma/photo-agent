@@ -1689,30 +1689,6 @@
       }
     },
     "/api/library/photos": {
-      "get": {
-        "tags": [
-          "library"
-        ],
-        "summary": "List Photos",
-        "description": "Every photo in the library, newest import first.",
-        "operationId": "listLibraryPhotos",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/LibraryPhoto"
-                  },
-                  "type": "array",
-                  "title": "Response Listlibraryphotos"
-                }
-              }
-            }
-          }
-        }
-      },
       "post": {
         "tags": [
           "library"
@@ -1721,14 +1697,14 @@
         "description": "Add photos to the library, many at once (a whole folder is sent a batch at a time).\nFiles that are not photos, are too large, or are already in the library are skipped\nand listed with the reason. New photos are indexed in the background.",
         "operationId": "importPhotos",
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_importPhotos"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -1743,6 +1719,122 @@
           },
           "413": {
             "description": "Too many files at once"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Photos",
+        "description": "The library's photos, newest import first, narrowed down by any filters given.",
+        "operationId": "listLibraryPhotos",
+        "parameters": [
+          {
+            "name": "album",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos in this album.",
+              "title": "Album"
+            },
+            "description": "Only photos in this album."
+          },
+          {
+            "name": "min_rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5,
+              "minimum": 0,
+              "description": "Only photos with at least this many stars.",
+              "default": 0,
+              "title": "Min Rating"
+            },
+            "description": "Only photos with at least this many stars."
+          },
+          {
+            "name": "flag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "picked",
+                    "rejected",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only picked, rejected, or unflagged photos.",
+              "title": "Flag"
+            },
+            "description": "Only picked, rejected, or unflagged photos."
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "red",
+                    "yellow",
+                    "green",
+                    "blue",
+                    "purple"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos with this color label.",
+              "title": "Label"
+            },
+            "description": "Only photos with this color label."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryPhoto"
+                  },
+                  "title": "Response Listlibraryphotos"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1830,6 +1922,317 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/marks": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Mark Photos",
+        "description": "Rate, flag (pick or reject), or color-label several photos at once.",
+        "operationId": "markPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Marks"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Marked"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Albums",
+        "description": "Every album, by name.",
+        "operationId": "listAlbums",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Album"
+                  },
+                  "type": "array",
+                  "title": "Response Listalbums"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Create Album",
+        "description": "Make an album, optionally with photos in it already.",
+        "operationId": "createAlbum",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewAlbum"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums/{album_id}": {
+      "patch": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Rename Album",
+        "operationId": "renameAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Delete Album",
+        "description": "Delete an album. Its photos stay in the library.",
+        "operationId": "deleteAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums/{album_id}/photos": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Add To Album",
+        "operationId": "addToAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums/{album_id}/photos/remove": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Remove From Album",
+        "description": "Take photos out of an album. They stay in the library.",
+        "operationId": "removeFromAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such album"
           },
           "422": {
             "description": "Validation Error",
@@ -1981,6 +2384,63 @@
   },
   "components": {
     "schemas": {
+      "Album": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Photos in the album."
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover",
+            "description": "A photo to show for the album."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "count"
+        ],
+        "title": "Album"
+      },
+      "AlbumChange": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "AlbumChange"
+      },
       "AutoStraighten": {
         "properties": {
           "level": {
@@ -3857,6 +4317,48 @@
           "edited": {
             "type": "boolean",
             "title": "Edited"
+          },
+          "rating": {
+            "type": "integer",
+            "title": "Rating",
+            "description": "Stars, 0 to 5.",
+            "default": 0
+          },
+          "flag": {
+            "type": "string",
+            "enum": [
+              "picked",
+              "rejected",
+              "none"
+            ],
+            "title": "Flag",
+            "default": "none"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "albums": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Albums",
+            "description": "Ids of albums it is in."
           }
         },
         "type": "object",
@@ -4162,6 +4664,99 @@
         ],
         "title": "ManualEdit"
       },
+      "Marked": {
+        "properties": {
+          "changed": {
+            "type": "integer",
+            "title": "Changed"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changed",
+          "photos"
+        ],
+        "title": "Marked"
+      },
+      "Marks": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating",
+            "description": "Stars, 0 to clear."
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "picked",
+                  "rejected",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flag"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "none"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "A color label, or \"none\" to clear it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "Marks",
+        "description": "Changes to apply to several photos at once; leave out what should stay as it is."
+      },
       "MatchReference": {
         "properties": {
           "id": {
@@ -4225,6 +4820,29 @@
         ],
         "title": "MatchReference",
         "description": "Make the photo's color and tone look like a reference photo the person shared (\"make\nthis look like that one\"): its palette, color cast, brightness, and contrast. Not its\ncontent or framing. Lower color or tone to transfer only one of them."
+      },
+      "NewAlbum": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "title": "Photo Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "NewAlbum"
       },
       "NewRecipe": {
         "properties": {

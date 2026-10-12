@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from photo_agent import imaging
-from photo_agent.library import ImportResult, LibraryPhoto, PhotoNotFoundError, Skipped
+from photo_agent.library import (
+    ImportResult,
+    LibraryPhoto,
+    PhotoNotFoundError,
+    Skipped,
+    organize,
+)
+from photo_agent.library.filters import PhotoFilter
 from photo_agent.library.indexer import IndexStatus
 from photo_agent.routes import MAX_UPLOAD_BYTES, LibraryDep
 
@@ -63,9 +72,11 @@ async def import_photos(files: list[UploadFile], library: LibraryDep) -> ImportR
 
 
 @router.get("/photos", operation_id="listLibraryPhotos")
-def list_photos(library: LibraryDep) -> list[LibraryPhoto]:
-    """Every photo in the library, newest import first."""
-    return library.photos()
+def list_photos(
+    library: LibraryDep, filters: Annotated[PhotoFilter, Query()]
+) -> list[LibraryPhoto]:
+    """The library's photos, newest import first, narrowed down by any filters given."""
+    return library.photos(filters)
 
 
 @router.get(
@@ -89,6 +100,79 @@ class Removed(BaseModel):
 def remove_photos(body: PhotoIds, library: LibraryDep) -> Removed:
     """Delete photos from the library, with their edits. This cannot be undone."""
     return Removed(removed=library.remove(body.ids))
+
+
+class Marked(BaseModel):
+    changed: int
+    photos: list[LibraryPhoto]
+
+
+@router.post("/photos/marks", operation_id="markPhotos")
+def mark_photos(body: organize.Marks, library: LibraryDep) -> Marked:
+    """Rate, flag (pick or reject), or color-label several photos at once."""
+    changed = organize.mark(library.db, body)
+    wanted = set(body.ids)
+    return Marked(changed=changed, photos=[p for p in library.photos() if p.id in wanted])
+
+
+def _album[R](fn: Callable[[], R]) -> R:
+    try:
+        return fn()
+    except organize.AlbumNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such album.") from None
+
+
+@router.get("/albums", operation_id="listAlbums")
+def list_albums(library: LibraryDep) -> list[organize.Album]:
+    """Every album, by name."""
+    return organize.albums(library.db)
+
+
+@router.post("/albums", operation_id="createAlbum", status_code=status.HTTP_201_CREATED)
+def create_album(body: organize.NewAlbum, library: LibraryDep) -> organize.Album:
+    """Make an album, optionally with photos in it already."""
+    return organize.create_album(library.db, body)
+
+
+@router.patch(
+    "/albums/{album_id}",
+    operation_id="renameAlbum",
+    responses={404: {"description": "No such album"}},
+)
+def rename_album(album_id: str, body: organize.AlbumChange, library: LibraryDep) -> organize.Album:
+    return _album(lambda: organize.rename_album(library.db, album_id, body))
+
+
+@router.delete(
+    "/albums/{album_id}",
+    operation_id="deleteAlbum",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "No such album"}},
+)
+def delete_album(album_id: str, library: LibraryDep) -> None:
+    """Delete an album. Its photos stay in the library."""
+    _album(lambda: organize.delete_album(library.db, album_id))
+
+
+@router.post(
+    "/albums/{album_id}/photos",
+    operation_id="addToAlbum",
+    responses={404: {"description": "No such album"}},
+)
+def add_to_album(album_id: str, body: PhotoIds, library: LibraryDep) -> organize.Album:
+    _album(lambda: organize.add_to_album(library.db, album_id, body.ids))
+    return organize.album(library.db, album_id)
+
+
+@router.post(
+    "/albums/{album_id}/photos/remove",
+    operation_id="removeFromAlbum",
+    responses={404: {"description": "No such album"}},
+)
+def remove_from_album(album_id: str, body: PhotoIds, library: LibraryDep) -> organize.Album:
+    """Take photos out of an album. They stay in the library."""
+    _album(lambda: organize.remove_from_album(library.db, album_id, body.ids))
+    return organize.album(library.db, album_id)
 
 
 @router.get(

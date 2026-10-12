@@ -149,7 +149,22 @@ export function makePhoto(
     imported_at: '2026-10-12T12:00:00Z',
     revision: 'original',
     edited: false,
+    rating: 0,
+    flag: 'none',
+    label: null,
+    albums: [],
     ...overrides,
+  }
+}
+
+/** Stubs for a library holding `photos`, with no albums and nothing indexing. */
+export function libraryRoutes(
+  photos: () => LibraryPhoto[],
+): Record<string, Route> {
+  return {
+    'GET /api/library/photos': () => Response.json(photos()),
+    'GET /api/library/albums': () => Response.json([]),
+    'GET /api/library/status': idle,
   }
 }
 

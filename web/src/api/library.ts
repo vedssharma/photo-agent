@@ -1,11 +1,20 @@
 import { api } from './client'
 import { ApiError, detail, isSupportedFile } from './documents'
-import type { components } from './schema'
+import type { components, operations } from './schema'
 
 export type LibraryPhoto = components['schemas']['LibraryPhoto']
 export type ImportResult = components['schemas']['ImportResult']
 export type Skipped = components['schemas']['Skipped']
 export type IndexStatus = components['schemas']['IndexStatus']
+export type Album = components['schemas']['Album']
+export type Marks = components['schemas']['Marks']
+export type Flag = LibraryPhoto['flag']
+export type Label = NonNullable<LibraryPhoto['label']>
+export type PhotoFilter = NonNullable<
+  operations['listLibraryPhotos']['parameters']['query']
+>
+
+export const LABELS: Label[] = ['red', 'yellow', 'green', 'blue', 'purple']
 
 /** Files per import request, and roughly how many bytes, so big imports go in pieces. */
 export const IMPORT_BATCH_FILES = 12
@@ -51,8 +60,91 @@ export async function importPhotos(files: File[]): Promise<ImportResult> {
   return data
 }
 
-export async function listPhotos(): Promise<LibraryPhoto[]> {
-  const { data, error, response } = await api.GET('/api/library/photos')
+/** A filter without its empty conditions, as query parameters. */
+export function filterQuery(filter: PhotoFilter): PhotoFilter {
+  return Object.fromEntries(
+    Object.entries(filter).filter(
+      ([, v]) =>
+        v !== null &&
+        v !== undefined &&
+        v !== '' &&
+        v !== 0 &&
+        !(Array.isArray(v) && v.length === 0),
+    ),
+  ) as PhotoFilter
+}
+
+export async function listPhotos(
+  filter: PhotoFilter = {},
+): Promise<LibraryPhoto[]> {
+  const { data, error, response } = await api.GET('/api/library/photos', {
+    params: { query: filterQuery(filter) },
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Rate, flag, or label photos; returns them as they are now. */
+export async function markPhotos(marks: Marks): Promise<LibraryPhoto[]> {
+  const { data, error, response } = await api.POST(
+    '/api/library/photos/marks',
+    { body: marks },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data.photos
+}
+
+export async function listAlbums(): Promise<Album[]> {
+  const { data, error, response } = await api.GET('/api/library/albums')
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function createAlbum(
+  name: string,
+  photoIds: string[] = [],
+): Promise<Album> {
+  const { data, error, response } = await api.POST('/api/library/albums', {
+    body: { name, photo_ids: photoIds },
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function renameAlbum(id: string, name: string): Promise<Album> {
+  const { data, error, response } = await api.PATCH(
+    '/api/library/albums/{album_id}',
+    { params: { path: { album_id: id } }, body: { name } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function deleteAlbum(id: string): Promise<void> {
+  const { error, response } = await api.DELETE(
+    '/api/library/albums/{album_id}',
+    { params: { path: { album_id: id } } },
+  )
+  if (!response.ok) throw new ApiError(detail(error, response.status))
+}
+
+export async function addToAlbum(id: string, ids: string[]): Promise<Album> {
+  const { data, error, response } = await api.POST(
+    '/api/library/albums/{album_id}/photos',
+    { params: { path: { album_id: id } }, body: { ids } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function removeFromAlbum(
+  id: string,
+  ids: string[],
+): Promise<Album> {
+  const { data, error, response } = await api.POST(
+    '/api/library/albums/{album_id}/photos/remove',
+    { params: { path: { album_id: id } }, body: { ids } },
+  )
   if (!data) throw new ApiError(detail(error, response.status))
   return data
 }

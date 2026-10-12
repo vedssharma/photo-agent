@@ -1,15 +1,27 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useImporter } from '../../hooks/useImporter'
-import { idle, makePhoto, stubApi } from '../../test/fixtures'
+import { libraryRoutes, makePhoto, stubApi } from '../../test/fixtures'
 import { LibraryView } from './LibraryView'
 
 function Harness({ onEdit = vi.fn() }: { onEdit?: (id: string) => void }) {
   const importer = useImporter()
   return <LibraryView importer={importer} onEdit={onEdit} pollMs={10} />
 }
+
+const grid = () => screen.getByRole('listbox', { name: 'Photos' })
+const thumbs = async () =>
+  within(await screen.findByRole('listbox', { name: 'Photos' })).findAllByRole(
+    'option',
+  )
 
 const PHOTOS = [
   makePhoto('aaaaaaaaaaaa'),
@@ -20,13 +32,12 @@ const PHOTOS = [
 describe('LibraryView', () => {
   it('shows every photo and opens the selected one in the editor', async () => {
     stubApi({
-      'GET /api/library/photos': () => Response.json(PHOTOS),
-      'GET /api/library/status': idle,
+      ...libraryRoutes(() => PHOTOS),
     })
     const onEdit = vi.fn()
     render(<Harness onEdit={onEdit} />)
 
-    const options = await screen.findAllByRole('option')
+    const options = await thumbs()
     expect(options).toHaveLength(3)
     expect(screen.getByText('3 photos')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
@@ -39,12 +50,11 @@ describe('LibraryView', () => {
 
   it('looks at one photo large with a filmstrip to move through', async () => {
     stubApi({
-      'GET /api/library/photos': () => Response.json(PHOTOS),
-      'GET /api/library/status': idle,
+      ...libraryRoutes(() => PHOTOS),
     })
     render(<Harness />)
 
-    const options = await screen.findAllByRole('option')
+    const options = await thumbs()
     fireEvent.doubleClick(options[0])
 
     const large = screen.getByRole('img', { name: 'aaaaaaaaaaaa.jpg' })
@@ -68,8 +78,7 @@ describe('LibraryView', () => {
   it('imports picked photos and refreshes the grid', async () => {
     let listed = [PHOTOS[0]]
     const fetchMock = stubApi({
-      'GET /api/library/photos': () => Response.json(listed),
-      'GET /api/library/status': idle,
+      ...libraryRoutes(() => listed),
       'POST /api/library/photos': () => {
         listed = PHOTOS
         return Response.json(
@@ -88,7 +97,7 @@ describe('LibraryView', () => {
       },
     })
     render(<Harness />)
-    expect(await screen.findAllByRole('option')).toHaveLength(1)
+    expect(await thumbs()).toHaveLength(1)
 
     await userEvent.upload(screen.getByLabelText('Photos to import'), [
       new File(['1'], 'a.jpg', { type: 'image/jpeg' }),
@@ -101,7 +110,9 @@ describe('LibraryView', () => {
         /Imported 2 of 3 photos\. 1 already in the library\./,
       ),
     ).toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3))
+    await waitFor(() =>
+      expect(within(grid()).getAllByRole('option')).toHaveLength(3),
+    )
     const post = fetchMock.mock.calls
       .map(([r]) => r as Request)
       .find((r) => r.method === 'POST')!
@@ -111,12 +122,13 @@ describe('LibraryView', () => {
   it('reports indexing while it runs', async () => {
     let pending = 2
     stubApi({
-      'GET /api/library/photos': () => Response.json(PHOTOS),
-      'GET /api/library/status': () => {
-        const body = { total: 3, pending, current: 'Making a thumbnail: c.jpg' }
-        pending = 0
-        return Response.json(body)
-      },
+      ...libraryRoutes(() => PHOTOS),
+      'GET /api/library/status': () =>
+        Response.json({
+          total: 3,
+          pending,
+          current: 'Making a thumbnail: c.jpg',
+        }),
     })
     render(<Harness />)
     expect(
@@ -124,6 +136,7 @@ describe('LibraryView', () => {
         /Indexing 2 of 3 photos \(Making a thumbnail: c\.jpg\)/,
       ),
     ).toBeInTheDocument()
+    pending = 0
     await waitFor(() =>
       expect(screen.queryByText(/Indexing/)).not.toBeInTheDocument(),
     )
@@ -133,8 +146,7 @@ describe('LibraryView', () => {
     let listed = PHOTOS
     const removed = vi.fn()
     stubApi({
-      'GET /api/library/photos': () => Response.json(listed),
-      'GET /api/library/status': idle,
+      ...libraryRoutes(() => listed),
       'POST /api/library/photos/remove': async (req) => {
         const { ids } = (await req.json()) as { ids: string[] }
         removed(ids)
@@ -147,7 +159,7 @@ describe('LibraryView', () => {
       vi.fn(() => true),
     )
     render(<Harness />)
-    const options = await screen.findAllByRole('option')
+    const options = await thumbs()
     await userEvent.click(options[0])
     fireEvent.click(options[2], { shiftKey: true })
     expect(screen.getByText(/3 selected/)).toBeInTheDocument()
@@ -155,7 +167,106 @@ describe('LibraryView', () => {
     await waitFor(() =>
       expect(removed).toHaveBeenCalledWith(PHOTOS.map((p) => p.id)),
     )
-    await waitFor(() => expect(screen.queryAllByRole('option')).toHaveLength(0))
+    await waitFor(() =>
+      expect(screen.queryAllByRole('option', { name: /\.jpg$/ })).toHaveLength(
+        0,
+      ),
+    )
     expect(screen.getByText('Your library is empty')).toBeInTheDocument()
+  })
+
+  it('rates, flags, and labels the selection from keys and the info panel', async () => {
+    let listed = PHOTOS
+    const marks: unknown[] = []
+    stubApi({
+      ...libraryRoutes(() => listed),
+      'POST /api/library/photos/marks': async (req) => {
+        const body = (await req.json()) as { ids: string[]; rating?: number }
+        marks.push(body)
+        listed = PHOTOS.map((p) =>
+          body.ids.includes(p.id)
+            ? { ...p, rating: body.rating ?? p.rating, flag: 'picked' as const }
+            : p,
+        )
+        return Response.json({ changed: body.ids.length, photos: [] })
+      },
+    })
+    render(<Harness />)
+    const options = await thumbs()
+    await userEvent.click(options[0])
+    fireEvent.click(options[1], { shiftKey: true })
+
+    fireEvent.keyDown(window, { key: '4' })
+    await waitFor(() =>
+      expect(marks).toEqual([
+        { ids: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb'], rating: 4 },
+      ]),
+    )
+    await waitFor(() =>
+      expect(within(grid()).getAllByLabelText('4 stars')).toHaveLength(2),
+    )
+    expect(within(grid()).getAllByLabelText('Picked')).toHaveLength(2)
+
+    const info = screen.getByRole('complementary', { name: 'Photo info' })
+    expect(within(info).getByText('2 photos selected')).toBeInTheDocument()
+    await userEvent.click(within(info).getByRole('button', { name: 'Reject' }))
+    await userEvent.click(
+      within(info).getByRole('button', { name: 'Green label' }),
+    )
+    await waitFor(() => expect(marks).toHaveLength(3))
+    expect(marks.slice(1)).toEqual([
+      { ids: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb'], flag: 'rejected' },
+      { ids: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb'], label: 'green' },
+    ])
+  })
+
+  it('makes albums from the selection and shows one album at a time', async () => {
+    const album = {
+      id: 'album1',
+      name: 'Beach',
+      created_at: '2026-10-12T12:00:00Z',
+      count: 1,
+      cover: 'cccccccccccc',
+    }
+    let albums: (typeof album)[] = []
+    const created = vi.fn()
+    const fetchMock = stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'GET /api/library/photos': (req) =>
+        Response.json(
+          new URL(req.url).searchParams.get('album') === 'album1'
+            ? [PHOTOS[2]]
+            : PHOTOS,
+        ),
+      'GET /api/library/albums': () => Response.json(albums),
+      'POST /api/library/albums': async (req) => {
+        created(await req.json())
+        albums = [album]
+        return Response.json(album, { status: 201 })
+      },
+    })
+    vi.stubGlobal(
+      'prompt',
+      vi.fn(() => ' Beach '),
+    )
+    render(<Harness />)
+    const options = await thumbs()
+    await userEvent.click(options[2])
+    await userEvent.click(screen.getByRole('button', { name: 'New' }))
+
+    expect(created).toHaveBeenCalledWith({
+      name: 'Beach',
+      photo_ids: ['cccccccccccc'],
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /Beach/ }))
+    await waitFor(() =>
+      expect(within(grid()).getAllByRole('option')).toHaveLength(1),
+    )
+    const urls = fetchMock.mock.calls.map(([r]) => (r as Request).url)
+    expect(
+      urls.some((u) => u.endsWith('/api/library/photos?album=album1')),
+    ).toBe(true)
+    // An empty filter sends no query at all.
+    expect(urls.some((u) => u.endsWith('/api/library/photos'))).toBe(true)
   })
 })
