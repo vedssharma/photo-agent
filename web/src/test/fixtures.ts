@@ -1,6 +1,7 @@
 import { vi } from 'vitest'
 
 import type { DocumentView, StepView } from '../api/documents'
+import type { LibraryPhoto } from '../api/library'
 import type { OperationSpec } from '../api/operations'
 
 export function makeDoc(overrides: Partial<DocumentView> = {}): DocumentView {
@@ -133,3 +134,24 @@ export const SPECS = new Map<string, OperationSpec>(
     ] satisfies OperationSpec[]
   ).map((s) => [s.op, s]),
 )
+
+export function makePhoto(
+  id: string,
+  overrides: Partial<LibraryPhoto> = {},
+): LibraryPhoto {
+  return {
+    id,
+    filename: `${id}.jpg`,
+    format: 'JPEG',
+    width: 4000,
+    height: 3000,
+    file_size: 1000,
+    imported_at: '2026-10-12T12:00:00Z',
+    revision: 'original',
+    edited: false,
+    ...overrides,
+  }
+}
+
+export const idle: Route = () =>
+  Response.json({ total: 0, pending: 0, current: null })

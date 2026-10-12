@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 /** Accept files dropped anywhere in the window, and report when a drag is over it. */
 export function useDropAnywhere(
   onDragging: (dragging: boolean) => void,
-  onDrop: (files: FileList) => void,
+  onDrop: (files: FileList, transfer: DataTransfer) => void,
 ) {
   const dropRef = useRef(onDrop)
   const dragRef = useRef(onDragging)
@@ -34,7 +34,8 @@ export function useDropAnywhere(
       e.preventDefault()
       depth = 0
       dragRef.current(false)
-      if (e.dataTransfer?.files.length) dropRef.current(e.dataTransfer.files)
+      if (e.dataTransfer?.files.length)
+        dropRef.current(e.dataTransfer.files, e.dataTransfer)
     }
     window.addEventListener('dragenter', enter)
     window.addEventListener('dragleave', leave)

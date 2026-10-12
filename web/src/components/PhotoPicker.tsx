@@ -2,18 +2,28 @@ import { useRef, useState } from 'react'
 
 import { PHOTO_TYPES, PROJECT_TYPES, isSupportedFile } from '../api/documents'
 import { useDropAnywhere } from '../hooks/useDropAnywhere'
+import { droppedFiles, isMultiDrop } from '../lib/dropFiles'
+import { ImportButtons } from './library/ImportButtons'
 
 interface Props {
   onPick: (file: File) => void
+  /** Bring many photos (or a folder) into the library. */
+  onImport?: (files: File[]) => void
   busy?: boolean
   error?: string | null
 }
 
 /**
- * The start page's two ways in: a new photo, or a saved `.photoagent`
- * project. Either can also be dropped anywhere on the page.
+ * The start page's ways in: a new photo, a saved `.photoagent` project, or
+ * many photos at once into the library. Any of them can also be dropped
+ * anywhere on the page: one photo opens, several or a folder are imported.
  */
-export function PhotoPicker({ onPick, busy = false, error = null }: Props) {
+export function PhotoPicker({
+  onPick,
+  onImport,
+  busy = false,
+  error = null,
+}: Props) {
   const photoInput = useRef<HTMLInputElement>(null)
   const projectInput = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -32,7 +42,12 @@ export function PhotoPicker({ onPick, busy = false, error = null }: Props) {
     onPick(file)
   }
 
-  useDropAnywhere(setDragging, (files) => pick(files))
+  useDropAnywhere(setDragging, (files, transfer) => {
+    if (onImport && isMultiDrop(transfer)) {
+      setRejected(null)
+      void droppedFiles(transfer).then(onImport)
+    } else pick(files)
+  })
 
   const message = rejected ?? error
   return (
@@ -86,8 +101,22 @@ export function PhotoPicker({ onPick, busy = false, error = null }: Props) {
             }}
           />
         </div>
+        {onImport && (
+          <div className="picker-option">
+            <h2>Many photos</h2>
+            <p>
+              Import a folder or a whole shoot into your library to sort, cull,
+              and edit together.
+            </p>
+            <div className="picker-buttons">
+              <ImportButtons onImport={onImport} busy={busy} />
+            </div>
+          </div>
+        )}
       </div>
-      <p className="picker-hint">Or drop either one anywhere on the page.</p>
+      <p className="picker-hint">
+        Or drop {onImport ? 'any of them' : 'either one'} anywhere on the page.
+      </p>
       {message && (
         <p className="error" role="alert">
           {message}
