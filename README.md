@@ -21,7 +21,7 @@ Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it f
 
 ## Using it
 
-1. Open a JPEG, PNG, or HEIC photo (choose one or drop it on the page).
+1. Open a JPEG, PNG, HEIC, or TIFF photo, or a camera RAW file (DNG, CR2/CR3, NEF, ARW, RAF, ORF, RW2, …): choose one or drop it on the page. RAW files are developed with their full color and tonal range, and highlights are recovered.
 2. Tell the agent what you want, e.g. "make this look warmer and less washed out, and crop it for Instagram". It streams its reply and lists the edits as it makes them. Each request becomes its own layer.
 3. Fine-tune in **Layers**: hide a layer, change its opacity or blend mode, drag any adjustment's slider (light and color sliders preview instantly), add adjustments by hand, or limit a layer to part of the photo with a mask (paint with a brush, use a linear gradient, radial gradient, or brightness range, or let AI find the sky, the subject, people, parts of a face, or any object you click). Tick **Touch up with brush** to paint in what an AI selection missed or erase what it caught by mistake.
 4. One-click tools: **Remove…** then click a person or thing to erase it from the photo; **Cut out** keeps the subject on a transparent background (download as PNG) or a solid color; **Retouch** smooths skin, heals blemishes, and brightens eyes and teeth, subtly; **Auto straighten** (under Crop & rotate) levels the horizon and squares up leaning buildings. The agent can do all of these too: "remove the person on the left and make the sky bluer".
@@ -29,7 +29,9 @@ Add your Claude API key to `.env` as `ANTHROPIC_API_KEY`. The backend reads it f
 6. **History** lists every agent turn and manual change as a named step. Click one to go back to it; editing from there starts a new branch and keeps the old one. **Undo** / **Redo** (Ctrl/⌘+Z, Shift+Ctrl/⌘+Z) step along the current branch.
 7. **Recipes** adds ready-made looks (1970s film, teal and orange, noir, …) and saves a photo's layers as a named look, to apply to other photos in one click. Crops and painted masks stay with the photo they were made for.
 8. Compare with the original by holding **Hold to compare** (or the `\` key) or with **Split view**. Zoom with the mouse wheel and drag to pan.
-9. **Download** renders the edits at full resolution as JPEG or PNG, optionally enlarged 2× or 4× with AI upscaling. Camera EXIF is kept; GPS location is removed unless you ask to keep it. Photos with generative edits carry Content Credentials saying AI was used.
+9. **Download** renders the edits at full resolution as JPEG, PNG, TIFF, AVIF, or WebP, optionally enlarged 2× or 4× with AI upscaling. PNG and TIFF can be 16-bit, and photos with colors beyond sRGB (RAW files, wide-gamut TIFFs and HEICs) can be saved in Display P3 or Rec.2020, with the ICC profile embedded. Camera EXIF is kept; GPS location is removed unless you ask to keep it. Photos with generative edits carry Content Credentials saying AI was used.
+
+**Pro tools.** **Proof** previews how the photo will look saved in sRGB or Display P3, and **Show colors that won’t fit** paints them magenta. **Lens profile** (in Crop & rotate, or ask the agent to "fix the lens") straightens the lines a lens bends, brightens its dark corners, and removes color fringes, using the measured Lensfun profile for the lens the photo was taken with. In the library, select a bracket of exposures and **Merge to HDR**, or overlapping shots and **Stitch panorama**; the result is a new 16-bit TIFF beside them.
 
 Your work is autosaved in the browser: close the tab and the project reopens where you left off, and the start page lists recent projects. The start page has two options: **Choose a photo** to start fresh, or **Open a project** to reopen a saved `.photoagent` file. **Save project** downloads a `.photoagent` file (the original plus every layer and the full history) that you can open again later, here or on another computer.
 
@@ -56,7 +58,7 @@ web/      Vite + React + TypeScript frontend
 server/   Python (FastAPI) backend, managed with uv
 api/      OpenAPI contract shared by web and server (generated)
 docs/     Design notes
-fixtures/ Test photos (JPEG, PNG, HEIC; portrait, landscape, low light)
+fixtures/ Test photos (JPEG, PNG, HEIC, DNG; portrait, landscape, low light)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.
