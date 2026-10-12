@@ -31,12 +31,13 @@ SHOT = lens.shot_from_exif(exif_bytes())
 
 
 def grid() -> np.ndarray:
-    """White with dark horizontal and vertical lines every 50 pixels."""
+    """White with dark horizontal and vertical lines every 50 pixels, three pixels wide so
+    resampling them twice (through the lens and back) leaves them clearly dark."""
     img = np.ones((H, W, 3), np.float32)
     img[::50] = 0.1
     img[:, ::50] = 0.1
     img[H - 1] = img[:, W - 1] = 0.1
-    return img
+    return np.asarray(cv2.erode(img, np.ones((3, 3), np.uint8)), np.float32)
 
 
 def as_shot(img: np.ndarray, flags: int) -> np.ndarray:

@@ -30,9 +30,8 @@ REC2020_GREEN = np.array([0.05, 0.6, 0.05])
 
 def lit() -> np.ndarray:
     """A grid (to show the lens's distortion) with a vivid green swatch, as linear
-    Rec.2020 light. The lines are thickened so the camera's demosaicing keeps them crisp."""
-    lines = cv2.erode(grid(), np.ones((3, 3), np.uint8))
-    linear = color.decode_curve(np.asarray(lines, np.float32)).astype(np.float64) * 0.6
+    Rec.2020 light."""
+    linear = color.decode_curve(grid()).astype(np.float64) * 0.6
     linear[PATCH] = REC2020_GREEN
     return linear
 
