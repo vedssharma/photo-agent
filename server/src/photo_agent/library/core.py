@@ -249,11 +249,11 @@ class Library:
             )
             for old in folder.glob("thumb-*.jpg"):
                 old.unlink(missing_ok=True)
-            _write_jpeg(path, imaging.resize_long_edge(pixels, THUMBNAIL_LONG_EDGE))
+            _write_jpeg(path, imaging.resize_long_edge(loaded.to_srgb(pixels), THUMBNAIL_LONG_EDGE))
         return path.read_bytes()
 
     def _write_thumbnail(self, photo_id: str) -> None:
-        proxy = self.store.image(photo_id).proxy
+        proxy = self.store.image(photo_id).srgb_proxy
         path = self.store.folder(photo_id) / "thumb.jpg"
         _write_jpeg(path, imaging.resize_long_edge(proxy, THUMBNAIL_LONG_EDGE))
 

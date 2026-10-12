@@ -1127,13 +1127,15 @@ class AgentService:
             editor = Editor(
                 doc.state,
                 default_layer_name=layer_name(request),
-                framed=lambda framing: render(loaded.proxy, framing, loaded.proxy_context),
+                framed=lambda framing: loaded.to_srgb(
+                    render(loaded.proxy, framing, loaded.proxy_context)
+                ),
                 model_for=self.store.model_for,
                 screen=self.screen,
                 taste=profile,
                 reference_stats=stats_of,
-                render_state=lambda state: self.renders.get_or_render(
-                    doc_id, loaded.proxy, state, loaded.proxy_context
+                render_state=lambda state: loaded.to_srgb(
+                    self.renders.get_or_render(doc_id, loaded.proxy, state, loaded.proxy_context)
                 ),
             )
             editor.plan_approved = plan is not None
@@ -1173,10 +1175,12 @@ class AgentService:
             return doc
 
     async def _render(self, doc: Document, state: EditState) -> imaging.Array:
+        """A preview of `state` as sRGB, which is what Claude sees and measures."""
         loaded = self.store.image(doc.id)
-        return await asyncio.to_thread(
+        rendered = await asyncio.to_thread(
             self.renders.get_or_render, doc.id, loaded.proxy, state, loaded.proxy_context
         )
+        return loaded.to_srgb(rendered)
 
     async def _attach_self_check(
         self,

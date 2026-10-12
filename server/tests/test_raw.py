@@ -21,19 +21,21 @@ def scene(photos: Path) -> np.ndarray:
 def test_develops_a_raw_file_into_the_scene_it_shot(scene: np.ndarray) -> None:
     img = imaging.decode(make_dng(srgb_to_linear_rec2020(scene)))
     assert img.format == imaging.RAW
+    assert img.space == "rec2020"
     assert img.pixels.dtype == np.float32
     h, w = img.pixels.shape[:2]
     assert (w, h) == (640, 426)  # Bayer mosaics have even sizes.
     # Demosaicing blurs the sharpest edges a little; colors and tones match.
-    assert float(np.abs(img.pixels - scene[:h, :w]).mean()) < 0.02
-    assert np.allclose(img.pixels.mean(axis=(0, 1)), scene[:h, :w].mean(axis=(0, 1)), atol=0.01)
+    seen = imaging.to_srgb(img.pixels, img.space)
+    assert float(np.abs(seen - scene[:h, :w]).mean()) < 0.02
+    assert np.allclose(seen.mean(axis=(0, 1)), scene[:h, :w].mean(axis=(0, 1)), atol=0.01)
 
 
 def test_the_fixture_raw_opens(photos: Path) -> None:
     img = imaging.decode((photos / "raw.dng").read_bytes())
     assert (img.width, img.height) == (600, 400)
     # A warm indoor scene (coffee), so white balance and the color matrix were applied.
-    r, g, b = img.pixels.mean(axis=(0, 1))
+    r, g, b = imaging.to_srgb(img.pixels, img.space).mean(axis=(0, 1))
     assert r > g > b
 
 

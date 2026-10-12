@@ -29,7 +29,7 @@ Source = Literal["auto", "manual", "removed"]
 def tag_photo(library: Library, photo_id: str) -> None:
     """Indexing stage: find tags and an embedding for one photo."""
     assert library.worker is not None
-    pixels = imaging.resize_long_edge(library.store.image(photo_id).proxy, TAG_EDGE)
+    pixels = imaging.resize_long_edge(library.store.image(photo_id).srgb_proxy, TAG_EDGE)
     # Not tied to the document: indexing is not something its editor waits on.
     result = library.worker.run("tag_photo", pixels)
     found: dict[str, float] = result.value["tags"]

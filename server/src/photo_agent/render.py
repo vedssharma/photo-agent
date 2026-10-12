@@ -25,6 +25,7 @@ import numpy as np
 import numpy.typing as npt
 
 from photo_agent import operations as ops
+from photo_agent.color import WorkingSpace
 from photo_agent.compositing import harmonize
 from photo_agent.generative import cache_identity, job_params, task_for
 from photo_agent.imaging import Array, resize_long_edge
@@ -73,6 +74,8 @@ class RenderContext:
     """Runs the models behind semantic masks; without it they cannot render."""
     framing: tuple[ops.OpBase, ...] = field(default=(), compare=False)
     """The framing of the state being rendered, which semantic masks are found in."""
+    space: WorkingSpace = "srgb"
+    """The working color space of the pixels (see `photo_agent.color`)."""
 
     def mask(self, mask: Mask, x: Array) -> Array:
         """Render a layer mask for the pixels `x`."""

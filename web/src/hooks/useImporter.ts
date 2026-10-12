@@ -44,7 +44,7 @@ export function useImporter() {
       setProgress({
         ...IDLE,
         error: ignored
-          ? 'None of those files are JPEG, PNG, HEIC, or RAW photos.'
+          ? 'None of those files are JPEG, PNG, HEIC, TIFF, or RAW photos.'
           : 'There were no files to import.',
       })
       return

@@ -11,7 +11,7 @@
           "documents"
         ],
         "summary": "Create Document",
-        "description": "Upload a JPEG, PNG, HEIC, or camera RAW photo to start editing it. It joins the\nlibrary too.",
+        "description": "Upload a JPEG, PNG, HEIC, TIFF, or camera RAW photo to start editing it. It joins the\nlibrary too.",
         "operationId": "createDocument",
         "requestBody": {
           "content": {
@@ -791,7 +791,7 @@
           "documents"
         ],
         "summary": "Original",
-        "description": "The unedited photo at preview size, as JPEG (browsers cannot show HEIC or RAW).",
+        "description": "The unedited photo at preview size, as JPEG (browsers cannot show HEIC, TIFF, or RAW).",
         "operationId": "getOriginal",
         "parameters": [
           {

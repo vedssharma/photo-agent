@@ -45,16 +45,16 @@ export const RAW_EXTENSIONS = [
 /** Photo types the backend can decode. HEIC and RAW files often have no MIME type in
  * browsers, so extensions are listed too. */
 export const PHOTO_TYPES = [
-  '.jpg,.jpeg,.png,.heic,.heif',
+  '.jpg,.jpeg,.png,.heic,.heif,.tif,.tiff',
   ...RAW_EXTENSIONS.map((ext) => `.${ext}`),
-  'image/jpeg,image/png,image/heic',
+  'image/jpeg,image/png,image/heic,image/tiff',
 ].join(',')
 
 /** Saved projects, for the file dialog. */
 export const PROJECT_TYPES = '.photoagent'
 
 const ACCEPTED_EXTENSIONS = new RegExp(
-  `\\.(jpe?g|png|heic|heif|photoagent|${RAW_EXTENSIONS.join('|')})$`,
+  `\\.(jpe?g|png|heic|heif|tiff?|photoagent|${RAW_EXTENSIONS.join('|')})$`,
   'i',
 )
 
@@ -65,9 +65,13 @@ export function isProjectFile(file: File): boolean {
 
 export function isSupportedFile(file: File): boolean {
   return (
-    ['image/jpeg', 'image/png', 'image/heic', 'image/heif'].includes(
-      file.type,
-    ) || ACCEPTED_EXTENSIONS.test(file.name)
+    [
+      'image/jpeg',
+      'image/png',
+      'image/heic',
+      'image/heif',
+      'image/tiff',
+    ].includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name)
   )
 }
 

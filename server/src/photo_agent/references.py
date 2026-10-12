@@ -57,7 +57,8 @@ def _read(doc_folder: Path) -> list[Reference]:
 
 def add(doc_folder: Path, filename: str, data: bytes) -> Reference:
     """Decode, shrink, measure, and keep a shared photo. Raises UnsupportedImageError."""
-    pixels = imaging.resize_long_edge(imaging.decode(data).pixels, LONG_EDGE)
+    decoded = imaging.decode(data)
+    pixels = imaging.resize_long_edge(imaging.to_srgb(decoded.pixels, decoded.space), LONG_EDGE)
     name = Path(filename.replace("\\", "/")).name.strip()[:120] or "reference"
     found = Reference(id="r" + uuid.uuid4().hex[:7], filename=name, stats=reference_stats(pixels))
     folder = _folder(doc_folder)

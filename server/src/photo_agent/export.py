@@ -67,6 +67,7 @@ def _encode(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes
         pixels, alpha = render_state(loaded.source.pixels, state, ctx), None
     if options.upscale > 1:
         pixels, alpha = enlarge(loaded, pixels, alpha, options.upscale)
+    pixels = loaded.to_srgb(pixels)
     exif = export_exif(loaded.source.exif, pixels.shape[1], pixels.shape[0], options.keep_location)
     if options.format == "png":
         return imaging.encode_png(pixels, exif=exif, alpha=alpha)
@@ -82,7 +83,16 @@ def enlarge(
     if scale <= 1.01:
         return pixels, alpha
     vision = loaded.vision
-    big = vision.upscale(pixels, scale) if vision else upscale_plainly(pixels, scale)
+    if vision is None:
+        big = upscale_plainly(pixels, scale)
+    elif loaded.space == "srgb":
+        big = vision.upscale(pixels, scale)
+    else:
+        # The upscaler only knows sRGB photos, so the photo is enlarged plainly in its own
+        # space and given the fine detail the upscaler adds to its sRGB version.
+        srgb = loaded.to_srgb(pixels)
+        detail = vision.upscale(srgb, scale) - upscale_plainly(srgb, scale)
+        big = np.asarray(np.clip(upscale_plainly(pixels, scale) + detail, 0, 1), np.float32)
     if alpha is not None:
         size = big.shape[1::-1]
         alpha = np.asarray(cv2.resize(alpha, size, interpolation=cv2.INTER_LINEAR), np.float32)

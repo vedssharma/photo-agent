@@ -56,7 +56,7 @@ from photo_agent.library.indexer import IndexingMode
 from photo_agent.operations import MAX_OPTIONS, GenerativeBase, MatchReference
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
-from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
+from photo_agent.store import DocumentNotFoundError, DocumentStore, LoadedImage, MismatchError
 from photo_agent.vision.backends import BackendMode, WorkerConfig
 from photo_agent.vision.worker import JobStatus, Mode, ModelWorker
 
@@ -170,7 +170,7 @@ def load(store: DocumentStore, doc_id: str) -> Document:
     responses={413: {"description": "File too large"}, 415: {"description": "Not a photo"}},
 )
 async def create_document(file: UploadFile, store: Store, library: LibraryDep) -> DocumentView:
-    """Upload a JPEG, PNG, HEIC, or camera RAW photo to start editing it. It joins the
+    """Upload a JPEG, PNG, HEIC, TIFF, or camera RAW photo to start editing it. It joins the
     library too."""
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
@@ -415,7 +415,7 @@ def get_option(doc_id: str, op_id: str, seed: int, store: Store) -> Response:
     option = variants.with_seed(doc.state, op_id, seed)
     pixels = previews.get_or_render(doc.id, loaded.proxy, option, loaded.proxy_context)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, pixels),
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=86400"},
     )
@@ -529,11 +529,11 @@ def checkout(doc_id: str, body: Checkout, store: Store) -> DocumentView:
     responses={200: {"content": {"image/jpeg": {}}}},
 )
 def original(doc_id: str, store: Store) -> Response:
-    """The unedited photo at preview size, as JPEG (browsers cannot show HEIC or RAW)."""
+    """The unedited photo at preview size, as JPEG (browsers cannot show HEIC, TIFF, or RAW)."""
     load(store, doc_id)
-    pixels = store.image(doc_id).proxy
+    loaded = store.image(doc_id)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, loaded.proxy),
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=31536000, immutable"},
     )
@@ -553,7 +553,7 @@ def preview(doc_id: str, store: Store) -> Response:
     """
     doc = load(store, doc_id)
     return Response(
-        imaging.encode_jpeg(render_preview(store, doc), PREVIEW_QUALITY),
+        preview_jpeg(store.image(doc_id), render_preview(store, doc)),
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache"},
     )
@@ -594,7 +594,7 @@ def before(doc_id: str, store: Store) -> Response:
     framing = EditState(framing=doc.state.framing)
     pixels = previews.get_or_render(doc.id, loaded.proxy, framing, loaded.proxy_context)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, pixels),
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache"},
     )
@@ -628,6 +628,11 @@ def list_jobs(doc_id: str, store: Store, worker: Worker) -> list[JobStatus]:
     The web app polls this while it waits on a change."""
     load(store, doc_id)
     return worker.jobs(doc_id)
+
+
+def preview_jpeg(loaded: LoadedImage, pixels: imaging.Array) -> bytes:
+    """A rendered preview as JPEG for the browser, with the output transform to sRGB."""
+    return imaging.encode_jpeg(loaded.to_srgb(pixels), PREVIEW_QUALITY)
 
 
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
@@ -704,9 +709,10 @@ async def suggest_edits(
         store.file(doc_id, "suggestions.json").write_text(cached.model_dump_json())
         return cached
     loaded = store.image(doc_id)
-    pixels = await asyncio.to_thread(
+    rendered = await asyncio.to_thread(
         previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
     )
+    pixels = loaded.to_srgb(rendered)
     source: suggestions.Source = "built-in"
     directions = suggestions.built_in_directions(pixels)
     if advisor is not None:
@@ -748,7 +754,7 @@ def suggestion_preview(doc_id: str, suggestion_id: str, store: Store) -> Respons
     rendered = previews.get_or_render(doc.id, loaded.proxy, state, loaded.proxy_context)
     pixels = imaging.resize_long_edge(rendered, suggestions.THUMBNAIL_LONG_EDGE)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, pixels),
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=86400"},
     )
@@ -800,9 +806,10 @@ async def critique_photo(doc_id: str, store: Store, advisor: AdvisorDep) -> Docu
     found = cache.get("critique", doc.revision, who, critique.Critique)
     if found is None:
         loaded = store.image(doc_id)
-        pixels = await asyncio.to_thread(
+        rendered = await asyncio.to_thread(
             previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
         )
+        pixels = loaded.to_srgb(rendered)
         if advisor is None:
             found = critique.built_in(pixels)
         else:
