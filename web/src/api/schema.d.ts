@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Create Document
-         * @description Upload a JPEG, PNG, or HEIC photo to start editing it.
+         * @description Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too.
          */
         post: operations["createDocument"];
         delete?: never;
@@ -708,6 +708,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Photos
+         * @description Every photo in the library, newest import first.
+         */
+        get: operations["listLibraryPhotos"];
+        put?: never;
+        /**
+         * Import Photos
+         * @description Add photos to the library, many at once (a whole folder is sent a batch at a time).
+         *     Files that are not photos, are too large, or are already in the library are skipped
+         *     and listed with the reason. New photos are indexed in the background.
+         */
+        post: operations["importPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Photo */
+        get: operations["getLibraryPhoto"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Photos
+         * @description Delete photos from the library, with their edits. This cannot be undone.
+         */
+        post: operations["removeLibraryPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/{photo_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Thumbnail
+         * @description A small JPEG of the photo with its current edits. Add `?revision=` (the photo's
+         *     revision) so the browser can keep it until the photo is edited again.
+         */
+        get: operations["getThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library Status
+         * @description How far indexing has got: the web app polls this while photos are being indexed.
+         */
+        get: operations["getLibraryStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -817,6 +921,11 @@ export interface components {
         Body_createDocument: {
             /** File */
             file: string;
+        };
+        /** Body_importPhotos */
+        Body_importPhotos: {
+            /** Files */
+            files: string[];
         };
         /** Body_openProject */
         Body_openProject: {
@@ -1570,6 +1679,22 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** ImportResult */
+        ImportResult: {
+            /** Imported */
+            imported: components["schemas"]["LibraryPhoto"][];
+            /** Skipped */
+            skipped: components["schemas"]["Skipped"][];
+        };
+        /** IndexStatus */
+        IndexStatus: {
+            /** Total */
+            total: number;
+            /** Pending */
+            pending: number;
+            /** Current */
+            current?: string | null;
+        };
         /** JobStatus */
         JobStatus: {
             /** Id */
@@ -1658,6 +1783,36 @@ export interface components {
              * @default 0
              */
             distortion: number;
+        };
+        /**
+         * LibraryPhoto
+         * @description What the library shows of one photo.
+         */
+        LibraryPhoto: {
+            /**
+             * Id
+             * @description The photo's document id; open it in the editor with this.
+             */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Format */
+            format: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** File Size */
+            file_size: number;
+            /**
+             * Imported At
+             * Format: date-time
+             */
+            imported_at: string;
+            /** Revision */
+            revision: string;
+            /** Edited */
+            edited: boolean;
         };
         /**
          * LinearGradientMask
@@ -1926,6 +2081,11 @@ export interface components {
              */
             horizontal: number;
         };
+        /** PhotoIds */
+        PhotoIds: {
+            /** Ids */
+            ids: string[];
+        };
         /**
          * Plan
          * @description What the agent means to do for a multi-step request, shown before the slow or
@@ -2110,6 +2270,11 @@ export interface components {
              * @default 20
              */
             grow: number;
+        };
+        /** Removed */
+        Removed: {
+            /** Removed */
+            removed: number;
         };
         /**
          * ReplaceBackground
@@ -2421,6 +2586,18 @@ export interface components {
              * @default 1
              */
             radius: number;
+        };
+        /** Skipped */
+        Skipped: {
+            /** Filename */
+            filename: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Existing
+             * @description The library photo it is a copy of.
+             */
+            existing?: string | null;
         };
         /**
          * SmoothSkin
@@ -4109,6 +4286,195 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listLibraryPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"][];
+                };
+            };
+        };
+    };
+    importPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_importPhotos"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Too many files at once */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLibraryPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"];
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removeLibraryPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Removed"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLibraryStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
             };
         };
     };

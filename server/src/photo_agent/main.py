@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, TypeAdapter
 
-from photo_agent import __version__, routes
+from photo_agent import __version__, library_routes, routes
 from photo_agent.agent import ChatEvent, ChatMessage
 from photo_agent.controls import OperationSpec, operation_specs
 from photo_agent.settings import Settings, get_settings
@@ -18,6 +18,7 @@ app.include_router(routes.projects_router)
 app.include_router(routes.recipes_router)
 app.include_router(routes.looks_router)
 app.include_router(routes.style_router)
+app.include_router(library_routes.router)
 
 
 class HealthResponse(BaseModel):

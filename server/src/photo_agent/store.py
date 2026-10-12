@@ -13,8 +13,10 @@ does not re-decode the file on every render.
 from __future__ import annotations
 
 import re
+import shutil
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,6 +83,8 @@ class DocumentStore:
         self._cache: OrderedDict[str, LoadedImage] = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()
+        self.listeners: list[Callable[[Document], None]] = []
+        """Called after a document is saved (the library keeps its revision current)."""
 
     def create(self, filename: str, data: bytes, edits: Document | None = None) -> Document:
         """Decode an upload and store it as a new document, optionally with existing edits
@@ -140,6 +144,23 @@ class DocumentStore:
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(doc.model_dump_json(indent=2))
         tmp.replace(path)
+        for listener in self.listeners:
+            listener(doc)
+
+    def delete(self, doc_id: str) -> None:
+        """Remove a document: its original, edits, and everything cached for it."""
+        folder = self._folder(doc_id)
+        with self._lock:
+            self._cache.pop(doc_id, None)
+        shutil.rmtree(folder, ignore_errors=True)
+
+    def ids(self) -> list[str]:
+        """Every stored document's id."""
+        if not self.root.is_dir():
+            return []
+        return sorted(
+            p.name for p in self.root.iterdir() if _ID_RE.match(p.name) and self.exists(p.name)
+        )
 
     def folder(self, doc_id: str) -> Path:
         """The folder holding a document's files."""

@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     model_device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
     """Where models run; "auto" picks a GPU when there is one."""
 
+    library_indexing: Literal["background", "inline"] = "background"
+    """How library photos are indexed (thumbnails, metadata, tags, ...): on a background
+    thread as they come in (the default), or before an import returns (for tests)."""
+
     model_dir: Path | None = None
     """Where downloaded model weights are cached; defaults to `<data_dir>/models`."""
 
