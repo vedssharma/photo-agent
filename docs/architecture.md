@@ -173,3 +173,35 @@ Reference photo chips ── …/references ────▶ references.py      s
 **Cost and latency (`routing.py`, `analyses.py`).** Short, single-step requests go to the routine model at low effort; long, multi-step, look-matching, or approved-plan requests go to the main model, and a routine round whose every tool call fails escalates. Suggestions use the routine model and critiques the main one. The system prompt and tools are cached between rounds; suggestions and critiques are cached on disk per revision and per model, so reopening a photo costs nothing.
 
 **Evals (`evals.py`).** Ten cases (brighter, moody, black and white, crop to square, subtle, plan first, …) check the resulting photo by measurement, not by the agent's words. CI replays reference tool scripts through the real editor and must score 100%; with an `ANTHROPIC_API_KEY` secret, it also runs Claude live and fails if the score drops below `server/evals/baseline.json`. See `server/evals/README.md`.
+
+## The library (Phase 6)
+
+```
+Browser (web/src/components/library)        Backend (server/src/photo_agent/library)
+────────────────────────────────────        ────────────────────────────────────────
+LibraryView: grid, filmstrip, keys          core.py         photos as documents, thumbnails, filters
+  ── /api/library/photos, /status ────────▶ db.py           SQLite (<data_dir>/library.db), numbered migrations
+ImportButtons, drop a folder ─────────────▶ indexer.py      background indexing, versioned stages
+LibrarySidebar: albums, picks ────────────▶ stages.py       thumbnail, metadata, fingerprint, quality, tags, faces
+FilterBar, PhotoDetails ──────────────────▶ organize.py     albums, stars, flags, color labels
+                                            metadata.py     EXIF: date, camera, lens, settings, GPS → place
+SearchBar ── POST /search ────────────────▶ search.py       everyday words → filters (Claude or built-in)
+TagEditor ────────────────────────────────▶ tagging.py      SigLIP tags and embeddings (classical fallback)
+PeopleSection, PhotoPeople ───────────────▶ faces.py        opt-in, local face grouping (YuNet + SFace)
+DuplicatesView ───────────────────────────▶ duplicates.py   difference-hash groups, a keeper suggested
+Pick the best… → PicksView ── /cull ──────▶ culling.py      moments, best shot of each, reasons
+BatchDialog ── /batch, /batch/{id} ───────▶ batch.py        one look for many photos, evened out
+Download ── POST /export (zip) ───────────▶ library_routes.py
+```
+
+**Photos are documents.** Every library photo is an ordinary document in the store, so the editor, history, recipes, and export work unchanged; opening one from the library just opens the document. The store tells the library when a document is saved, which bumps the photo's revision (and so its thumbnail URL). Importing skips exact copies (same SHA-256) and anything that is not a photo or is over 64 MB, and says why.
+
+**Database and indexing (`db.py`, `indexer.py`, `stages.py`).** SQLite in WAL mode, schema grown by appending migrations (`PRAGMA user_version`). Indexing runs in one background thread, photo by photo, oldest import first: each stage has a version, so bumping one (or turning on faces) re-runs only that stage. Stages that need a model (tags, faces) go through the model worker, so heavy work stays in that process. A failing stage is recorded and not retried until its version changes. Tests index inline.
+
+**Search (`search.py`, `dates.py`, `vocabulary.py`).** A query is read into tags, people, a date span, camera, stars, flag, "best N", and left-over words. With an API key Claude reads it (routine tier, words only); otherwise built-in rules do. Left-over words are matched by look with SigLIP's text tower when it is installed, else against file names. "Best N" hands the matches to culling.
+
+**People (`faces.py`).** Off until turned on, and local: faces are found and described in the model worker, grouped incrementally (join the nearest person if close enough, else pair with a matching unclaimed face), and corrections stick (a face taken away is never put back). Only names reach Claude, for search. Turning it off deletes every face and person.
+
+**Duplicates and culling (`duplicates.py`, `culling.py`, `vision/quality.py`).** A 64-bit difference hash finds resized, re-saved, and lightly edited copies and repeated shots. Quality is measured at index time: sharpness of the most detailed tiles, exposure, closed eyes (a rough check on dark iris spots), and an appeal score from color and contrast. Culling links shots taken within 30 seconds that look alike (or that look nearly the same whenever taken) into moments, takes the best of each moment, strongest first, and adds second frames only if they differ enough. Stars and picks count for a quarter of the score; rejects are never picked. Claude rewrites the reasons from the numbers when a key is set.
+
+**Batch edits and export (`batch.py`).** The look comes from an agent turn on the reference photo, a recipe, or the reference's edits. Its portable layers replace each photo's earlier look, keeping local work, and a `match_reference` layer ("Match the set") moves each photo part way toward the reference as edited. One history step per photo. Batches run as background tasks with a status the web app polls. Export renders the selection at full size into a zip.
