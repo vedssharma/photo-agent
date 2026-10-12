@@ -7,15 +7,12 @@ The sources stay as they were.
 
 from __future__ import annotations
 
-import io
 from collections.abc import Sequence
 from typing import Literal
 
 import cv2
 import numpy as np
 import numpy.typing as npt
-import tifffile
-from PIL import Image
 
 from photo_agent import color, icc, imaging
 
@@ -159,41 +156,12 @@ def crop_to_content(pano: Array) -> Array:
 # Saving
 
 
-def encode_tiff(pixels: Array, space: color.WorkingSpace, like: imaging.DecodedImage) -> bytes:
-    """A 16-bit TIFF of the pixels, tagged with their color space's profile, and with the
-    camera and date of `like` (the first source) so the library files it alongside them."""
-    data = np.round(np.clip(pixels, 0, 1) * 65535).astype(np.uint16)
-    profile = icc.profile(space)
-    tags: list[tuple[int, str, int, object, bool]] = [(34675, "B", len(profile), profile, True)]
-    exif = Image.Exif()
-    if like.exif:
-        try:
-            exif.load(like.exif)
-        except Exception:  # No camera details, then.
-            exif = Image.Exif()
-    sub = _exif_ifd(exif)
-    when = sub.get(0x9003) or exif.get(306)
-    for tag, value in ((271, exif.get(271)), (272, exif.get(272)), (306, when)):
-        if isinstance(value, str) and value.strip("\0 "):
-            tags.append((tag, "s", 0, value.strip("\0 "), True))
-    buf = io.BytesIO()
-    tifffile.imwrite(
-        buf, data, photometric="rgb", compression="zlib", extratags=tags, metadata=None
-    )
-    return buf.getvalue()
-
-
-def _exif_ifd(exif: Image.Exif) -> dict[int, object]:
-    try:
-        return dict(exif.get_ifd(0x8769))
-    except Exception:
-        return {}
-
-
 def merge(kind: MergeKind, sources: Sequence[bytes]) -> tuple[bytes, color.WorkingSpace]:
     """Merge the source files' photos; the result as TIFF bytes. Raises MergeError."""
     if len(sources) > MAX_SOURCES:
         raise MergeError(f"Merge at most {MAX_SOURCES} photos at once.")
     images = [imaging.decode(data) for data in sources]
     pixels, space = merge_hdr(images) if kind == "hdr" else stitch_panorama(images)
-    return encode_tiff(pixels, space, images[0]), space
+    # Saved with the first source's camera and date, so the library files it beside them.
+    tiff = imaging.encode_tiff(pixels, images[0].exif, profile=icc.profile(space), bits=16)
+    return tiff, space

@@ -16,6 +16,8 @@ clipped highlights reconstructed rather than cut off.
 from __future__ import annotations
 
 import io
+import struct
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -472,9 +474,12 @@ def encode_png(
     exif: bytes | None = None,
     alpha: Array | None = None,
     profile: bytes = SRGB_ICC,
+    bits: int = 8,
 ) -> bytes:
     """Encode RGB pixels as PNG, with transparency when `alpha` (0..1) is given, tagged
-    with `profile`."""
+    with `profile`; 8 or 16 bits per channel."""
+    if bits == 16:
+        return _encode_png16(pixels, exif, alpha, profile)
     img = Image.fromarray(to_uint8(pixels), mode="RGB")
     if alpha is not None:
         img.putalpha(Image.fromarray(to_uint8(alpha), mode="L"))
@@ -483,6 +488,101 @@ def encode_png(
     if exif:
         kwargs["exif"] = exif
     img.save(buf, format="PNG", **kwargs)
+    return buf.getvalue()
+
+
+def to_uint16(pixels: Array) -> npt.NDArray[np.uint16]:
+    return np.asarray(np.clip(pixels * 65535.0 + 0.5, 0, 65535), dtype=np.uint16)
+
+
+def _with_alpha(pixels: Array, alpha: Array | None) -> Array:
+    if alpha is None:
+        return pixels
+    return np.concatenate([pixels, alpha[..., None]], axis=2)
+
+
+def _png_chunk(kind: bytes, payload: bytes) -> bytes:
+    crc = zlib.crc32(kind + payload) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", crc)
+
+
+def _encode_png16(pixels: Array, exif: bytes | None, alpha: Array | None, profile: bytes) -> bytes:
+    """A 16-bit PNG (which Pillow cannot write): OpenCV encodes the pixels, and the color
+    profile and EXIF chunks are added after the header."""
+    values = to_uint16(_with_alpha(pixels, alpha))
+    order = [2, 1, 0, 3][: values.shape[2]]  # OpenCV wants BGR(A).
+    ok, encoded = cv2.imencode(".png", np.ascontiguousarray(values[..., order]))
+    if not ok:
+        raise ValueError("Could not encode the PNG.")
+    data = encoded.tobytes()
+    header_end = 8 + 25  # Signature, then the IHDR chunk.
+    extra = _png_chunk(b"iCCP", b"ICC profile\0\0" + zlib.compress(profile))
+    if exif:
+        extra += _png_chunk(b"eXIf", exif[6:] if exif.startswith(b"Exif\0\0") else exif)
+    return data[:header_end] + extra + data[header_end:]
+
+
+CAMERA_TIFF_TAGS = (271, 272, 305, 315, 33432)
+"""Make, model, software, artist, and copyright: the EXIF a TIFF keeps in its main IFD."""
+
+
+def encode_tiff(
+    pixels: Array,
+    exif: bytes | None = None,
+    alpha: Array | None = None,
+    profile: bytes = SRGB_ICC,
+    bits: int = 16,
+) -> bytes:
+    """Encode RGB pixels as a TIFF (zip-compressed), 8 or 16 bits per channel, tagged with
+    `profile`. The camera, date, and authorship from `exif` go in the TIFF's own tags."""
+    values = _with_alpha(pixels, alpha)
+    data = to_uint16(values) if bits == 16 else to_uint8(values)
+    tags: list[tuple[int, str, int, object, bool]] = [(34675, "B", len(profile), profile, True)]
+    if exif:
+        found = Image.Exif()
+        try:
+            found.load(exif)
+            sub = dict(found.get_ifd(EXIF_IFD_TAG))
+        except Exception:  # No camera details, then.
+            found, sub = Image.Exif(), {}
+        for tag in CAMERA_TIFF_TAGS:
+            value = found.get(tag)
+            if isinstance(value, str) and value.strip("\0 "):
+                tags.append((tag, "s", 0, value.strip("\0 "), True))
+        when = sub.get(0x9003) or found.get(306)  # When it was taken, else last changed.
+        if isinstance(when, str) and when.strip("\0 "):
+            tags.append((306, "s", 0, when.strip("\0 "), True))
+    buf = io.BytesIO()
+    tifffile.imwrite(
+        buf,
+        data,
+        photometric="rgb",
+        extrasamples=["unassalpha"] if alpha is not None else None,
+        compression="zlib",
+        extratags=tags,
+        metadata=None,
+    )
+    return buf.getvalue()
+
+
+def encode_pillow(
+    pixels: Array,
+    fmt: str,
+    quality: int,
+    exif: bytes | None = None,
+    alpha: Array | None = None,
+    profile: bytes = SRGB_ICC,
+) -> bytes:
+    """Encode 8-bit RGB(A) pixels in a format Pillow writes with a quality setting (AVIF,
+    WebP), tagged with `profile` and carrying `exif`."""
+    img = Image.fromarray(to_uint8(pixels), mode="RGB")
+    if alpha is not None:
+        img.putalpha(Image.fromarray(to_uint8(alpha), mode="L"))
+    kwargs: dict[str, object] = {"quality": quality, "icc_profile": profile}
+    if exif:
+        kwargs["exif"] = exif
+    buf = io.BytesIO()
+    img.save(buf, format=fmt, **kwargs)
     return buf.getvalue()
 
 

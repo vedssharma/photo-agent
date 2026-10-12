@@ -655,6 +655,7 @@ describe('LibraryView', () => {
         keep_location: false,
         upscale: 1,
         color_space: 'srgb',
+        bit_depth: 8,
       },
     })
     expect(save.mock.calls[0][0].filename).toBe('photos-2.zip')

@@ -8,6 +8,29 @@ import {
   saveFile,
 } from '../api/documents'
 
+const FORMATS: {
+  value: ExportOptions['format']
+  name: string
+  about: string
+}[] = [
+  { value: 'jpeg', name: 'JPEG', about: 'smaller, best for sharing' },
+  { value: 'png', name: 'PNG', about: 'lossless, larger file' },
+  {
+    value: 'tiff',
+    name: 'TIFF',
+    about: 'lossless, for printing or editing elsewhere',
+  },
+  {
+    value: 'avif',
+    name: 'AVIF',
+    about: 'smallest for the same quality, for the web',
+  },
+  { value: 'webp', name: 'WebP', about: 'small, for the web' },
+]
+
+/** Formats that take a quality setting. */
+const LOSSY: ExportOptions['format'][] = ['jpeg', 'avif', 'webp']
+
 interface Props {
   doc: DocumentView
   onClose: () => void
@@ -23,6 +46,9 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
     transparent ? 'png' : 'jpeg',
   )
   const [quality, setQuality] = useState(92)
+  const [bitDepth, setBitDepth] = useState<ExportOptions['bit_depth']>(
+    doc.format === 'RAW' || doc.format === 'TIFF' ? 16 : 8,
+  )
   const [keepLocation, setKeepLocation] = useState(false)
   const generated =
     doc.state.framing.some((op) => 'seed' in op) ||
@@ -55,6 +81,7 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
         await exportDocument(doc, {
           format,
           quality,
+          bit_depth: bitDepth,
           keep_location: keepLocation,
           upscale,
           color_space: colorSpace,
@@ -84,29 +111,22 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
 
         <fieldset>
           <legend>Format</legend>
-          <label>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'jpeg'}
-              onChange={() => setFormat('jpeg')}
-            />
-            JPEG <span className="status">smaller, best for sharing</span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'png'}
-              onChange={() => setFormat('png')}
-            />
-            PNG{' '}
-            <span className="status">
-              {transparent
-                ? 'keeps the transparent background'
-                : 'lossless, larger file'}
-            </span>
-          </label>
+          {FORMATS.map(({ value, name, about }) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="format"
+                checked={format === value}
+                onChange={() => setFormat(value)}
+              />
+              {name}{' '}
+              <span className="status">
+                {transparent && value !== 'jpeg'
+                  ? 'keeps the transparent background'
+                  : about}
+              </span>
+            </label>
+          ))}
         </fieldset>
         {transparent && format === 'jpeg' && (
           <p className="hint">
@@ -114,7 +134,24 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           </p>
         )}
 
-        {format === 'jpeg' && (
+        {(format === 'png' || format === 'tiff') && (
+          <label className="bit-depth">
+            Bits per channel{' '}
+            <select
+              value={bitDepth}
+              onChange={(e) =>
+                setBitDepth(
+                  Number(e.target.value) as ExportOptions['bit_depth'],
+                )
+              }
+            >
+              <option value={8}>8, for viewing and printing</option>
+              <option value={16}>16, for further editing</option>
+            </select>
+          </label>
+        )}
+
+        {LOSSY.includes(format) && (
           <label className="quality">
             Quality {quality}
             <input

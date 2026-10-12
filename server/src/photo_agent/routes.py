@@ -52,7 +52,7 @@ from photo_agent.agent import (
 )
 from photo_agent.analyses import AnalysisCache
 from photo_agent.diagnostics import measure
-from photo_agent.export import ExportOptions, export_bytes, export_filename
+from photo_agent.export import MEDIA_TYPES, ExportOptions, export_bytes, export_filename
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import EditState, Layer, new_layer_id
 from photo_agent.library import Library
@@ -574,7 +574,7 @@ def preview(
     "/{doc_id}/export",
     operation_id="exportDocument",
     response_class=Response,
-    responses={200: {"content": {"image/jpeg": {}, "image/png": {}}}},
+    responses={200: {"content": {media: {} for media in MEDIA_TYPES.values()}}},
 )
 async def export(doc_id: str, options: ExportOptions, store: Store, taste: Style) -> Response:
     """Render the edits at full resolution and return the file to download."""
@@ -586,7 +586,7 @@ async def export(doc_id: str, options: ExportOptions, store: Store, taste: Style
     filename = export_filename(doc, options)
     return Response(
         data,
-        media_type="image/png" if options.format == "png" else "image/jpeg",
+        media_type=MEDIA_TYPES[options.format],
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 

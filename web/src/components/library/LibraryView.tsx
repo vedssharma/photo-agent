@@ -363,6 +363,7 @@ export function LibraryView({
           keep_location: false,
           upscale: 1,
           color_space: 'srgb',
+          bit_depth: 8,
         }),
       )
     } catch (err) {

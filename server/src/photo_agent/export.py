@@ -23,9 +23,44 @@ EXIF_PIXEL_X = 0xA002
 EXIF_PIXEL_Y = 0xA003
 
 
+ExportFormat = Literal["jpeg", "png", "tiff", "avif", "webp"]
+
+EXTENSIONS: dict[str, str] = {
+    "jpeg": "jpg",
+    "png": "png",
+    "tiff": "tif",
+    "avif": "avif",
+    "webp": "webp",
+}
+MEDIA_TYPES: dict[str, str] = {
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "tiff": "image/tiff",
+    "avif": "image/avif",
+    "webp": "image/webp",
+}
+LOSSY = ("jpeg", "avif", "webp")
+"""Formats that take a quality setting."""
+DEEP = ("png", "tiff")
+"""Formats that can hold 16 bits per channel."""
+TRANSPARENT = ("png", "tiff", "avif", "webp")
+"""Formats that can hold a transparent background."""
+
+
 class ExportOptions(BaseModel):
-    format: Literal["jpeg", "png"] = "jpeg"
-    quality: int = Field(92, ge=1, le=100, description="JPEG quality; ignored for PNG.")
+    format: ExportFormat = Field(
+        "jpeg",
+        description="JPEG for sharing; PNG lossless; TIFF lossless for printing or further "
+        "editing; AVIF and WebP for the web, smaller than JPEG at the same quality.",
+    )
+    quality: int = Field(
+        92, ge=1, le=100, description="Quality for JPEG, AVIF, and WebP; ignored otherwise."
+    )
+    bit_depth: Literal[8, 16] = Field(
+        8,
+        description="Bits per color channel for PNG and TIFF; 16 keeps the smooth "
+        "gradations of RAW and 16-bit photos for further editing. Other formats are 8.",
+    )
     keep_location: bool = Field(
         False, description="Keep GPS location from the original. Off by default for privacy."
     )
@@ -65,7 +100,7 @@ def _encode(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes
     state, ctx = doc.state, loaded.full_context
     cutout = state.cutout
     transparent = cutout is not None and cutout.visible and cutout.background is None
-    if transparent and options.format == "png":
+    if transparent and options.format in TRANSPARENT:
         pixels, alpha = render_cutout(loaded.source.pixels, state, ctx)
     else:
         if transparent and cutout is not None:
@@ -79,8 +114,14 @@ def _encode(doc: Document, loaded: LoadedImage, options: ExportOptions) -> bytes
     pixels = color.convert(pixels, loaded.space, options.color_space)
     profile = icc.profile(options.color_space)
     exif = export_exif(loaded.source.exif, pixels.shape[1], pixels.shape[0], options.keep_location)
+    bits = options.bit_depth if options.format in DEEP else 8
     if options.format == "png":
-        return imaging.encode_png(pixels, exif=exif, alpha=alpha, profile=profile)
+        return imaging.encode_png(pixels, exif=exif, alpha=alpha, profile=profile, bits=bits)
+    if options.format == "tiff":
+        return imaging.encode_tiff(pixels, exif=exif, alpha=alpha, profile=profile, bits=bits)
+    if options.format in ("avif", "webp"):
+        fmt = options.format.upper()
+        return imaging.encode_pillow(pixels, fmt, options.quality, exif, alpha, profile)
     return imaging.encode_jpeg(pixels, quality=options.quality, exif=exif, profile=profile)
 
 
@@ -134,4 +175,4 @@ def export_exif(raw: bytes, width: int, height: int, keep_location: bool) -> byt
 
 def export_filename(doc: Document, options: ExportOptions) -> str:
     stem = doc.filename.rsplit(".", 1)[0] or "photo"
-    return f"{stem}-edited.{'jpg' if options.format == 'jpeg' else 'png'}"
+    return f"{stem}-edited.{EXTENSIONS[options.format]}"

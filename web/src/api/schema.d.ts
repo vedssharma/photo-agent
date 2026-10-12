@@ -2124,16 +2124,24 @@ export interface components {
         ExportOptions: {
             /**
              * Format
+             * @description JPEG for sharing; PNG lossless; TIFF lossless for printing or further editing; AVIF and WebP for the web, smaller than JPEG at the same quality.
              * @default jpeg
              * @enum {string}
              */
-            format: "jpeg" | "png";
+            format: "jpeg" | "png" | "tiff" | "avif" | "webp";
             /**
              * Quality
-             * @description JPEG quality; ignored for PNG.
+             * @description Quality for JPEG, AVIF, and WebP; ignored otherwise.
              * @default 92
              */
             quality: number;
+            /**
+             * Bit Depth
+             * @description Bits per color channel for PNG and TIFF; 16 keeps the smooth gradations of RAW and 16-bit photos for further editing. Other formats are 8.
+             * @default 8
+             * @enum {integer}
+             */
+            bit_depth: 8 | 16;
             /**
              * Keep Location
              * @description Keep GPS location from the original. Off by default for privacy.
@@ -4803,6 +4811,9 @@ export interface operations {
                 content: {
                     "image/jpeg": unknown;
                     "image/png": unknown;
+                    "image/tiff": unknown;
+                    "image/avif": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Validation Error */

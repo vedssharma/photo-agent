@@ -26,7 +26,9 @@ describe('ExportDialog', () => {
     })
     render(<ExportDialog doc={doc} onClose={vi.fn()} save={vi.fn()} />)
     expect(screen.getByRole('radio', { name: /PNG/ })).toBeChecked()
-    expect(screen.getByText(/keeps the transparent background/)).toBeVisible()
+    expect(
+      screen.getByRole('radio', { name: /PNG/ }).parentElement,
+    ).toHaveTextContent(/keeps the transparent background/)
     await userEvent.click(screen.getByRole('radio', { name: /JPEG/ }))
     expect(screen.getByText(/background will be white/)).toBeVisible()
   })
@@ -54,6 +56,7 @@ describe('ExportDialog', () => {
     expect(await request.json()).toEqual({
       format: 'jpeg',
       quality: 92,
+      bit_depth: 8,
       keep_location: false,
       upscale: 1,
       color_space: 'srgb',

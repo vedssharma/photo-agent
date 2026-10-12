@@ -33,7 +33,13 @@ APP = "photo-agent"
 VERSION = "0.1.0"
 GENERATED = "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia"
 CAPTURED = "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"
-MIME = {"jpeg": "image/jpeg", "png": "image/png"}
+MIME = {
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "tiff": "image/tiff",
+    "avif": "image/avif",
+    "webp": "image/webp",
+}
 
 _lock = threading.Lock()
 
@@ -68,7 +74,7 @@ def manifest(state: EditState, title: str) -> dict[str, Any]:
 
 
 def sign(data: bytes, fmt: str, state: EditState, title: str, data_dir: Path) -> bytes:
-    """`data` (an encoded JPEG or PNG) with Content Credentials for its generative edits."""
+    """`data` (an encoded export) with Content Credentials for its generative edits."""
     builder = c2pa.Builder(json.dumps(manifest(state, title)))
     out = io.BytesIO()
     with _lock:
