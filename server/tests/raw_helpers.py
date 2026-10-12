@@ -47,6 +47,9 @@ def make_dng(
     make: str = "Fixture",
     model: str = "RAW Camera",
     exposure: float = 1.0,
+    lens: str = "",
+    focal_length: float = 0.0,
+    aperture: float = 0.0,
 ) -> bytes:
     """A DNG of the scene, `exposure` times as bright on the sensor; light above the
     sensor's white level clips, channel by channel, as it would in a real camera."""
@@ -76,6 +79,13 @@ def make_dng(
         (50778, "H", 1, (21,), True),  # CalibrationIlluminant1: D65
         (50728, "2I", 3, _rationals(neutral, signed=False), True),  # AsShotNeutral
     ]
+    # Shot details in the main IFD, as TIFF/EP has them.
+    if lens:
+        tags.append((42036, "s", 0, lens, True))  # LensModel
+    if focal_length:
+        tags.append((37386, "2I", 1, _rationals(np.array([focal_length]), signed=False), True))
+    if aperture:
+        tags.append((33437, "2I", 1, _rationals(np.array([aperture]), signed=False), True))
     buf = io.BytesIO()
     tifffile.imwrite(buf, raw, photometric=32803, subfiletype=0, extratags=tags, metadata=None)
     return buf.getvalue()

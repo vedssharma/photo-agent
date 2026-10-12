@@ -20,6 +20,7 @@ import struct
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from numbers import Real
 
 import cv2
 import numpy as np
@@ -366,6 +367,11 @@ CAMERA_TAGS = (270, 271, 272, 305, 306, 315, 33432)
 """Main-IFD EXIF tags worth carrying over: description, make, model, software, date,
 artist, and copyright. The rest of a TIFF's main IFD describes its own pixel layout."""
 
+SHOT_TAGS = (33434, 33437, 34855, 36867, 37386, 42035, 42036)
+"""Shot details (exposure time, f-number, ISO, date taken, focal length, lens make and
+model) that TIFF/EP RAW files and some DNGs keep in the main IFD rather than the EXIF
+IFD; they are moved to the EXIF IFD, where everything else looks for them."""
+
 
 def raw_exif(data: bytes) -> bytes:
     """Camera EXIF from a RAW or TIFF file, as plain EXIF bytes. Most RAW formats are TIFF inside,
@@ -389,15 +395,20 @@ def camera_exif(exif: Image.Exif) -> bytes:
         clean = Image.Exif()
         for tag in CAMERA_TAGS:
             value = exif.get(tag)
-            if isinstance(value, (str, int, float, tuple)):
+            if isinstance(value, (str, Real, tuple)):
                 clean[tag] = value
         for ifd in (EXIF_IFD_TAG, GPS_IFD_TAG):
             found = exif.get_ifd(ifd)
             if found:
                 target = clean.get_ifd(ifd)
                 for tag, value in found.items():
-                    if isinstance(value, (str, int, float, tuple, bytes)):
+                    if isinstance(value, (str, Real, tuple, bytes)):
                         target[tag] = value
+        shot = clean.get_ifd(EXIF_IFD_TAG)
+        for tag in SHOT_TAGS:
+            value = exif.get(tag)
+            if tag not in shot and isinstance(value, (str, Real, tuple)):
+                shot[tag] = value
         clean[EXIF_ORIENTATION] = 1
         return clean.tobytes()
     except Exception:  # Odd metadata is not worth failing the upload over.
