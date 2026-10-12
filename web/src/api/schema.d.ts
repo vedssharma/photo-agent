@@ -811,6 +811,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description Every tag in use, found or added by hand, most used first.
+         */
+        get: operations["listTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tag Photos
+         * @description Add or remove tags by hand. A found tag that is removed stays removed.
+         */
+        post: operations["tagPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Library
+         * @description Search in everyday words ("beach photos from last summer with the dog"). The query
+         *     is read into filters (by Claude when an API key is set, else by built-in rules) and the
+         *     answer says how it was understood.
+         */
+        post: operations["searchLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/albums": {
         parameters: {
             query?: never;
@@ -2031,6 +2093,11 @@ export interface components {
              * @description The place it was taken (see facets).
              */
             place?: string | null;
+            /**
+             * Tags
+             * @description What is in it, best first.
+             */
+            tags?: string[];
         };
         /**
          * LinearGradientMask
@@ -2733,6 +2800,33 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** SearchRequest */
+        SearchRequest: {
+            /** Query */
+            query: string;
+            /**
+             * Album
+             * @description Search within this album.
+             */
+            album?: string | null;
+        };
+        /** SearchResult */
+        SearchResult: {
+            /** Query */
+            query: string;
+            understood: components["schemas"]["Understood"];
+            /** Summary */
+            summary: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "claude" | "built-in";
+            /** Matched Words By */
+            matched_words_by?: ("look" | "file name") | null;
+            /** Photos */
+            photos: components["schemas"]["LibraryPhoto"][];
+        };
         /** SelectPoint */
         SelectPoint: {
             /** X */
@@ -3019,6 +3113,22 @@ export interface components {
              */
             refresh: boolean;
         };
+        /** TagChange */
+        TagChange: {
+            /** Ids */
+            ids: string[];
+            /** Add */
+            add?: string[];
+            /** Remove */
+            remove?: string[];
+        };
+        /** TagCount */
+        TagCount: {
+            /** Tag */
+            tag: string;
+            /** Count */
+            count: number;
+        };
         /** TaskStatus */
         TaskStatus: {
             /** Task */
@@ -3078,6 +3188,41 @@ export interface components {
              * @enum {string}
              */
             channel: "rgb" | "red" | "green" | "blue";
+        };
+        /**
+         * Understood
+         * @description What a search was taken to ask for.
+         */
+        Understood: {
+            /**
+             * Tags
+             * @description Tags every photo must have.
+             */
+            tags?: string[];
+            /** Taken After */
+            taken_after?: string | null;
+            /** Taken Before */
+            taken_before?: string | null;
+            /** Camera */
+            camera?: string | null;
+            /**
+             * Min Rating
+             * @default 0
+             */
+            min_rating: number;
+            /** Flag */
+            flag?: ("picked" | "rejected" | "none") | null;
+            /**
+             * Best
+             * @description Cull to this many best shots.
+             */
+            best?: number | null;
+            /**
+             * Words
+             * @description What is left, matched by look or by file name.
+             * @default
+             */
+            words: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -4562,6 +4707,8 @@ export interface operations {
                 place?: string | null;
                 /** @description Only photos with (or without) GPS. */
                 has_location?: boolean | null;
+                /** @description Only photos with every one of these tags. */
+                tags?: string[];
                 /** @description Newest first by when they were taken (or imported). */
                 sort?: "taken" | "imported";
             };
@@ -4742,6 +4889,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Marked"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagCount"][];
+                };
+            };
+        };
+    };
+    tagPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    searchLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
                 };
             };
             /** @description Validation Error */

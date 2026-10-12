@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from photo_agent.vision import classical, hub
+from photo_agent.vision import classical, hub, library
 from photo_agent.vision.backends import Backend, Env, Progress, SelfTest, Task
 
 
@@ -59,6 +59,10 @@ def _tasks() -> list[Task]:
         task("upscale", "Enlarging", hub.RealEsrgan(), Classical(classical.upscale)),
         task("restore_faces", "Restoring faces", hub.Gfpgan(), Classical(classical.restore_faces)),
         task("colorize", "Colorizing", hub.DdColor(), Classical(classical.colorize)),
+        task("tag_photo", "Tagging", hub.Siglip(), Classical(library.tag_photo)),
+        # Only a model can put words and photos side by side; without one, search goes by
+        # tags alone.
+        task("embed_text", "Reading the search", hub.SiglipText()),
     ]
 
 

@@ -86,3 +86,21 @@ def import_bytes(client: TestClient, *named: tuple[str, bytes]) -> list[dict[str
     assert res.status_code == 201, res.text
     imported: list[dict[str, Any]] = res.json()["imported"]
     return imported
+
+
+def scene(top: tuple[float, float, float], bottom: tuple[float, float, float]) -> bytes:
+    """A noisy two-tone JPEG: a sky-like top half over a bottom half (water, sand, ...)."""
+    import io
+
+    rng = np.random.default_rng(0)
+    pixels = np.zeros((300, 400, 3), np.float32)
+    pixels[:150], pixels[150:] = top, bottom
+    pixels = np.clip(pixels + rng.normal(0, 0.02, pixels.shape), 0, 1)
+    buf = io.BytesIO()
+    Image.fromarray((pixels * 255).astype(np.uint8)).save(buf, format="JPEG", quality=92)
+    return buf.getvalue()
+
+
+BEACH = ((0.45, 0.65, 0.95), (0.1, 0.45, 0.75))
+SNOW = ((0.8, 0.85, 0.9), (0.95, 0.95, 0.97))
+NIGHT = ((0.02, 0.02, 0.05), (0.08, 0.07, 0.06))

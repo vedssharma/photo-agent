@@ -10,6 +10,8 @@ export type Album = components['schemas']['Album']
 export type Marks = components['schemas']['Marks']
 export type Facets = components['schemas']['Facets']
 export type Facet = components['schemas']['Facet']
+export type SearchResult = components['schemas']['SearchResult']
+export type TagCount = components['schemas']['TagCount']
 export type Flag = LibraryPhoto['flag']
 export type Label = NonNullable<LibraryPhoto['label']>
 export type PhotoFilter = NonNullable<
@@ -98,6 +100,28 @@ export async function markPhotos(marks: Marks): Promise<LibraryPhoto[]> {
 
 export async function fetchFacets(): Promise<Facets> {
   const { data, error, response } = await api.GET('/api/library/facets')
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function searchLibrary(
+  query: string,
+  album: string | null = null,
+): Promise<SearchResult> {
+  const { data, error, response } = await api.POST('/api/library/search', {
+    body: { query, album },
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function changeTags(
+  ids: string[],
+  change: { add?: string[]; remove?: string[] },
+): Promise<LibraryPhoto[]> {
+  const { data, error, response } = await api.POST('/api/library/photos/tags', {
+    body: { ids, add: change.add ?? [], remove: change.remove ?? [] },
+  })
   if (!data) throw new ApiError(detail(error, response.status))
   return data
 }

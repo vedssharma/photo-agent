@@ -126,6 +126,21 @@ export function FilterBar({ filter, onFilter, facets }: Props) {
           ))}
         </select>
       )}
+      {(filter.tags ?? []).map((tag) => (
+        <span key={tag} className="chips filter-chip">
+          <span>Tagged {tag}</span>
+          <button
+            type="button"
+            className="link"
+            aria-label={`Stop filtering by ${tag}`}
+            onClick={() =>
+              set({ tags: (filter.tags ?? []).filter((t) => t !== tag) })
+            }
+          >
+            ×
+          </button>
+        </span>
+      ))}
       <select
         aria-label="Sort"
         value={filter.sort ?? 'taken'}

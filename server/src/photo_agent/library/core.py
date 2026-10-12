@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from photo_agent import imaging
 from photo_agent.graph import Document
+from photo_agent.library import tagging
 from photo_agent.library.db import LibraryDB, Row, placeholders
 from photo_agent.library.filters import Flag, Label, PhotoFilter, order_by, where
 from photo_agent.library.indexer import Indexer, IndexingMode
@@ -62,6 +63,7 @@ class LibraryPhoto(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     place: str | None = Field(None, description="The place it was taken (see facets).")
+    tags: list[str] = Field(default_factory=list, description="What is in it, best first.")
 
 
 class Skipped(BaseModel):
@@ -196,7 +198,7 @@ class Library:
         row = self.db.one("SELECT * FROM photos WHERE id = ?", (photo_id,))
         if row is None:
             raise PhotoNotFoundError(photo_id)
-        return self._with_albums([photo_of(row)])[0]
+        return self._with_extras([photo_of(row)])[0]
 
     def photos(self, f: PhotoFilter | None = None) -> list[LibraryPhoto]:
         """The photos a filter lets through (all of them by default), newest import first."""
@@ -205,14 +207,17 @@ class Library:
         rows = self.db.all(
             f"SELECT p.* FROM photos p WHERE {clause} ORDER BY {order_by(f)}", params
         )
-        return self._with_albums([photo_of(row) for row in rows])
+        return self._with_extras([photo_of(row) for row in rows])
 
-    def _with_albums(self, photos: list[LibraryPhoto]) -> list[LibraryPhoto]:
+    def _with_extras(self, photos: list[LibraryPhoto]) -> list[LibraryPhoto]:
+        """Fill in what lives in other tables: albums and tags."""
         member: dict[str, list[str]] = {}
         for r in self.db.all("SELECT album_id, photo_id FROM album_photos ORDER BY album_id"):
             member.setdefault(r["photo_id"], []).append(r["album_id"])
+        tags = tagging.tags_of(self.db)
         for photo in photos:
             photo.albums = member.get(photo.id, [])
+            photo.tags = tags.get(photo.id, [])
         return photos
 
     # Thumbnails

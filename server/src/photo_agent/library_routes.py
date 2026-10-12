@@ -17,11 +17,13 @@ from photo_agent.library import (
     PhotoNotFoundError,
     Skipped,
     organize,
+    tagging,
 )
+from photo_agent.library import search as searching
 from photo_agent.library.facets import Facets, facets
 from photo_agent.library.filters import PhotoFilter
 from photo_agent.library.indexer import IndexStatus
-from photo_agent.routes import MAX_UPLOAD_BYTES, LibraryDep
+from photo_agent.routes import MAX_UPLOAD_BYTES, AdvisorDep, LibraryDep
 
 router = APIRouter(prefix="/api/library", tags=["library"])
 
@@ -120,6 +122,35 @@ def mark_photos(body: organize.Marks, library: LibraryDep) -> Marked:
     changed = organize.mark(library.db, body)
     wanted = set(body.ids)
     return Marked(changed=changed, photos=[p for p in library.photos() if p.id in wanted])
+
+
+class TagCount(BaseModel):
+    tag: str
+    count: int
+
+
+@router.get("/tags", operation_id="listTags")
+def list_tags(library: LibraryDep) -> list[TagCount]:
+    """Every tag in use, found or added by hand, most used first."""
+    return [TagCount(tag=tag, count=n) for tag, n in tagging.all_tags(library.db)]
+
+
+@router.post("/photos/tags", operation_id="tagPhotos")
+def tag_photos(body: tagging.TagChange, library: LibraryDep) -> list[LibraryPhoto]:
+    """Add or remove tags by hand. A found tag that is removed stays removed."""
+    tagging.change_tags(library.db, body)
+    wanted = set(body.ids)
+    return [p for p in library.photos() if p.id in wanted]
+
+
+@router.post("/search", operation_id="searchLibrary")
+async def search_library(
+    body: searching.SearchRequest, library: LibraryDep, advisor: AdvisorDep
+) -> searching.SearchResult:
+    """Search in everyday words ("beach photos from last summer with the dog"). The query
+    is read into filters (by Claude when an API key is set, else by built-in rules) and the
+    answer says how it was understood."""
+    return await searching.search(library, body, advisor)
 
 
 def _album[R](fn: Callable[[], R]) -> R:

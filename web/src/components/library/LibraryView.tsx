@@ -8,7 +8,9 @@ import {
   type LibraryPhoto,
   type Marks,
   type PhotoFilter,
+  type SearchResult,
   addToAlbum,
+  changeTags,
   createAlbum,
   deleteAlbum,
   fetchFacets,
@@ -20,6 +22,7 @@ import {
   removeFromAlbum,
   removePhotos,
   renameAlbum,
+  searchLibrary,
 } from '../../api/library'
 import { useDropAnywhere } from '../../hooks/useDropAnywhere'
 import { type Importer, importText } from '../../hooks/useImporter'
@@ -42,6 +45,8 @@ import { Loupe } from './Loupe'
 import { PhotoGrid } from './PhotoGrid'
 import { PhotoDetails } from './PhotoDetails'
 import { PhotoInfo } from './PhotoInfo'
+import { SearchBar } from './SearchBar'
+import { TagEditor } from './TagEditor'
 
 /** Keys that mark the selection, as in other photo apps. */
 const MARK_KEYS: Record<string, Omit<Marks, 'ids'>> = {
@@ -102,6 +107,8 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [filter, setFilter] = useState<PhotoFilter>({})
   const [albums, setAlbums] = useState<Album[]>([])
   const [facets, setFacets] = useState<Facets | null>(null)
+  const [search, setSearch] = useState<SearchResult | null>(null)
+  const [searching, setSearching] = useState(false)
   const main = useRef<HTMLDivElement>(null)
 
   // Bumped to fetch the photo list again.
@@ -155,7 +162,12 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     }
   }, [importer.batches, pollMs, reload])
 
-  const shown = useMemo(() => photos ?? [], [photos])
+  const shown = useMemo(() => {
+    if (!search) return photos ?? []
+    // Keep the search's order, with each photo as it is now (marks change).
+    const latest = new Map((photos ?? []).map((p) => [p.id, p]))
+    return search.photos.map((p) => latest.get(p.id) ?? p)
+  }, [photos, search])
   const order = useMemo(() => shown.map((p) => p.id), [shown])
   // Photos that left (deleted, or filtered out) drop out of the selection.
   const selection = keepOnly(picked, order)
@@ -189,6 +201,23 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
       void change('mark the photos', () =>
         markPhotos({ ...marks, ids: chosen }),
       )
+  }
+
+  async function runSearch(query: string) {
+    setSearching(true)
+    try {
+      setSearch(await searchLibrary(query, filter.album ?? null))
+      setError(null)
+    } catch (err) {
+      setError(`Could not search: ${(err as Error).message}`)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const showFilter = (next: PhotoFilter) => {
+    setSearch(null)
+    setFilter(next)
   }
 
   function newAlbum() {
@@ -294,7 +323,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
       <LibrarySidebar
         albums={albums}
         filter={filter}
-        onFilter={setFilter}
+        onFilter={showFilter}
         onNewAlbum={newAlbum}
         onRenameAlbum={rename}
         onDeleteAlbum={dropAlbum}
@@ -305,6 +334,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             onImport={(files) => void importer.start(files)}
             busy={importer.progress.running}
           />
+          <SearchBar onSearch={(q) => void runSearch(q)} busy={searching} />
           <span className="library-count">
             {photos === null
               ? 'Loading…'
@@ -346,7 +376,22 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             Delete
           </button>
         </div>
-        <FilterBar filter={filter} onFilter={setFilter} facets={facets} />
+        {search ? (
+          <p className="search-summary" role="status">
+            {search.photos.length} photo{search.photos.length === 1 ? '' : 's'}:{' '}
+            {search.summary}
+            {search.source === 'built-in' && ' (read without Claude)'}
+            <button
+              type="button"
+              className="link"
+              onClick={() => setSearch(null)}
+            >
+              Clear search
+            </button>
+          </p>
+        ) : (
+          <FilterBar filter={filter} onFilter={setFilter} facets={facets} />
+        )}
         {(importing || indexing || error) && (
           <p className="library-status" role="status">
             {error && <span className="error">{error} </span>}
@@ -361,14 +406,14 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
           </p>
         )}
         {photos !== null && shown.length === 0 ? (
-          Object.keys(filterQuery(filter)).length > 0 ? (
+          search || Object.keys(filterQuery(filter)).length > 0 ? (
             <div className="library-empty">
               <h2>No photos here</h2>
               <p>
                 <button
                   type="button"
                   className="link"
-                  onClick={() => setFilter({})}
+                  onClick={() => showFilter({})}
                 >
                   Show all photos
                 </button>
@@ -414,6 +459,18 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
           )
         }
       >
+        <TagEditor
+          tags={focused?.tags ?? []}
+          onAdd={(tag) =>
+            void change('add the tag', () => changeTags(chosen, { add: [tag] }))
+          }
+          onRemove={(tag) =>
+            void change('remove the tag', () =>
+              changeTags(chosen, { remove: [tag] }),
+            )
+          }
+          onShow={(tag) => showFilter({ tags: [tag] })}
+        />
         {focused && <PhotoDetails photo={focused} />}
       </PhotoInfo>
     </main>

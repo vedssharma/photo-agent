@@ -77,6 +77,22 @@ MIGRATIONS: list[str] = [
     ALTER TABLE photos ADD COLUMN place TEXT;
     CREATE INDEX photos_taken ON photos (taken_at);
     """,
+    # 4: tags (found by a model, or added by hand) and embeddings for search.
+    """
+    CREATE TABLE tags (
+        photo_id TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+        tag TEXT NOT NULL,
+        score REAL NOT NULL,
+        source TEXT NOT NULL,
+        PRIMARY KEY (photo_id, tag)
+    );
+    CREATE INDEX tags_tag ON tags (tag);
+    CREATE TABLE embeddings (
+        photo_id TEXT PRIMARY KEY REFERENCES photos (id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        vector BLOB NOT NULL
+    );
+    """,
 ]
 
 Row = sqlite3.Row

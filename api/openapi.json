@@ -1913,6 +1913,21 @@
             "description": "Only photos with (or without) GPS."
           },
           {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "description": "Only photos with every one of these tags.",
+              "title": "Tags"
+            },
+            "description": "Only photos with every one of these tags."
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -2091,6 +2106,120 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Marked"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/tags": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Tags",
+        "description": "Every tag in use, found or added by hand, most used first.",
+        "operationId": "listTags",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagCount"
+                  },
+                  "type": "array",
+                  "title": "Response Listtags"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/tags": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Tag Photos",
+        "description": "Add or remove tags by hand. A found tag that is removed stays removed.",
+        "operationId": "tagPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryPhoto"
+                  },
+                  "type": "array",
+                  "title": "Response Tagphotos"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/search": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Search Library",
+        "description": "Search in everyday words (\"beach photos from last summer with the dog\"). The query\nis read into filters (by Claude when an API key is set, else by built-in rules) and the\nanswer says how it was understood.",
+        "operationId": "searchLibrary",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
                 }
               }
             }
@@ -4659,6 +4788,14 @@
             ],
             "title": "Place",
             "description": "The place it was taken (see facets)."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "What is in it, best first."
           }
         },
         "type": "object",
@@ -6044,6 +6181,87 @@
         "title": "Saturation",
         "description": "Uniformly increase or decrease color intensity; -100 makes black and white."
       },
+      "SearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album",
+            "description": "Search within this album."
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SearchRequest"
+      },
+      "SearchResult": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "understood": {
+            "$ref": "#/components/schemas/Understood"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source"
+          },
+          "matched_words_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "look",
+                  "file name"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Words By"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "understood",
+          "summary",
+          "source",
+          "photos"
+        ],
+        "title": "SearchResult"
+      },
       "SelectPoint": {
         "properties": {
           "x": {
@@ -6548,6 +6766,58 @@
         "type": "object",
         "title": "SuggestionsRequest"
       },
+      "TagChange": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Add"
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Remove"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "TagChange"
+      },
+      "TagCount": {
+        "properties": {
+          "tag": {
+            "type": "string",
+            "title": "Tag"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag",
+          "count"
+        ],
+        "title": "TagCount"
+      },
       "TaskStatus": {
         "properties": {
           "task": {
@@ -6663,6 +6933,99 @@
         ],
         "title": "ToneCurve",
         "description": "Remap tones with a curve through control points (input, output), both 0..1.\n\nThe curve always passes through its points in order of input. An S-shape adds contrast;\nlifting the (0, y) point gives faded blacks."
+      },
+      "Understood": {
+        "properties": {
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Tags every photo must have."
+          },
+          "taken_after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken After"
+          },
+          "taken_before": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Before"
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "min_rating": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Min Rating",
+            "default": 0
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "picked",
+                  "rejected",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flag"
+          },
+          "best": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best",
+            "description": "Cull to this many best shots."
+          },
+          "words": {
+            "type": "string",
+            "title": "Words",
+            "description": "What is left, matched by look or by file name.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "Understood",
+        "description": "What a search was taken to ask for."
       },
       "ValidationError": {
         "properties": {

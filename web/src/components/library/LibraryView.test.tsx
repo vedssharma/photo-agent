@@ -269,4 +269,78 @@ describe('LibraryView', () => {
     // An empty filter sends no query at all.
     expect(urls.some((u) => u.endsWith('/api/library/photos'))).toBe(true)
   })
+
+  it('searches in everyday words and says how it understood them', async () => {
+    const searched = vi.fn()
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'POST /api/library/search': async (req) => {
+        searched(await req.json())
+        return Response.json({
+          query: 'beach last summer',
+          understood: {
+            tags: ['beach'],
+            taken_after: '2026-06-01',
+            taken_before: '2026-08-31',
+            camera: null,
+            min_rating: 0,
+            flag: null,
+            best: null,
+            words: '',
+          },
+          summary: 'Tagged beach, taken Jun 1, 2026 to Aug 31, 2026',
+          source: 'claude',
+          matched_words_by: null,
+          photos: [PHOTOS[2]],
+        })
+      },
+    })
+    render(<Harness />)
+    await thumbs()
+    await userEvent.type(
+      screen.getByLabelText('Search photos'),
+      'beach last summer{Enter}',
+    )
+
+    expect(searched).toHaveBeenCalledWith({
+      query: 'beach last summer',
+      album: null,
+    })
+    expect(
+      await screen.findByText(
+        /Tagged beach, taken Jun 1, 2026 to Aug 31, 2026/,
+      ),
+    ).toBeInTheDocument()
+    expect(within(grid()).getAllByRole('option')).toHaveLength(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(within(grid()).getAllByRole('option')).toHaveLength(3)
+  })
+
+  it('adds and removes tags on the selection', async () => {
+    const changes: unknown[] = []
+    const tagged = PHOTOS.map((p) => ({ ...p, tags: ['beach'] }))
+    stubApi({
+      ...libraryRoutes(() => tagged),
+      'POST /api/library/photos/tags': async (req) => {
+        changes.push(await req.json())
+        return Response.json([])
+      },
+    })
+    render(<Harness />)
+    await userEvent.click((await thumbs())[0])
+    const info = screen.getByRole('complementary', { name: 'Photo info' })
+    await userEvent.type(
+      within(info).getByLabelText('Add a tag'),
+      'Lisbon{Enter}',
+    )
+    await userEvent.click(
+      within(info).getByRole('button', { name: 'Remove tag beach' }),
+    )
+    await waitFor(() => expect(changes).toHaveLength(2))
+    expect(changes).toEqual([
+      { ids: ['aaaaaaaaaaaa'], add: ['Lisbon'], remove: [] },
+      { ids: ['aaaaaaaaaaaa'], add: [], remove: ['beach'] },
+    ])
+  })
 })

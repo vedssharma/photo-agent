@@ -1,4 +1,4 @@
-"""Narrowing the library down: by album, rating, flag, color label, date, camera, and place."""
+"""Narrowing the library down: by album, rating, flag, label, date, camera, place, and tags."""
 
 from __future__ import annotations
 
@@ -23,6 +23,9 @@ class PhotoFilter(BaseModel):
     camera: str | None = Field(None, description="Only photos from this camera (see facets).")
     place: str | None = Field(None, description="Only photos from this place (see facets).")
     has_location: bool | None = Field(None, description="Only photos with (or without) GPS.")
+    tags: list[str] = Field(
+        default_factory=list, max_length=10, description="Only photos with every one of these tags."
+    )
     sort: Literal["taken", "imported"] = Field(
         "taken", description="Newest first by when they were taken (or imported)."
     )
@@ -56,6 +59,13 @@ def where(f: PhotoFilter) -> tuple[str, list[Any]]:
     if f.place:
         clauses.append("p.place = ?")
         params.append(f.place)
+    if f.tags:
+        clauses.append(
+            "p.id IN (SELECT photo_id FROM tags WHERE source != 'removed' "
+            f"AND tag IN ({', '.join('?' for _ in f.tags)}) "
+            "GROUP BY photo_id HAVING COUNT(DISTINCT tag) = ?)"
+        )
+        params.extend([*f.tags, len(set(f.tags))])
     if f.has_location is not None:
         clauses.append("p.place IS NOT NULL" if f.has_location else "p.place IS NULL")
     return (" AND ".join(clauses) or "1"), params

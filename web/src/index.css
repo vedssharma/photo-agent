@@ -1552,3 +1552,48 @@ button.label-dot.on {
 .info-details a {
   color: var(--accent);
 }
+
+.search-bar {
+  display: flex;
+  gap: 0.3rem;
+  flex: 1 1 18rem;
+  max-width: 32rem;
+}
+
+.search-bar input,
+.tag-form input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+}
+
+.tag-form {
+  display: flex;
+}
+
+.search-summary {
+  margin: 0;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.chip-name {
+  color: var(--text);
+  padding: 0;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.1rem 0 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 0.85rem;
+}

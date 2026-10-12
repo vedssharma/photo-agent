@@ -19,6 +19,7 @@ its weights' license, so moving to a product later does not mean swapping models
       with yunet faces      opencv/face_detection_yunet        MIT
     ddcolor                 piddnad/DDColor-models             Apache-2.0
                             (ddcolor_modelscope.pth)
+    siglip-base-patch16-224 google/siglip-base-patch16-224     Apache-2.0
 """
 
 from __future__ import annotations
@@ -671,3 +672,78 @@ def _resize(image: Array, shape: tuple[int, int]) -> Array:
     shrinking = h < image.shape[0]
     flags = cv2.INTER_AREA if shrinking else cv2.INTER_CUBIC
     return cast(Array, np.clip(cv2.resize(image, (w, h), interpolation=flags), 0, 1))
+
+
+class Siglip(HubBackend):
+    """SigLIP: tags a photo by comparing it with a description of each tag, and embeds
+    photos and search words in one space, so words can find photos."""
+
+    name = "siglip-base-patch16-224"
+    license = "Apache-2.0"
+    repo = "google/siglip-base-patch16-224"
+    MIN_SCORE = 0.08
+    """Tags scoring below this are left off (SigLIP scores each tag on its own, 0 to 1)."""
+    MAX_TAGS = 8
+    _labels: ClassVar[dict[str, tuple[list[str], Any]]] = {}
+
+    def _load(self, env: Env) -> Any:
+        from transformers import AutoModel, AutoProcessor
+
+        processor = AutoProcessor.from_pretrained(self.repo, cache_dir=self._cache(env))
+        model = AutoModel.from_pretrained(self.repo, cache_dir=self._cache(env))
+        return processor, model.to(env.device).eval()
+
+    def embed_texts(self, texts: list[str], env: Env, progress: Progress) -> Any:
+        import torch
+
+        processor, model = self.model(env, progress)
+        inputs = processor(text=texts, padding="max_length", return_tensors="pt").to(env.device)
+        with torch.inference_mode():
+            features = model.get_text_features(**inputs)
+        return torch.nn.functional.normalize(features, dim=-1)
+
+    def _label_features(self, env: Env, progress: Progress) -> tuple[list[str], Any]:
+        from photo_agent.library.vocabulary import TAGS
+
+        key = f"{self.name}@{env.device}"
+        if key not in self._labels:
+            self._labels[key] = (list(TAGS), self.embed_texts(list(TAGS.values()), env, progress))
+        return self._labels[key]
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        import torch
+
+        processor, model = self.model(env, progress)
+        labels, label_features = self._label_features(env, progress)
+        progress(0.5, "Tagging")
+        inputs = processor(images=_to_pil(image), return_tensors="pt").to(env.device)
+        with torch.inference_mode():
+            features = torch.nn.functional.normalize(model.get_image_features(**inputs), dim=-1)
+            logits = features @ label_features.T * model.logit_scale.exp() + model.logit_bias
+            scores = torch.sigmoid(logits)[0].cpu().numpy()
+        ranked = sorted(zip(labels, scores.tolist(), strict=True), key=lambda t: -t[1])
+        tags = {
+            label: float(score)
+            for label, score in ranked[: self.MAX_TAGS]
+            if score >= self.MIN_SCORE
+        }
+        return {
+            "tags": tags,
+            "embedding": [float(v) for v in features[0].cpu().numpy()],
+            "text_search": True,
+        }
+
+
+class SiglipText(Siglip):
+    """The same model, embedding search words to compare with photo embeddings. Returns
+    the vectors and the model's scale and bias, which turn a similarity into a score."""
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        _, model = self.model(env, progress)
+        texts = [f"a photo of {text}" for text in params["texts"]]
+        found = self.embed_texts(texts, env, progress).cpu().numpy()
+        return {
+            "vectors": [[float(v) for v in row] for row in found],
+            "scale": float(model.logit_scale.exp().item()),
+            "bias": float(model.logit_bias.item()),
+        }
