@@ -16,6 +16,7 @@ from photo_agent.library import (
     LibraryPhoto,
     PhotoNotFoundError,
     Skipped,
+    culling,
     duplicates,
     faces,
     organize,
@@ -229,6 +230,16 @@ async def thumbnail(photo_id: str, library: LibraryDep) -> Response:
     return Response(
         data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"}
     )
+
+
+@router.post("/cull", operation_id="cullPhotos")
+async def cull_photos(
+    body: culling.CullRequest, library: LibraryDep, advisor: AdvisorDep
+) -> culling.CullResult:
+    """Pick the best photos from a shoot: one per moment (burst or series of the same
+    thing), judged on sharpness, exposure, eyes open, and appeal, with the reasons for
+    each. Claude writes the explanation when an API key is set."""
+    return await culling.cull(library, body, advisor)
 
 
 @router.get("/duplicates", operation_id="listDuplicates")

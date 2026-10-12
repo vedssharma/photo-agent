@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from photo_agent.library import faces, fingerprints, metadata, tagging
 from photo_agent.library.indexer import Stage
+from photo_agent.vision import quality
 
 if TYPE_CHECKING:
     from photo_agent.library.core import Library
@@ -37,6 +38,16 @@ def _metadata(library: Library, photo_id: str) -> None:
     )
 
 
+def assess(library: Library, photo_id: str) -> None:
+    """How good a shot it is: sharpness, exposure, appeal, and closed eyes."""
+    found = quality.measure(library.store.image(photo_id).proxy)
+    library.db.run(
+        "UPDATE photos SET sharpness = ?, exposure = ?, appeal = ?, faces = ?, eyes_closed = ? "
+        "WHERE id = ?",
+        (found.sharpness, found.exposure, found.appeal, found.faces, found.eyes_closed, photo_id),
+    )
+
+
 def _has_worker(library: Library) -> bool:
     return library.worker is not None
 
@@ -49,6 +60,7 @@ STAGES: list[Stage] = [
     Stage("thumbnail", 1, "Making a thumbnail", _thumbnail),
     Stage("metadata", 1, "Reading photo details", _metadata),
     Stage("fingerprint", 1, "Looking for duplicates", fingerprints.fingerprint_photo),
+    Stage("quality", 1, "Judging sharpness and exposure", assess),
     Stage("tags", 1, "Tagging", tagging.tag_photo, _has_worker),
     Stage("faces", 1, "Finding faces", faces.find_faces, _faces_on),
 ]

@@ -976,6 +976,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/cull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cull Photos
+         * @description Pick the best photos from a shoot: one per moment (burst or series of the same
+         *     thing), judged on sharpness, exposure, eyes open, and appeal, with the reasons for
+         *     each. Claude writes the explanation when an API key is set.
+         */
+        post: operations["cullPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/duplicates": {
         parameters: {
             query?: never;
@@ -1631,6 +1653,47 @@ export interface components {
              * @enum {string}
              */
             aspect: "free" | "original" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
+        };
+        /** CullRequest */
+        CullRequest: {
+            /**
+             * Count
+             * @description How many photos to pick.
+             * @default 30
+             */
+            count: number;
+            /**
+             * Ids
+             * @description Pick from these photos (else from the filter).
+             */
+            ids?: string[] | null;
+            /** @description Pick from the photos it lets through. */
+            filter?: components["schemas"]["PhotoFilter"] | null;
+            /**
+             * Explain
+             * @description Ask Claude to explain the picks, when it can.
+             * @default true
+             */
+            explain: boolean;
+        };
+        /** CullResult */
+        CullResult: {
+            /**
+             * Picks
+             * @description Best first.
+             */
+            picks: components["schemas"]["Pick"][];
+            /** Considered */
+            considered: number;
+            /** Moments */
+            moments: number;
+            /** Summary */
+            summary: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "claude" | "built-in";
         };
         /**
          * Cutout
@@ -2672,10 +2735,103 @@ export interface components {
              */
             horizontal: number;
         };
+        /**
+         * PhotoFilter
+         * @description Which photos to show. Every condition given must hold.
+         */
+        PhotoFilter: {
+            /**
+             * Album
+             * @description Only photos in this album.
+             */
+            album?: string | null;
+            /**
+             * Min Rating
+             * @description Only photos with at least this many stars.
+             * @default 0
+             */
+            min_rating: number;
+            /**
+             * Flag
+             * @description Only picked, rejected, or unflagged photos.
+             */
+            flag?: ("picked" | "rejected" | "none") | null;
+            /**
+             * Label
+             * @description Only photos with this color label.
+             */
+            label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+            /**
+             * Taken After
+             * @description Only photos taken on or after this day.
+             */
+            taken_after?: string | null;
+            /**
+             * Taken Before
+             * @description Only photos taken on or before this day.
+             */
+            taken_before?: string | null;
+            /**
+             * Camera
+             * @description Only photos from this camera (see facets).
+             */
+            camera?: string | null;
+            /**
+             * Place
+             * @description Only photos from this place (see facets).
+             */
+            place?: string | null;
+            /**
+             * Has Location
+             * @description Only photos with (or without) GPS.
+             */
+            has_location?: boolean | null;
+            /**
+             * Tags
+             * @description Only photos with every one of these tags.
+             */
+            tags?: string[];
+            /**
+             * People
+             * @description Only photos with all these people in.
+             */
+            people?: string[];
+            /**
+             * Sort
+             * @description Newest first by when they were taken (or imported).
+             * @default taken
+             * @enum {string}
+             */
+            sort: "taken" | "imported";
+        };
         /** PhotoIds */
         PhotoIds: {
             /** Ids */
             ids: string[];
+        };
+        /** Pick */
+        Pick: {
+            photo: components["schemas"]["LibraryPhoto"];
+            /**
+             * Score
+             * @description 0 to 1: how good a shot it is, all things weighed.
+             */
+            score: number;
+            /**
+             * Moment
+             * @description Which moment it is from (numbered in time order).
+             */
+            moment: number;
+            /**
+             * Moment Size
+             * @description How many shots that moment has.
+             */
+            moment_size: number;
+            /**
+             * Reasons
+             * @description Why it was picked, in plain words.
+             */
+            reasons: string[];
         };
         /**
          * Plan
@@ -3096,6 +3252,11 @@ export interface components {
             source: "claude" | "built-in";
             /** Matched Words By */
             matched_words_by?: ("look" | "file name") | null;
+            /**
+             * Picked
+             * @description When the best few were asked for: how they were picked.
+             */
+            picked?: string | null;
             /** Photos */
             photos: components["schemas"]["LibraryPhoto"][];
         };
@@ -5508,6 +5669,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cullPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CullRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CullResult"];
+                };
             };
             /** @description Validation Error */
             422: {

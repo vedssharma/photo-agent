@@ -126,6 +126,14 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (photo_a, photo_b)
     );
     """,
+    # 7: how good each shot is, for picking the best (see `vision/quality.py`).
+    """
+    ALTER TABLE photos ADD COLUMN sharpness REAL;
+    ALTER TABLE photos ADD COLUMN exposure REAL;
+    ALTER TABLE photos ADD COLUMN appeal REAL;
+    ALTER TABLE photos ADD COLUMN faces INTEGER;
+    ALTER TABLE photos ADD COLUMN eyes_closed INTEGER;
+    """,
 ]
 
 Row = sqlite3.Row

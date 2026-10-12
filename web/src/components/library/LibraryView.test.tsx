@@ -492,4 +492,62 @@ describe('LibraryView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'All photos' }))
     expect(await thumbs()).toHaveLength(3)
   })
+  it('picks the best shots, says why, and flags them', async () => {
+    const asked = vi.fn()
+    const marked = vi.fn()
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'POST /api/library/cull': async (req) => {
+        asked(await req.json())
+        return Response.json({
+          picks: [
+            {
+              photo: PHOTOS[1],
+              score: 0.9,
+              moment: 1,
+              moment_size: 3,
+              reasons: ['Best of 3 similar shots', 'sharpest of them'],
+            },
+          ],
+          considered: 3,
+          moments: 1,
+          summary: 'Picked 1 of 3 photos from 1 moment: the best shot of each.',
+          source: 'built-in',
+        })
+      },
+      'POST /api/library/photos/marks': async (req) => {
+        marked(await req.json())
+        return Response.json({ changed: 1, photos: [] })
+      },
+    })
+    vi.stubGlobal(
+      'prompt',
+      vi.fn(() => '1'),
+    )
+    render(<Harness />)
+    await thumbs()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pick the best…' }),
+    )
+    expect(asked).toHaveBeenCalledWith({
+      count: 1,
+      ids: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb', 'cccccccccccc'],
+      explain: true,
+    })
+    const list = await screen.findByRole('list', { name: 'Best shots' })
+    expect(
+      within(list).getByText('Best of 3 similar shots, sharpest of them'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Picked 1 of 3 photos/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Flag as picks' }))
+    expect(marked).toHaveBeenCalledWith({
+      ids: ['bbbbbbbbbbbb'],
+      flag: 'picked',
+    })
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Back to photos' }),
+    )
+    expect(await thumbs()).toHaveLength(3)
+  })
 })

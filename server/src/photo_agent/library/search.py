@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from photo_agent.advisor import Advisor, AdvisorError
 from photo_agent.library import dates, faces, tagging
 from photo_agent.library.core import Library, LibraryPhoto
+from photo_agent.library.culling import CullRequest, cull_built_in
 from photo_agent.library.filters import Flag, PhotoFilter
 from photo_agent.library.vocabulary import TAGS, tags_in
 from photo_agent.vision.worker import JobFailedError
@@ -71,6 +72,9 @@ class SearchResult(BaseModel):
     source: Literal["claude", "built-in"]
     matched_words_by: Literal["look", "file name"] | None = None
     """How the left-over words were matched, if there were any."""
+    picked: str | None = Field(
+        None, description="When the best few were asked for: how they were picked."
+    )
     photos: list[LibraryPhoto]
 
 
@@ -274,12 +278,19 @@ async def search(
             words = understood.words.lower().split()
             photos = [p for p in photos if all(w in p.filename.lower() for w in words)]
             matched_by = "file name"
+    picked = None
+    if understood.best:
+        culled, _ = cull_built_in(
+            library, CullRequest(count=understood.best, ids=[p.id for p in photos])
+        )
+        photos, picked = [pick.photo for pick in culled.picks], culled.summary
     return SearchResult(
         query=request.query,
         understood=understood,
         summary=describe(understood),
         source=source,
         matched_words_by=matched_by,
+        picked=picked,
         photos=photos,
     )
 

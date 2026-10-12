@@ -33,11 +33,12 @@ def jpeg_with_exif(
     gps: tuple[float, float] | None = None,
     color: tuple[int, int, int] = (120, 140, 160),
     size: tuple[int, int] = (64, 48),
+    image: Image.Image | None = None,
     **settings: Any,
 ) -> bytes:
-    """A small JPEG with the given EXIF: DateTimeOriginal "YYYY:MM:DD HH:MM:SS", camera,
-    GPS (latitude, longitude), and settings (iso, exposure_time, f_number, focal_length,
-    lens)."""
+    """A JPEG with the given EXIF: DateTimeOriginal "YYYY:MM:DD HH:MM:SS", camera, GPS
+    (latitude, longitude), and settings (iso, exposure_time, f_number, focal_length, lens).
+    Small and of one color, unless an image is given."""
     import io
     from fractions import Fraction
 
@@ -47,7 +48,7 @@ def jpeg_with_exif(
         f = Fraction(v).limit_denominator(10000)
         return IFDRational(f.numerator, f.denominator)
 
-    img = Image.new("RGB", size, color)
+    img = image.convert("RGB") if image is not None else Image.new("RGB", size, color)
     exif = Image.Exif()
     if make:
         exif[0x010F] = make
@@ -77,7 +78,7 @@ def jpeg_with_exif(
         g[1], g[2] = ("N" if lat >= 0 else "S"), dms(lat)
         g[3], g[4] = ("E" if lon >= 0 else "W"), dms(lon)
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", exif=exif)
+    img.save(buf, format="JPEG", exif=exif, quality=92)
     return buf.getvalue()
 
 
@@ -106,9 +107,16 @@ SNOW = ((0.8, 0.85, 0.9), (0.95, 0.95, 0.97))
 NIGHT = ((0.02, 0.02, 0.05), (0.08, 0.07, 0.06))
 
 
-def face(who: str, background: tuple[float, float, float], dx: int = 0, seed: int = 0) -> bytes:
+def face(
+    who: str,
+    background: tuple[float, float, float],
+    dx: int = 0,
+    seed: int = 0,
+    eyes: str = "open",
+) -> bytes:
     """A PNG of a drawn face the classical face finder sees: person "a" (round eyes and a
-    smile) or "b" (a brow line, lower eyes, and a flat mouth), against a background."""
+    smile, or blinking with `eyes="closed"`) or "b" (a brow line, lower eyes, and a flat
+    mouth), against a background."""
     import io
 
     import cv2
@@ -121,8 +129,12 @@ def face(who: str, background: tuple[float, float, float], dx: int = 0, seed: in
     dark = (0.05, 0.05, 0.05)
     if who == "a":
         cv2.ellipse(pixels, (cx, cy), (40, 52), 0, 0, 360, (0.85, 0.65, 0.5), -1)
-        cv2.circle(pixels, (cx - 15, cy - 12), 5, dark, -1)
-        cv2.circle(pixels, (cx + 15, cy - 12), 5, dark, -1)
+        for ex in (cx - 15, cx + 15):
+            if eyes == "open":
+                cv2.ellipse(pixels, (ex, cy - 12), (8, 5), 0, 0, 360, (0.95, 0.95, 0.95), -1)
+                cv2.circle(pixels, (ex, cy - 12), 4, dark, -1)
+            else:  # a blink: lids the color of skin, lashes a thin line
+                cv2.line(pixels, (ex - 8, cy - 12), (ex + 8, cy - 11), (0.25, 0.15, 0.1), 1)
         cv2.ellipse(pixels, (cx, cy + 22), (14, 5), 0, 0, 360, (0.5, 0.2, 0.2), -1)
     else:
         cv2.ellipse(pixels, (cx, cy), (40, 52), 0, 0, 360, (0.8, 0.6, 0.48), -1)

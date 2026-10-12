@@ -2563,6 +2563,48 @@
         }
       }
     },
+    "/api/library/cull": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Cull Photos",
+        "description": "Pick the best photos from a shoot: one per moment (burst or series of the same\nthing), judged on sharpness, exposure, eyes open, and appeal, with the reasons for\neach. Claude writes the explanation when an API key is set.",
+        "operationId": "cullPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CullRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CullResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/duplicates": {
       "get": {
         "tags": [
@@ -3802,6 +3844,94 @@
         "type": "object",
         "title": "Crop",
         "description": "Crop to a region of the current frame, optionally locked to an aspect ratio.\n\nThe box is given as fractions of the current width and height (0 = left/top edge,\n1 = right/bottom edge). With an aspect ratio, the result is the largest rectangle of that\nratio centered inside the box, so a full-frame box plus \"4:5\" is a centered Instagram crop."
+      },
+      "CullRequest": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "description": "How many photos to pick.",
+            "default": 30
+          },
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids",
+            "description": "Pick from these photos (else from the filter)."
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoFilter"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pick from the photos it lets through."
+          },
+          "explain": {
+            "type": "boolean",
+            "title": "Explain",
+            "description": "Ask Claude to explain the picks, when it can.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "CullRequest"
+      },
+      "CullResult": {
+        "properties": {
+          "picks": {
+            "items": {
+              "$ref": "#/components/schemas/Pick"
+            },
+            "type": "array",
+            "title": "Picks",
+            "description": "Best first."
+          },
+          "considered": {
+            "type": "integer",
+            "title": "Considered"
+          },
+          "moments": {
+            "type": "integer",
+            "title": "Moments"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "picks",
+          "considered",
+          "moments",
+          "summary",
+          "source"
+        ],
+        "title": "CullResult"
       },
       "Cutout": {
         "properties": {
@@ -6204,6 +6334,159 @@
         "title": "Perspective",
         "description": "Fix lines that converge because the camera was tilted: buildings that lean in toward\nthe top, or a wall that shrinks toward one side. The narrow side is stretched out to the\nframe, so nothing is left empty."
       },
+      "PhotoFilter": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album",
+            "description": "Only photos in this album."
+          },
+          "min_rating": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Min Rating",
+            "description": "Only photos with at least this many stars.",
+            "default": 0
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "picked",
+                  "rejected",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flag",
+            "description": "Only picked, rejected, or unflagged photos."
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "Only photos with this color label."
+          },
+          "taken_after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken After",
+            "description": "Only photos taken on or after this day."
+          },
+          "taken_before": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Before",
+            "description": "Only photos taken on or before this day."
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera",
+            "description": "Only photos from this camera (see facets)."
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place",
+            "description": "Only photos from this place (see facets)."
+          },
+          "has_location": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Location",
+            "description": "Only photos with (or without) GPS."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Tags",
+            "description": "Only photos with every one of these tags."
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "People",
+            "description": "Only photos with all these people in."
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "taken",
+              "imported"
+            ],
+            "title": "Sort",
+            "description": "Newest first by when they were taken (or imported).",
+            "default": "taken"
+          }
+        },
+        "type": "object",
+        "title": "PhotoFilter",
+        "description": "Which photos to show. Every condition given must hold."
+      },
       "PhotoIds": {
         "properties": {
           "ids": {
@@ -6221,6 +6504,45 @@
           "ids"
         ],
         "title": "PhotoIds"
+      },
+      "Pick": {
+        "properties": {
+          "photo": {
+            "$ref": "#/components/schemas/LibraryPhoto"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "0 to 1: how good a shot it is, all things weighed."
+          },
+          "moment": {
+            "type": "integer",
+            "title": "Moment",
+            "description": "Which moment it is from (numbered in time order)."
+          },
+          "moment_size": {
+            "type": "integer",
+            "title": "Moment Size",
+            "description": "How many shots that moment has."
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Why it was picked, in plain words."
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo",
+          "score",
+          "moment",
+          "moment_size",
+          "reasons"
+        ],
+        "title": "Pick"
       },
       "Plan": {
         "properties": {
@@ -6910,6 +7232,18 @@
               }
             ],
             "title": "Matched Words By"
+          },
+          "picked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picked",
+            "description": "When the best few were asked for: how they were picked."
           },
           "photos": {
             "items": {

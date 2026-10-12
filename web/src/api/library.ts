@@ -305,3 +305,15 @@ export async function dismissDuplicates(ids: string[]): Promise<void> {
   )
   if (!response.ok) throw new ApiError(detail(error, response.status))
 }
+
+export type CullRequest = components['schemas']['CullRequest']
+export type CullResult = components['schemas']['CullResult']
+
+/** Pick the best photos: one per moment, with the reasons for each. */
+export async function cullPhotos(request: CullRequest): Promise<CullResult> {
+  const { data, error, response } = await api.POST('/api/library/cull', {
+    body: request,
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}

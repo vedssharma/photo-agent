@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   type Album,
+  type CullResult,
   type Face,
   type Facets,
   type IndexStatus,
@@ -16,6 +17,7 @@ import {
   changeLibrarySettings,
   changeTags,
   createAlbum,
+  cullPhotos,
   deleteAlbum,
   fetchFacets,
   filterQuery,
@@ -57,6 +59,7 @@ import { PhotoGrid } from './PhotoGrid'
 import { PhotoDetails } from './PhotoDetails'
 import { PhotoInfo } from './PhotoInfo'
 import { PhotoPeople } from './PhotoPeople'
+import { PicksView } from './PicksView'
 import { SearchBar } from './SearchBar'
 import { TagEditor } from './TagEditor'
 
@@ -82,8 +85,9 @@ const MARK_KEYS: Record<string, Omit<Marks, 'ids'>> = {
 const badges = (photo: LibraryPhoto) => <Badges photo={photo} />
 
 type View = 'grid' | 'loupe'
-/** What the main area shows: photos (filtered or searched), or duplicates to review. */
-type Section = 'photos' | 'duplicates'
+/** What the main area shows: photos (filtered or searched), duplicates to review, or
+ * the best shots picked. */
+type Section = 'photos' | 'duplicates' | 'picks'
 
 interface Props {
   importer: Importer
@@ -126,6 +130,8 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [people, setPeople] = useState<Person[]>([])
   const [search, setSearch] = useState<SearchResult | null>(null)
   const [searching, setSearching] = useState(false)
+  const [picks, setPicks] = useState<CullResult | null>(null)
+  const [culling, setCulling] = useState(false)
   const main = useRef<HTMLDivElement>(null)
 
   // Bumped to fetch the photo list again.
@@ -239,6 +245,55 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     } finally {
       setSearching(false)
     }
+  }
+
+  async function pickBest() {
+    const from = chosen.length > 1 ? chosen : order
+    const answer = window.prompt(
+      `Pick the best of the ${from.length} ${chosen.length > 1 ? 'selected' : 'shown'} photos. How many?`,
+      String(Math.min(30, from.length)),
+    )
+    const count = Number.parseInt(answer ?? '', 10)
+    if (!count || count < 1) return
+    setCulling(true)
+    try {
+      setPicks(
+        await cullPhotos({
+          count: Math.min(count, 500),
+          ids: from,
+          explain: true,
+        }),
+      )
+      setSection('picks')
+      setError(null)
+    } catch (err) {
+      setError(`Could not pick the best: ${(err as Error).message}`)
+    } finally {
+      setCulling(false)
+    }
+  }
+
+  const pickedIds = picks?.picks.map((p) => p.photo.id) ?? []
+  // The picks with each photo as it is now (flagging them changes their badges).
+  const latestPicks = useMemo(() => {
+    if (!picks) return null
+    const latest = new Map((photos ?? []).map((p) => [p.id, p]))
+    return {
+      ...picks,
+      picks: picks.picks.map((pick) => ({
+        ...pick,
+        photo: latest.get(pick.photo.id) ?? pick.photo,
+      })),
+    }
+  }, [picks, photos])
+
+  function albumOfPicks() {
+    const name = window.prompt(
+      `Name the album for the ${pickedIds.length} best shots:`,
+      'Best shots',
+    )
+    if (name?.trim())
+      void change('make the album', () => createAlbum(name.trim(), pickedIds))
   }
 
   const showFilter = (next: PhotoFilter) => {
@@ -420,6 +475,14 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             busy={importer.progress.running}
           />
           <SearchBar onSearch={(q) => void runSearch(q)} busy={searching} />
+          <button
+            type="button"
+            disabled={culling || shown.length === 0}
+            onClick={() => void pickBest()}
+            title="Pick the best shot of each moment, judged on sharpness, exposure, closed eyes, and appeal"
+          >
+            {culling ? 'Picking…' : 'Pick the best…'}
+          </button>
           <span className="library-count">
             {photos === null
               ? 'Loading…'
@@ -467,6 +530,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
               {search.photos.length} photo
               {search.photos.length === 1 ? '' : 's'}: {search.summary}
               {search.source === 'built-in' && ' (read without Claude)'}
+              {search.picked && <> {search.picked}</>}
               <button
                 type="button"
                 className="link"
@@ -496,7 +560,19 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             )}
           </p>
         )}
-        {section === 'duplicates' ? (
+        {section === 'picks' && latestPicks ? (
+          <PicksView
+            result={latestPicks}
+            onFlag={() =>
+              void change('flag the picks', () =>
+                markPhotos({ ids: pickedIds, flag: 'picked' }),
+              )
+            }
+            onAlbum={albumOfPicks}
+            onEdit={onEdit}
+            onClose={() => setSection('photos')}
+          />
+        ) : section === 'duplicates' ? (
           <DuplicatesView
             version={version}
             onChanged={reload}
