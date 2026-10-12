@@ -11,6 +11,7 @@ import hashlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,9 @@ from photo_agent.library.indexer import Indexer, IndexingMode
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentNotFoundError, DocumentStore
 from photo_agent.vision.worker import ModelWorker
+
+if TYPE_CHECKING:
+    from photo_agent.library.batch import BatchStatus
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +102,8 @@ class Library:
         self.worker = worker
         self.renders = renders
         self.indexer = Indexer(self, STAGES, indexing)
+        self.batches: dict[str, BatchStatus] = {}
+        """Batch edits started since the server started, by id (see `batch.py`)."""
         store.listeners.append(self._saved)
         self._backfill()
 

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   type Album,
+  type BatchRequest,
+  type BatchStatus,
   type CullResult,
   type Face,
   type Facets,
@@ -13,12 +15,14 @@ import {
   type PhotoFilter,
   type SearchResult,
   addToAlbum,
+  batchStatus,
   changeFace,
   changeLibrarySettings,
   changeTags,
   createAlbum,
   cullPhotos,
   deleteAlbum,
+  exportPhotos,
   fetchFacets,
   filterQuery,
   forgetPerson,
@@ -34,7 +38,9 @@ import {
   renameAlbum,
   renamePerson,
   searchLibrary,
+  startBatch,
 } from '../../api/library'
+import { type ExportedFile, saveFile } from '../../api/documents'
 import { useDropAnywhere } from '../../hooks/useDropAnywhere'
 import { type Importer, importText } from '../../hooks/useImporter'
 import { droppedFiles } from '../../lib/dropFiles'
@@ -49,6 +55,7 @@ import {
   selectedIds,
 } from '../../lib/selection'
 import { Badges } from './Badges'
+import { BatchDialog } from './BatchDialog'
 import { DuplicatesView } from './DuplicatesView'
 import { FilterBar } from './FilterBar'
 import { ImportButtons } from './ImportButtons'
@@ -95,6 +102,8 @@ interface Props {
   onEdit: (id: string) => void
   /** How often to check on indexing while it runs, in ms. */
   pollMs?: number
+  /** Overridable for tests; defaults to a browser download. */
+  save?: (file: ExportedFile) => void
 }
 
 /** Whether a key press belongs to a text field rather than the library. */
@@ -116,7 +125,12 @@ function columns(grid: Element | null): number {
 }
 
 /** The whole collection: import, browse as a grid or one at a time, and act on a selection. */
-export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
+export function LibraryView({
+  importer,
+  onEdit,
+  pollMs = 1500,
+  save = saveFile,
+}: Props) {
   const [photos, setPhotos] = useState<LibraryPhoto[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [picked, setSelection] = useState<Selection>(NOTHING)
@@ -132,6 +146,10 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [searching, setSearching] = useState(false)
   const [picks, setPicks] = useState<CullResult | null>(null)
   const [culling, setCulling] = useState(false)
+  // The photos to edit together, while choosing how.
+  const [batching, setBatching] = useState<LibraryPhoto[] | null>(null)
+  const [batch, setBatch] = useState<BatchStatus | null>(null)
+  const [exporting, setExporting] = useState(0)
   const main = useRef<HTMLDivElement>(null)
 
   // Bumped to fetch the photo list again.
@@ -192,6 +210,33 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
       clearTimeout(timer)
     }
   }, [importer.batches, pollMs, reload])
+
+  // Follow a batch edit until it is done, refreshing thumbnails as photos change.
+  const batchId = batch?.state === 'running' ? batch.id : null
+  useEffect(() => {
+    if (!batchId) return
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let done = -1
+    const check = async () => {
+      try {
+        const next = await batchStatus(batchId)
+        if (!live) return
+        setBatch(next)
+        if (next.done !== done) reload()
+        done = next.done
+        if (next.state === 'running') timer = setTimeout(check, pollMs)
+      } catch (err) {
+        if (live)
+          setError(`Lost track of the batch edit: ${(err as Error).message}`)
+      }
+    }
+    timer = setTimeout(check, pollMs)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [batchId, pollMs, reload])
 
   const shown = useMemo(() => {
     if (!search) return photos ?? []
@@ -294,6 +339,34 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     )
     if (name?.trim())
       void change('make the album', () => createAlbum(name.trim(), pickedIds))
+  }
+
+  async function editTogether(request: BatchRequest) {
+    setBatching(null)
+    try {
+      setBatch(await startBatch(request))
+      setError(null)
+    } catch (err) {
+      setError(`Could not edit the photos: ${(err as Error).message}`)
+    }
+  }
+
+  async function download(ids: string[]) {
+    setExporting(ids.length)
+    try {
+      save(
+        await exportPhotos(ids, {
+          format: 'jpeg',
+          quality: 92,
+          keep_location: false,
+          upscale: 1,
+        }),
+      )
+    } catch (err) {
+      setError(`Could not download: ${(err as Error).message}`)
+    } finally {
+      setExporting(0)
+    }
   }
 
   const showFilter = (next: PhotoFilter) => {
@@ -436,6 +509,17 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   })
 
   const importing = importText(importer.progress)
+  const batchText = !batch
+    ? null
+    : batch.state === 'running'
+      ? `Editing ${batch.done} of ${batch.total} photos${batch.current ? ` (${batch.current})` : ''}…`
+      : batch.state === 'failed'
+        ? `The batch edit stopped: ${batch.message ?? 'something went wrong'}.`
+        : `Edited ${batch.total - batch.failed.length} of ${batch.total} photos together.${batch.message ? ` ${batch.message}` : ''}${batch.failed.length ? ` ${batch.failed.length} could not be edited.` : ''}`
+  const exportText =
+    exporting > 0
+      ? `Preparing ${exporting} photo${exporting === 1 ? '' : 's'} to download…`
+      : null
   const indexing =
     status && status.pending > 0
       ? `Indexing ${status.pending} of ${status.total} photos${status.current ? ` (${status.current})` : ''}…`
@@ -517,6 +601,24 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
           </button>
           <button
             type="button"
+            disabled={chosen.length < 2 || batch?.state === 'running'}
+            onClick={() =>
+              setBatching(shown.filter((p) => selection.ids.has(p.id)))
+            }
+            title="Give the selected photos one look, evened out to match"
+          >
+            Edit together…
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length === 0 || exporting > 0}
+            onClick={() => void download(chosen)}
+            title="Download the selected photos with their edits, at full size, in a zip file"
+          >
+            Download
+          </button>
+          <button
+            type="button"
             disabled={chosen.length === 0}
             onClick={() => void remove(chosen)}
             title="Delete the selected photos and their edits"
@@ -547,12 +649,21 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
               people={people}
             />
           ))}
-        {(importing || indexing || error) && (
+        {(importing || indexing || error || batchText || exportText) && (
           <p className="library-status" role="status">
             {error && <span className="error">{error} </span>}
-            {importing}
-            {importing && indexing && ' '}
-            {indexing}
+            {[batchText, exportText, importing, indexing]
+              .filter(Boolean)
+              .join(' ')}
+            {batch && batch.state !== 'running' && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => setBatch(null)}
+              >
+                OK
+              </button>
+            )}
             {importer.progress.total > 0 && !importer.progress.running && (
               <button type="button" className="link" onClick={importer.dismiss}>
                 Dismiss
@@ -569,6 +680,14 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
               )
             }
             onAlbum={albumOfPicks}
+            onEditTogether={
+              batch?.state === 'running'
+                ? undefined
+                : () => setBatching(latestPicks.picks.map((p) => p.photo))
+            }
+            onDownload={
+              exporting > 0 ? undefined : () => void download(pickedIds)
+            }
             onEdit={onEdit}
             onClose={() => setSection('photos')}
           />
@@ -654,6 +773,13 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
         )}
         {focused && <PhotoDetails photo={focused} />}
       </PhotoInfo>
+      {batching && (
+        <BatchDialog
+          photos={batching}
+          onStart={(request) => void editTogether(request)}
+          onClose={() => setBatching(null)}
+        />
+      )}
     </main>
   )
 }

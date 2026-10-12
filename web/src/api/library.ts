@@ -1,5 +1,12 @@
 import { api } from './client'
-import { ApiError, detail, isSupportedFile } from './documents'
+import {
+  ApiError,
+  type ExportOptions,
+  type ExportedFile,
+  detail,
+  dispositionFilename,
+  isSupportedFile,
+} from './documents'
 import type { components, operations } from './schema'
 
 export type LibraryPhoto = components['schemas']['LibraryPhoto']
@@ -316,4 +323,44 @@ export async function cullPhotos(request: CullRequest): Promise<CullResult> {
   })
   if (!data) throw new ApiError(detail(error, response.status))
   return data
+}
+
+export type BatchRequest = components['schemas']['BatchRequest']
+export type BatchStatus = components['schemas']['BatchStatus']
+
+/** Give many photos one look; runs in the background (see batchStatus). */
+export async function startBatch(request: BatchRequest): Promise<BatchStatus> {
+  const { data, error, response } = await api.POST('/api/library/batch', {
+    body: request,
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function batchStatus(id: string): Promise<BatchStatus> {
+  const { data, error, response } = await api.GET(
+    '/api/library/batch/{batch_id}',
+    { params: { path: { batch_id: id } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Render photos at full size with their edits, as one zip file. */
+export async function exportPhotos(
+  ids: string[],
+  options: ExportOptions,
+): Promise<ExportedFile> {
+  const { data, error, response } = await api.POST('/api/library/export', {
+    body: { ids, options },
+    parseAs: 'blob',
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return {
+    blob: data as Blob,
+    filename: dispositionFilename(
+      response.headers.get('content-disposition'),
+      'photos.zip',
+    ),
+  }
 }

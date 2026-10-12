@@ -2666,6 +2666,140 @@
         }
       }
     },
+    "/api/library/batch": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Start Batch",
+        "description": "Give many photos one look (\"make all of these consistent\"): from an instruction the\nagent carries out on the reference photo, a recipe, or the reference's own edits. Each\nphoto is also evened out toward the reference. Runs in the background: poll the status.",
+        "operationId": "startBatchEdit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Editing by instruction without an API key"
+          },
+          "404": {
+            "description": "No such photo or recipe"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/batch/{batch_id}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Batch",
+        "operationId": "getBatchEdit",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such batch"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/export": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Export Photos",
+        "description": "Render the photos at full resolution with their edits, in one zip file to download.",
+        "operationId": "exportPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportMany"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/settings": {
       "get": {
         "tags": [
@@ -3218,6 +3352,157 @@
         "type": "object",
         "title": "AutoStraighten",
         "description": "What to fix automatically."
+      },
+      "BatchFailure": {
+        "properties": {
+          "photo": {
+            "type": "string",
+            "title": "Photo"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo",
+          "reason"
+        ],
+        "title": "BatchFailure"
+      },
+      "BatchRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "description": "The photos to edit."
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction",
+            "description": "What the look should be, in words, for the agent."
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe",
+            "description": "A saved recipe to apply instead."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference",
+            "description": "The photo whose look the others follow (the first by default). With an instruction, the agent edits it first; with neither instruction nor recipe, its current edits are the look."
+          },
+          "match": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Match",
+            "description": "How far to even out each photo's color and tone toward the reference; 0 applies the look alone.",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "BatchRequest"
+      },
+      "BatchStatus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State",
+            "default": "running"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/BatchFailure"
+            },
+            "type": "array",
+            "title": "Failed"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current",
+            "description": "What is happening now."
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "The agent's reply about the look, or why the batch failed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "total",
+          "reference"
+        ],
+        "title": "BatchStatus"
       },
       "Blacks": {
         "properties": {
@@ -4428,6 +4713,27 @@
         "type": "object",
         "title": "Expand",
         "description": "Expand the canvas: extend the photo past its edges, with new surroundings painted by\na generative model to match (outpainting). Use it to turn a vertical photo into a\nlandscape one, or to give a tight shot more room, without cropping anything away. Masks\nand later crops refer to the expanded frame."
+      },
+      "ExportMany": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ExportOptions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "ExportMany"
       },
       "ExportOptions": {
         "properties": {

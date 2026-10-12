@@ -5,12 +5,24 @@ interface Props {
   result: CullResult
   onFlag: () => void
   onAlbum: () => void
+  /** Edit the picks together; missing while that cannot start. */
+  onEditTogether?: () => void
+  onDownload?: () => void
   onEdit: (id: string) => void
   onClose: () => void
 }
 
 /** The best shots picked from a shoot, each with why. */
-export function PicksView({ result, onFlag, onAlbum, onEdit, onClose }: Props) {
+export function PicksView({
+  result,
+  onFlag,
+  onAlbum,
+  onEditTogether,
+  onDownload,
+  onEdit,
+  onClose,
+}: Props) {
+  const none = result.picks.length === 0
   return (
     <div className="picks">
       <div className="picks-head">
@@ -24,17 +36,27 @@ export function PicksView({ result, onFlag, onAlbum, onEdit, onClose }: Props) {
           <button
             type="button"
             className="primary"
-            disabled={result.picks.length === 0}
+            disabled={none}
             onClick={onFlag}
           >
             Flag as picks
           </button>
+          <button type="button" disabled={none} onClick={onAlbum}>
+            Make an album
+          </button>
           <button
             type="button"
-            disabled={result.picks.length === 0}
-            onClick={onAlbum}
+            disabled={result.picks.length < 2 || !onEditTogether}
+            onClick={onEditTogether}
           >
-            Make an album
+            Edit together…
+          </button>
+          <button
+            type="button"
+            disabled={none || !onDownload}
+            onClick={onDownload}
+          >
+            Download
           </button>
           <button type="button" className="link" onClick={onClose}>
             Back to photos

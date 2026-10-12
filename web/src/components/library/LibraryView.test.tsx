@@ -8,13 +8,22 @@ import {
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import type { ExportedFile } from '../../api/documents'
 import { useImporter } from '../../hooks/useImporter'
 import { libraryRoutes, makePhoto, stubApi } from '../../test/fixtures'
 import { LibraryView } from './LibraryView'
 
-function Harness({ onEdit = vi.fn() }: { onEdit?: (id: string) => void }) {
+function Harness({
+  onEdit = vi.fn(),
+  save = vi.fn(),
+}: {
+  onEdit?: (id: string) => void
+  save?: (file: ExportedFile) => void
+}) {
   const importer = useImporter()
-  return <LibraryView importer={importer} onEdit={onEdit} pollMs={10} />
+  return (
+    <LibraryView importer={importer} onEdit={onEdit} pollMs={10} save={save} />
+  )
 }
 
 const grid = () => screen.getByRole('listbox', { name: 'Photos' })
@@ -549,5 +558,104 @@ describe('LibraryView', () => {
       screen.getByRole('button', { name: 'Back to photos' }),
     )
     expect(await thumbs()).toHaveLength(3)
+  })
+  it('edits the selection together from one instruction', async () => {
+    const started = vi.fn()
+    let polls = 0
+    const status = {
+      id: 'batch1',
+      total: 2,
+      reference: 'aaaaaaaaaaaa',
+      failed: [],
+      current: null,
+      message: null as string | null,
+    }
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'GET /api/recipes': () => Response.json([]),
+      'POST /api/library/batch': async (req) => {
+        started(await req.json())
+        return Response.json(
+          { ...status, state: 'running', done: 0 },
+          { status: 202 },
+        )
+      },
+      'GET /api/library/batch/batch1': () => {
+        polls += 1
+        return Response.json(
+          polls < 2
+            ? { ...status, state: 'running', done: 1, current: 'Editing b' }
+            : {
+                ...status,
+                state: 'done',
+                done: 2,
+                message: 'Warm and bright.',
+              },
+        )
+      },
+    })
+    render(<Harness />)
+    const options = await thumbs()
+    await userEvent.click(options[0])
+    fireEvent.click(options[1], { shiftKey: true })
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit together…' }),
+    )
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Edit 2 photos together',
+    })
+    await userEvent.type(
+      within(dialog).getByLabelText('Describe the look'),
+      'make these consistent',
+    )
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Edit 2 photos' }),
+    )
+    expect(started).toHaveBeenCalledWith({
+      ids: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb'],
+      reference: 'aaaaaaaaaaaa',
+      match: 60,
+      instruction: 'make these consistent',
+      recipe: null,
+    })
+    expect(
+      await screen.findByText(
+        /Edited 2 of 2 photos together. Warm and bright./,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('downloads the selection as one file', async () => {
+    const save = vi.fn()
+    const asked = vi.fn()
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'POST /api/library/export': async (req) => {
+        asked(await req.json())
+        return new Response('zip', {
+          headers: {
+            'content-type': 'application/zip',
+            'content-disposition': 'attachment; filename="photos-2.zip"',
+          },
+        })
+      },
+    })
+    render(<Harness save={save} />)
+    const options = await thumbs()
+    await userEvent.click(options[1])
+    fireEvent.click(options[2], { ctrlKey: true })
+    await userEvent.click(screen.getByRole('button', { name: 'Download' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(asked).toHaveBeenCalledWith({
+      ids: ['bbbbbbbbbbbb', 'cccccccccccc'],
+      options: {
+        format: 'jpeg',
+        quality: 92,
+        keep_location: false,
+        upscale: 1,
+      },
+    })
+    expect(save.mock.calls[0][0].filename).toBe('photos-2.zip')
   })
 })

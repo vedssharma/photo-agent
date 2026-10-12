@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
+import zipfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, status
-from fastapi.responses import Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
-from photo_agent import imaging
+from photo_agent import imaging, recipes
+from photo_agent.agent import AgentService, ModelClient
+from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.library import (
     ImportResult,
     LibraryPhoto,
     PhotoNotFoundError,
     Skipped,
+    batch,
     culling,
     duplicates,
     faces,
@@ -26,7 +33,15 @@ from photo_agent.library import search as searching
 from photo_agent.library.facets import Facets, facets
 from photo_agent.library.filters import PhotoFilter
 from photo_agent.library.indexer import IndexStatus
-from photo_agent.routes import MAX_UPLOAD_BYTES, AdvisorDep, LibraryDep
+from photo_agent.routes import (
+    MAX_UPLOAD_BYTES,
+    AdvisorDep,
+    LibraryDep,
+    Recipes,
+    Screen,
+    Style,
+    get_model,
+)
 
 router = APIRouter(prefix="/api/library", tags=["library"])
 
@@ -257,6 +272,116 @@ def list_duplicates(library: LibraryDep) -> list[duplicates.DuplicateGroup]:
 def dismiss_duplicates(body: duplicates.NotDuplicates, library: LibraryDep) -> None:
     """These photos are different, however alike: stop grouping them as duplicates."""
     duplicates.mark_not_duplicates(library.db, body.ids)
+
+
+@router.post(
+    "/batch",
+    operation_id="startBatchEdit",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        400: {"description": "Editing by instruction without an API key"},
+        404: {"description": "No such photo or recipe"},
+    },
+)
+async def start_batch(
+    body: batch.BatchRequest,
+    library: LibraryDep,
+    background: BackgroundTasks,
+    model: Annotated[ModelClient | None, Depends(get_model)],
+    screen: Screen,
+    taste: Style,
+    saved: Recipes,
+) -> batch.BatchStatus:
+    """Give many photos one look ("make all of these consistent"): from an instruction the
+    agent carries out on the reference photo, a recipe, or the reference's own edits. Each
+    photo is also evened out toward the reference. Runs in the background: poll the status."""
+    for photo_id in body.ids:
+        _photo(library, photo_id)
+    recipe = None
+    if body.recipe:
+        try:
+            recipe = saved.get(body.recipe)
+        except recipes.RecipeNotFoundError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No such recipe.") from None
+    agent = None
+    if body.instruction:
+        if model is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Editing by instruction needs a Claude API key. Use a recipe or another "
+                "photo's look instead, or set ANTHROPIC_API_KEY.",
+            )
+        agent = AgentService(library.store, library.renders, model, screen, taste)
+    started = batch.start(library, body)
+    background.add_task(batch.run, library, body, started, agent, recipe)
+    return started
+
+
+@router.get(
+    "/batch/{batch_id}",
+    operation_id="getBatchEdit",
+    responses={404: {"description": "No such batch"}},
+)
+def get_batch(batch_id: str, library: LibraryDep) -> batch.BatchStatus:
+    try:
+        return library.batches[batch_id]
+    except KeyError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such batch.") from None
+
+
+class ExportMany(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=500)
+    options: ExportOptions = Field(default_factory=ExportOptions)
+
+
+def _zip_exports(library: LibraryDep, body: ExportMany) -> Path:
+    """Every photo rendered at full size with its edits, in a zip file on disk."""
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as handle:
+        path = Path(handle.name)
+    used: set[str] = set()
+    try:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as archive:
+            for photo_id in body.ids:
+                doc = library.store.get(photo_id)
+                data = export_bytes(
+                    doc, library.store.image(photo_id), body.options, library.store.data_dir
+                )
+                name = export_filename(doc, body.options)
+                stem, dot, ext = name.rpartition(".")
+                n = 1
+                while name.lower() in used:
+                    n += 1
+                    name = f"{stem} ({n}){dot}{ext}"
+                used.add(name.lower())
+                archive.writestr(name, data)  # JPEG and PNG are compressed already
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
+
+
+@router.post(
+    "/export",
+    operation_id="exportPhotos",
+    response_class=FileResponse,
+    responses={
+        200: {"content": {"application/zip": {}}},
+        404: {"description": "No such photo"},
+    },
+)
+async def export_photos(body: ExportMany, library: LibraryDep, taste: Style) -> FileResponse:
+    """Render the photos at full resolution with their edits, in one zip file to download."""
+    for photo_id in body.ids:
+        _photo(library, photo_id)
+        if taste is not None:
+            taste.kept(library.store.get(photo_id).state)
+    path = await asyncio.to_thread(_zip_exports, library, body)
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=f"photos-{len(body.ids)}.zip",
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
 
 
 class LibrarySettings(BaseModel):

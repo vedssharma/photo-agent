@@ -1039,6 +1039,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Batch
+         * @description Give many photos one look ("make all of these consistent"): from an instruction the
+         *     agent carries out on the reference photo, a recipe, or the reference's own edits. Each
+         *     photo is also evened out toward the reference. Runs in the background: poll the status.
+         */
+        post: operations["startBatchEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/batch/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch */
+        get: operations["getBatchEdit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Photos
+         * @description Render the photos at full resolution with their edits, in one zip file to download.
+         */
+        post: operations["exportPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/settings": {
         parameters: {
             query?: never;
@@ -1303,6 +1362,74 @@ export interface components {
              * @default true
              */
             perspective: boolean;
+        };
+        /** BatchFailure */
+        BatchFailure: {
+            /** Photo */
+            photo: string;
+            /** Reason */
+            reason: string;
+        };
+        /** BatchRequest */
+        BatchRequest: {
+            /**
+             * Ids
+             * @description The photos to edit.
+             */
+            ids: string[];
+            /**
+             * Instruction
+             * @description What the look should be, in words, for the agent.
+             */
+            instruction?: string | null;
+            /**
+             * Recipe
+             * @description A saved recipe to apply instead.
+             */
+            recipe?: string | null;
+            /**
+             * Reference
+             * @description The photo whose look the others follow (the first by default). With an instruction, the agent edits it first; with neither instruction nor recipe, its current edits are the look.
+             */
+            reference?: string | null;
+            /**
+             * Match
+             * @description How far to even out each photo's color and tone toward the reference; 0 applies the look alone.
+             * @default 60
+             */
+            match: number;
+        };
+        /** BatchStatus */
+        BatchStatus: {
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @default running
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed";
+            /** Total */
+            total: number;
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /** Failed */
+            failed?: components["schemas"]["BatchFailure"][];
+            /**
+             * Current
+             * @description What is happening now.
+             */
+            current?: string | null;
+            /** Reference */
+            reference: string;
+            /**
+             * Message
+             * @description The agent's reply about the look, or why the batch failed.
+             */
+            message?: string | null;
         };
         /**
          * Blacks
@@ -1908,6 +2035,12 @@ export interface components {
              * @default
              */
             prompt: string;
+        };
+        /** ExportMany */
+        ExportMany: {
+            /** Ids */
+            ids: string[];
+            options?: components["schemas"]["ExportOptions"];
         };
         /** ExportOptions */
         ExportOptions: {
@@ -5749,6 +5882,131 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    startBatchEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchStatus"];
+                };
+            };
+            /** @description Editing by instruction without an API key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such photo or recipe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getBatchEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchStatus"];
+                };
+            };
+            /** @description No such batch */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportMany"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description No such photo */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

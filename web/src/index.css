@@ -1826,3 +1826,20 @@ button.label-dot.on {
 .picks-head .muted {
   color: var(--muted);
 }
+
+/* Editing many photos together */
+.batch-dialog {
+  width: min(30rem, calc(100vw - 2rem));
+}
+
+.batch-dialog textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
+.batch-dialog .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
