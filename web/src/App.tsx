@@ -38,6 +38,8 @@ import {
 import { liveTarget } from './lib/livePreview'
 import { CUTOUT, type Preview, setCutout, updateLayer } from './lib/state'
 import { PhotoPicker } from './components/PhotoPicker'
+import { LibraryView } from './components/library/LibraryView'
+import { useImporter } from './hooks/useImporter'
 import { RecentProjects } from './components/RecentProjects'
 import { RecipesPanel } from './components/RecipesPanel'
 import { StylePanel } from './components/StylePanel'
@@ -305,6 +307,8 @@ function App({ createSocket, projectStore }: AppProps = {}) {
   const [opening, setOpening] = useState(() => lastOpenProject() !== null)
   const [openError, setOpenError] = useState<string | null>(null)
   const [recent, setRecent] = useState<ProjectSummary[]>([])
+  const [screen, setScreen] = useState<'home' | 'library'>('home')
+  const importer = useImporter()
 
   const show = useCallback((next: DocumentView | null) => {
     setDoc(next)
@@ -344,6 +348,33 @@ function App({ createSocket, projectStore }: AppProps = {}) {
     void reopen(id)
   }
 
+  function importToLibrary(files: File[]) {
+    show(null)
+    setScreen('library')
+    void importer.start(files)
+  }
+
+  function editFromLibrary(id: string) {
+    setOpenError(null)
+    fetchDocument(id).then(
+      (found) => {
+        if (found) show(found)
+        else setOpenError('That photo is no longer in the library.')
+      },
+      (err: Error) => setOpenError(`Could not open the photo: ${err.message}`),
+    )
+  }
+
+  function goHome() {
+    show(null)
+    setScreen('home')
+  }
+
+  function goToLibrary() {
+    show(null)
+    setScreen('library')
+  }
+
   // Pick up where the last visit left off.
   useEffect(() => {
     const last = lastOpenProject()
@@ -368,14 +399,17 @@ function App({ createSocket, projectStore }: AppProps = {}) {
     <div className="app">
       <header className="topbar">
         <h1>photo-agent</h1>
-        {doc && (
-          <>
-            <span className="filename">{doc.filename}</span>
-            <div className="spacer" />
-            <button type="button" onClick={() => show(null)}>
-              Open another
-            </button>
-          </>
+        {doc && <span className="filename">{doc.filename}</span>}
+        <div className="spacer" />
+        {(doc || screen === 'library') && (
+          <button type="button" onClick={goHome}>
+            {doc ? 'Open another' : 'Home'}
+          </button>
+        )}
+        {(doc || screen !== 'library') && (
+          <button type="button" onClick={goToLibrary}>
+            Library
+          </button>
         )}
       </header>
 
@@ -387,10 +421,24 @@ function App({ createSocket, projectStore }: AppProps = {}) {
           createSocket={createSocket}
           projectStore={store}
         />
+      ) : screen === 'library' ? (
+        <>
+          {openError && (
+            <p className="error library-open-error" role="alert">
+              {openError}
+            </p>
+          )}
+          <LibraryView importer={importer} onEdit={editFromLibrary} />
+        </>
       ) : (
         <main className="landing">
           <p>Describe the edit you want, and the agent does the rest.</p>
-          <PhotoPicker onPick={open} busy={opening} error={openError} />
+          <PhotoPicker
+            onPick={open}
+            onImport={importToLibrary}
+            busy={opening}
+            error={openError}
+          />
           <RecentProjects projects={recent} busy={opening} onOpen={resume} />
           <p className="status">
             {health.state === 'loading' && 'Connecting to the backend…'}

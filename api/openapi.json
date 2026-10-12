@@ -11,7 +11,7 @@
           "documents"
         ],
         "summary": "Create Document",
-        "description": "Upload a JPEG, PNG, or HEIC photo to start editing it.",
+        "description": "Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too.",
         "operationId": "createDocument",
         "requestBody": {
           "content": {
@@ -1688,6 +1688,1521 @@
         }
       }
     },
+    "/api/library/photos": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Import Photos",
+        "description": "Add photos to the library, many at once (a whole folder is sent a batch at a time).\nFiles that are not photos, are too large, or are already in the library are skipped\nand listed with the reason. New photos are indexed in the background.",
+        "operationId": "importPhotos",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_importPhotos"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Too many files at once"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Photos",
+        "description": "The library's photos, newest import first, narrowed down by any filters given.",
+        "operationId": "listLibraryPhotos",
+        "parameters": [
+          {
+            "name": "album",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos in this album.",
+              "title": "Album"
+            },
+            "description": "Only photos in this album."
+          },
+          {
+            "name": "min_rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5,
+              "minimum": 0,
+              "description": "Only photos with at least this many stars.",
+              "default": 0,
+              "title": "Min Rating"
+            },
+            "description": "Only photos with at least this many stars."
+          },
+          {
+            "name": "flag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "picked",
+                    "rejected",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only picked, rejected, or unflagged photos.",
+              "title": "Flag"
+            },
+            "description": "Only picked, rejected, or unflagged photos."
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "red",
+                    "yellow",
+                    "green",
+                    "blue",
+                    "purple"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos with this color label.",
+              "title": "Label"
+            },
+            "description": "Only photos with this color label."
+          },
+          {
+            "name": "taken_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos taken on or after this day.",
+              "title": "Taken After"
+            },
+            "description": "Only photos taken on or after this day."
+          },
+          {
+            "name": "taken_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos taken on or before this day.",
+              "title": "Taken Before"
+            },
+            "description": "Only photos taken on or before this day."
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos from this camera (see facets).",
+              "title": "Camera"
+            },
+            "description": "Only photos from this camera (see facets)."
+          },
+          {
+            "name": "place",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos from this place (see facets).",
+              "title": "Place"
+            },
+            "description": "Only photos from this place (see facets)."
+          },
+          {
+            "name": "has_location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos with (or without) GPS.",
+              "title": "Has Location"
+            },
+            "description": "Only photos with (or without) GPS."
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "description": "Only photos with every one of these tags.",
+              "title": "Tags"
+            },
+            "description": "Only photos with every one of these tags."
+          },
+          {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "description": "Only photos with all these people in.",
+              "title": "People"
+            },
+            "description": "Only photos with all these people in."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "taken",
+                "imported"
+              ],
+              "type": "string",
+              "description": "Newest first by when they were taken (or imported).",
+              "default": "taken",
+              "title": "Sort"
+            },
+            "description": "Newest first by when they were taken (or imported)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryPhoto"
+                  },
+                  "title": "Response Listlibraryphotos"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/facets": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Facets",
+        "description": "The cameras, places, and years in the library, with how many photos each has.",
+        "operationId": "getFacets",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Facets"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/{photo_id}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Photo",
+        "operationId": "getLibraryPhoto",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPhoto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/remove": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Remove Photos",
+        "description": "Delete photos from the library, with their edits. This cannot be undone.",
+        "operationId": "removeLibraryPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoIds"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Removed"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/marks": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Mark Photos",
+        "description": "Rate, flag (pick or reject), or color-label several photos at once.",
+        "operationId": "markPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Marks"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Marked"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/tags": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Tags",
+        "description": "Every tag in use, found or added by hand, most used first.",
+        "operationId": "listTags",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagCount"
+                  },
+                  "type": "array",
+                  "title": "Response Listtags"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/tags": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Tag Photos",
+        "description": "Add or remove tags by hand. A found tag that is removed stays removed.",
+        "operationId": "tagPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryPhoto"
+                  },
+                  "type": "array",
+                  "title": "Response Tagphotos"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/search": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Search Library",
+        "description": "Search in everyday words (\"beach photos from last summer with the dog\"). The query\nis read into filters (by Claude when an API key is set, else by built-in rules) and the\nanswer says how it was understood.",
+        "operationId": "searchLibrary",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Albums",
+        "description": "Every album, by name.",
+        "operationId": "listAlbums",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Album"
+                  },
+                  "type": "array",
+                  "title": "Response Listalbums"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Create Album",
+        "description": "Make an album, optionally with photos in it already.",
+        "operationId": "createAlbum",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewAlbum"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums/{album_id}": {
+      "patch": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Rename Album",
+        "operationId": "renameAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Delete Album",
+        "description": "Delete an album. Its photos stay in the library.",
+        "operationId": "deleteAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums/{album_id}/photos": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Add To Album",
+        "operationId": "addToAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/albums/{album_id}/photos/remove": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Remove From Album",
+        "description": "Take photos out of an album. They stay in the library.",
+        "operationId": "removeFromAlbum",
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Album"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such album"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/{photo_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Thumbnail",
+        "description": "A small JPEG of the photo with its current edits. Add `?revision=` (the photo's\nrevision) so the browser can keep it until the photo is edited again.",
+        "operationId": "getThumbnail",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/cull": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Cull Photos",
+        "description": "Pick the best photos from a shoot: one per moment (burst or series of the same\nthing), judged on sharpness, exposure, eyes open, and appeal, with the reasons for\neach. Claude writes the explanation when an API key is set.",
+        "operationId": "cullPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CullRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CullResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/duplicates": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Duplicates",
+        "description": "Photos that are the same photo, or the same shot, each group with one suggested to\nkeep. Photos still being indexed are not compared yet.",
+        "operationId": "listDuplicates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DuplicateGroup"
+                  },
+                  "type": "array",
+                  "title": "Response Listduplicates"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/duplicates/dismiss": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Dismiss Duplicates",
+        "description": "These photos are different, however alike: stop grouping them as duplicates.",
+        "operationId": "dismissDuplicates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotDuplicates"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/batch": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Start Batch",
+        "description": "Give many photos one look (\"make all of these consistent\"): from an instruction the\nagent carries out on the reference photo, a recipe, or the reference's own edits. Each\nphoto is also evened out toward the reference. Runs in the background: poll the status.",
+        "operationId": "startBatchEdit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Editing by instruction without an API key"
+          },
+          "404": {
+            "description": "No such photo or recipe"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/batch/{batch_id}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Batch",
+        "operationId": "getBatchEdit",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such batch"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/export": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Export Photos",
+        "description": "Render the photos at full resolution with their edits, in one zip file to download.",
+        "operationId": "exportPhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportMany"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/settings": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Settings",
+        "operationId": "getLibrarySettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Change Settings",
+        "operationId": "changeLibrarySettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibrarySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/people": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List People",
+        "description": "Everyone found in the library's photos: named people first, then by photo count.",
+        "operationId": "listPeople",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Person"
+                  },
+                  "type": "array",
+                  "title": "Response Listpeople"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/people/{person_id}": {
+      "patch": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Rename Person",
+        "operationId": "renamePerson",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Forget Person",
+        "description": "Stop showing this person. Their faces are not grouped again.",
+        "operationId": "forgetPerson",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/people/{person_id}/merge": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Merge People",
+        "description": "The same person found twice: their faces all go to `into`.",
+        "operationId": "mergePeople",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Merge"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/{photo_id}/faces": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Faces",
+        "description": "The faces found in one photo and who each one is.",
+        "operationId": "listFaces",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Face"
+                  },
+                  "title": "Response Listfaces"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/faces/{face_id}": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Change Face",
+        "description": "Say who a face is, or that it is nobody in particular (\"not this person\").",
+        "operationId": "changeFace",
+        "parameters": [
+          {
+            "name": "face_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Face Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaceChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Face"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such face or person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/faces/{face_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Face Thumbnail",
+        "operationId": "getFaceThumbnail",
+        "parameters": [
+          {
+            "name": "face_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Face Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such face"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/status": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Library Status",
+        "description": "How far indexing has got: the web app polls this while photos are being indexed.",
+        "operationId": "getLibraryStatus",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -1761,6 +3276,63 @@
   },
   "components": {
     "schemas": {
+      "Album": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Photos in the album."
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover",
+            "description": "A photo to show for the album."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "count"
+        ],
+        "title": "Album"
+      },
+      "AlbumChange": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "AlbumChange"
+      },
       "AutoStraighten": {
         "properties": {
           "level": {
@@ -1780,6 +3352,157 @@
         "type": "object",
         "title": "AutoStraighten",
         "description": "What to fix automatically."
+      },
+      "BatchFailure": {
+        "properties": {
+          "photo": {
+            "type": "string",
+            "title": "Photo"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo",
+          "reason"
+        ],
+        "title": "BatchFailure"
+      },
+      "BatchRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "description": "The photos to edit."
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction",
+            "description": "What the look should be, in words, for the agent."
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe",
+            "description": "A saved recipe to apply instead."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference",
+            "description": "The photo whose look the others follow (the first by default). With an instruction, the agent edits it first; with neither instruction nor recipe, its current edits are the look."
+          },
+          "match": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Match",
+            "description": "How far to even out each photo's color and tone toward the reference; 0 applies the look alone.",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "BatchRequest"
+      },
+      "BatchStatus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State",
+            "default": "running"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/BatchFailure"
+            },
+            "type": "array",
+            "title": "Failed"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current",
+            "description": "What is happening now."
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "The agent's reply about the look, or why the batch failed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "total",
+          "reference"
+        ],
+        "title": "BatchStatus"
       },
       "Blacks": {
         "properties": {
@@ -1836,6 +3559,23 @@
           "file"
         ],
         "title": "Body_createDocument"
+      },
+      "Body_importPhotos": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_importPhotos"
       },
       "Body_openProject": {
         "properties": {
@@ -2390,6 +4130,94 @@
         "title": "Crop",
         "description": "Crop to a region of the current frame, optionally locked to an aspect ratio.\n\nThe box is given as fractions of the current width and height (0 = left/top edge,\n1 = right/bottom edge). With an aspect ratio, the result is the largest rectangle of that\nratio centered inside the box, so a full-frame box plus \"4:5\" is a centered Instagram crop."
       },
+      "CullRequest": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "description": "How many photos to pick.",
+            "default": 30
+          },
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids",
+            "description": "Pick from these photos (else from the filter)."
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoFilter"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pick from the photos it lets through."
+          },
+          "explain": {
+            "type": "boolean",
+            "title": "Explain",
+            "description": "Ask Claude to explain the picks, when it can.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "CullRequest"
+      },
+      "CullResult": {
+        "properties": {
+          "picks": {
+            "items": {
+              "$ref": "#/components/schemas/Pick"
+            },
+            "type": "array",
+            "title": "Picks",
+            "description": "Best first."
+          },
+          "considered": {
+            "type": "integer",
+            "title": "Considered"
+          },
+          "moments": {
+            "type": "integer",
+            "title": "Moments"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "picks",
+          "considered",
+          "moments",
+          "summary",
+          "source"
+        ],
+        "title": "CullResult"
+      },
       "Cutout": {
         "properties": {
           "visible": {
@@ -2676,6 +4504,39 @@
         "title": "DocumentView",
         "description": "What the web app sees of a document."
       },
+      "DuplicateGroup": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "near"
+            ],
+            "title": "Kind",
+            "description": "\"exact\": the same photo (resized or re-saved at most); \"near\": the same shot, slightly different."
+          },
+          "keep": {
+            "type": "string",
+            "title": "Keep",
+            "description": "The photo suggested to keep."
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Photos",
+            "description": "The group, the one to keep first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "keep",
+          "photos"
+        ],
+        "title": "DuplicateGroup"
+      },
       "EditState": {
         "properties": {
           "framing": {
@@ -2853,6 +4714,27 @@
         "title": "Expand",
         "description": "Expand the canvas: extend the photo past its edges, with new surroundings painted by\na generative model to match (outpainting). Use it to turn a vertical photo into a\nlandscape one, or to give a tight shot more room, without cropping anything away. Masks\nand later crops refer to the expanded frame."
       },
+      "ExportMany": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ExportOptions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "ExportMany"
+      },
       "ExportOptions": {
         "properties": {
           "format": {
@@ -2921,6 +4803,127 @@
         ],
         "title": "Exposure",
         "description": "Brighten or darken the whole photo, like changing the camera exposure."
+      },
+      "Face": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Box",
+            "description": "Left, top, right, bottom, in fractions of the photo."
+          },
+          "person": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person"
+          },
+          "person_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "box",
+          "person"
+        ],
+        "title": "Face"
+      },
+      "FaceChange": {
+        "properties": {
+          "person": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person",
+            "description": "The person this face is, or null for nobody (it is then left alone)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "person"
+        ],
+        "title": "FaceChange"
+      },
+      "Facet": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
+        "title": "Facet"
+      },
+      "Facets": {
+        "properties": {
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Cameras"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Places"
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Years"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cameras",
+          "places",
+          "years"
+        ],
+        "title": "Facets"
       },
       "Flip": {
         "properties": {
@@ -3212,6 +5215,59 @@
         ],
         "title": "Highlights",
         "description": "Recover (negative) or boost (positive) the brightest areas without touching shadows."
+      },
+      "ImportResult": {
+        "properties": {
+          "imported": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Imported"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/Skipped"
+            },
+            "type": "array",
+            "title": "Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imported",
+          "skipped"
+        ],
+        "title": "ImportResult"
+      },
+      "IndexStatus": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "pending"
+        ],
+        "title": "IndexStatus"
       },
       "JobStatus": {
         "properties": {
@@ -3528,6 +5584,249 @@
         "title": "LensCorrection",
         "description": "Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward\n(pincushion, telephoto). Scales up just enough that no edge is left empty."
       },
+      "LibraryPhoto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The photo's document id; open it in the editor with this."
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "file_size": {
+            "type": "integer",
+            "title": "File Size"
+          },
+          "imported_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Imported At"
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "edited": {
+            "type": "boolean",
+            "title": "Edited"
+          },
+          "rating": {
+            "type": "integer",
+            "title": "Rating",
+            "description": "Stars, 0 to 5.",
+            "default": 0
+          },
+          "flag": {
+            "type": "string",
+            "enum": [
+              "picked",
+              "rejected",
+              "none"
+            ],
+            "title": "Flag",
+            "default": "none"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "albums": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Albums",
+            "description": "Ids of albums it is in."
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At",
+            "description": "When it was taken, in the camera's local time, if known."
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "iso": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iso"
+          },
+          "exposure_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure Time",
+            "description": "Seconds."
+          },
+          "f_number": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F Number"
+          },
+          "focal_length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Length",
+            "description": "Millimetres."
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place",
+            "description": "The place it was taken (see facets)."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "What is in it, best first."
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "People",
+            "description": "Ids of people in it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "format",
+          "width",
+          "height",
+          "file_size",
+          "imported_at",
+          "revision",
+          "edited"
+        ],
+        "title": "LibraryPhoto",
+        "description": "What the library shows of one photo."
+      },
+      "LibrarySettings": {
+        "properties": {
+          "faces": {
+            "type": "boolean",
+            "title": "Faces",
+            "description": "People albums: find and group faces, on this computer only. Turning it off forgets every face and person."
+          }
+        },
+        "type": "object",
+        "required": [
+          "faces"
+        ],
+        "title": "LibrarySettings"
+      },
       "LinearGradientMask": {
         "properties": {
           "invert": {
@@ -3816,6 +6115,99 @@
         ],
         "title": "ManualEdit"
       },
+      "Marked": {
+        "properties": {
+          "changed": {
+            "type": "integer",
+            "title": "Changed"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changed",
+          "photos"
+        ],
+        "title": "Marked"
+      },
+      "Marks": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating",
+            "description": "Stars, 0 to clear."
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "picked",
+                  "rejected",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flag"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "none"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "A color label, or \"none\" to clear it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "Marks",
+        "description": "Changes to apply to several photos at once; leave out what should stay as it is."
+      },
       "MatchReference": {
         "properties": {
           "id": {
@@ -3880,6 +6272,43 @@
         "title": "MatchReference",
         "description": "Make the photo's color and tone look like a reference photo the person shared (\"make\nthis look like that one\"): its palette, color cast, brightness, and contrast. Not its\ncontent or framing. Lower color or tone to transfer only one of them."
       },
+      "Merge": {
+        "properties": {
+          "into": {
+            "type": "string",
+            "title": "Into",
+            "description": "The person to keep."
+          }
+        },
+        "type": "object",
+        "required": [
+          "into"
+        ],
+        "title": "Merge"
+      },
+      "NewAlbum": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "title": "Photo Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "NewAlbum"
+      },
       "NewRecipe": {
         "properties": {
           "name": {
@@ -3939,6 +6368,24 @@
         "type": "object",
         "title": "NoiseReduction",
         "description": "Smooth out grain and color speckles, typical of low-light photos."
+      },
+      "NotDuplicates": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 2,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "NotDuplicates"
       },
       "OperationSpec": {
         "properties": {
@@ -4101,6 +6548,63 @@
         ],
         "title": "ParamSpec"
       },
+      "Person": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Given by the person using the app; None if unnamed."
+          },
+          "photos": {
+            "type": "integer",
+            "title": "Photos",
+            "description": "How many photos they are in."
+          },
+          "cover": {
+            "type": "string",
+            "title": "Cover",
+            "description": "One of their faces, to show (see the face thumbnail)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "photos",
+          "cover"
+        ],
+        "title": "Person"
+      },
+      "PersonChange": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "A name, or null to clear it."
+          }
+        },
+        "type": "object",
+        "title": "PersonChange"
+      },
       "Perspective": {
         "properties": {
           "id": {
@@ -4135,6 +6639,216 @@
         "type": "object",
         "title": "Perspective",
         "description": "Fix lines that converge because the camera was tilted: buildings that lean in toward\nthe top, or a wall that shrinks toward one side. The narrow side is stretched out to the\nframe, so nothing is left empty."
+      },
+      "PhotoFilter": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album",
+            "description": "Only photos in this album."
+          },
+          "min_rating": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Min Rating",
+            "description": "Only photos with at least this many stars.",
+            "default": 0
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "picked",
+                  "rejected",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flag",
+            "description": "Only picked, rejected, or unflagged photos."
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "Only photos with this color label."
+          },
+          "taken_after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken After",
+            "description": "Only photos taken on or after this day."
+          },
+          "taken_before": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Before",
+            "description": "Only photos taken on or before this day."
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera",
+            "description": "Only photos from this camera (see facets)."
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place",
+            "description": "Only photos from this place (see facets)."
+          },
+          "has_location": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Location",
+            "description": "Only photos with (or without) GPS."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Tags",
+            "description": "Only photos with every one of these tags."
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "People",
+            "description": "Only photos with all these people in."
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "taken",
+              "imported"
+            ],
+            "title": "Sort",
+            "description": "Newest first by when they were taken (or imported).",
+            "default": "taken"
+          }
+        },
+        "type": "object",
+        "title": "PhotoFilter",
+        "description": "Which photos to show. Every condition given must hold."
+      },
+      "PhotoIds": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "PhotoIds"
+      },
+      "Pick": {
+        "properties": {
+          "photo": {
+            "$ref": "#/components/schemas/LibraryPhoto"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "0 to 1: how good a shot it is, all things weighed."
+          },
+          "moment": {
+            "type": "integer",
+            "title": "Moment",
+            "description": "Which moment it is from (numbered in time order)."
+          },
+          "moment_size": {
+            "type": "integer",
+            "title": "Moment Size",
+            "description": "How many shots that moment has."
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Why it was picked, in plain words."
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo",
+          "score",
+          "moment",
+          "moment_size",
+          "reasons"
+        ],
+        "title": "Pick"
       },
       "Plan": {
         "properties": {
@@ -4452,6 +7166,19 @@
         "title": "Remove",
         "description": "Remove what the layer's mask selects (a person, power lines, a sign) and fill the gap\nwith plausible surroundings, using an AI inpainting model. Needs a mask; it is the only\noperation in its layer. Removal layers apply first, before any adjustment layer."
       },
+      "Removed": {
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "removed"
+        ],
+        "title": "Removed"
+      },
       "ReplaceBackground": {
         "properties": {
           "id": {
@@ -4749,6 +7476,99 @@
         "title": "Saturation",
         "description": "Uniformly increase or decrease color intensity; -100 makes black and white."
       },
+      "SearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album",
+            "description": "Search within this album."
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SearchRequest"
+      },
+      "SearchResult": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "understood": {
+            "$ref": "#/components/schemas/Understood"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "built-in"
+            ],
+            "title": "Source"
+          },
+          "matched_words_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "look",
+                  "file name"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Words By"
+          },
+          "picked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picked",
+            "description": "When the best few were asked for: how they were picked."
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "understood",
+          "summary",
+          "source",
+          "photos"
+        ],
+        "title": "SearchResult"
+      },
       "SelectPoint": {
         "properties": {
           "x": {
@@ -4928,6 +7748,36 @@
         ],
         "title": "Sharpen",
         "description": "Sharpen edges and fine detail."
+      },
+      "Skipped": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "existing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Existing",
+            "description": "The library photo it is a copy of."
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "reason"
+        ],
+        "title": "Skipped"
       },
       "SmoothSkin": {
         "properties": {
@@ -5223,6 +8073,58 @@
         "type": "object",
         "title": "SuggestionsRequest"
       },
+      "TagChange": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Add"
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Remove"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "TagChange"
+      },
+      "TagCount": {
+        "properties": {
+          "tag": {
+            "type": "string",
+            "title": "Tag"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag",
+          "count"
+        ],
+        "title": "TagCount"
+      },
       "TaskStatus": {
         "properties": {
           "task": {
@@ -5338,6 +8240,107 @@
         ],
         "title": "ToneCurve",
         "description": "Remap tones with a curve through control points (input, output), both 0..1.\n\nThe curve always passes through its points in order of input. An S-shape adds contrast;\nlifting the (0, y) point gives faded blacks."
+      },
+      "Understood": {
+        "properties": {
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Tags every photo must have."
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "People",
+            "description": "Named people who must be in it."
+          },
+          "taken_after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken After"
+          },
+          "taken_before": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Before"
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "min_rating": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Min Rating",
+            "default": 0
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "picked",
+                  "rejected",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flag"
+          },
+          "best": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best",
+            "description": "Cull to this many best shots."
+          },
+          "words": {
+            "type": "string",
+            "title": "Words",
+            "description": "What is left, matched by look or by file name.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "Understood",
+        "description": "What a search was taken to ask for."
       },
       "ValidationError": {
         "properties": {

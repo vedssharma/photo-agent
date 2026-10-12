@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Create Document
-         * @description Upload a JPEG, PNG, or HEIC photo to start editing it.
+         * @description Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too.
          */
         post: operations["createDocument"];
         delete?: never;
@@ -708,6 +708,552 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Photos
+         * @description The library's photos, newest import first, narrowed down by any filters given.
+         */
+        get: operations["listLibraryPhotos"];
+        put?: never;
+        /**
+         * Import Photos
+         * @description Add photos to the library, many at once (a whole folder is sent a batch at a time).
+         *     Files that are not photos, are too large, or are already in the library are skipped
+         *     and listed with the reason. New photos are indexed in the background.
+         */
+        post: operations["importPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Facets
+         * @description The cameras, places, and years in the library, with how many photos each has.
+         */
+        get: operations["getFacets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Photo */
+        get: operations["getLibraryPhoto"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Photos
+         * @description Delete photos from the library, with their edits. This cannot be undone.
+         */
+        post: operations["removeLibraryPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Photos
+         * @description Rate, flag (pick or reject), or color-label several photos at once.
+         */
+        post: operations["markPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description Every tag in use, found or added by hand, most used first.
+         */
+        get: operations["listTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tag Photos
+         * @description Add or remove tags by hand. A found tag that is removed stays removed.
+         */
+        post: operations["tagPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Library
+         * @description Search in everyday words ("beach photos from last summer with the dog"). The query
+         *     is read into filters (by Claude when an API key is set, else by built-in rules) and the
+         *     answer says how it was understood.
+         */
+        post: operations["searchLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Albums
+         * @description Every album, by name.
+         */
+        get: operations["listAlbums"];
+        put?: never;
+        /**
+         * Create Album
+         * @description Make an album, optionally with photos in it already.
+         */
+        post: operations["createAlbum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/albums/{album_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Album
+         * @description Delete an album. Its photos stay in the library.
+         */
+        delete: operations["deleteAlbum"];
+        options?: never;
+        head?: never;
+        /** Rename Album */
+        patch: operations["renameAlbum"];
+        trace?: never;
+    };
+    "/api/library/albums/{album_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add To Album */
+        post: operations["addToAlbum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/albums/{album_id}/photos/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove From Album
+         * @description Take photos out of an album. They stay in the library.
+         */
+        post: operations["removeFromAlbum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/{photo_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Thumbnail
+         * @description A small JPEG of the photo with its current edits. Add `?revision=` (the photo's
+         *     revision) so the browser can keep it until the photo is edited again.
+         */
+        get: operations["getThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/cull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cull Photos
+         * @description Pick the best photos from a shoot: one per moment (burst or series of the same
+         *     thing), judged on sharpness, exposure, eyes open, and appeal, with the reasons for
+         *     each. Claude writes the explanation when an API key is set.
+         */
+        post: operations["cullPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Duplicates
+         * @description Photos that are the same photo, or the same shot, each group with one suggested to
+         *     keep. Photos still being indexed are not compared yet.
+         */
+        get: operations["listDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/duplicates/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Duplicates
+         * @description These photos are different, however alike: stop grouping them as duplicates.
+         */
+        post: operations["dismissDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Batch
+         * @description Give many photos one look ("make all of these consistent"): from an instruction the
+         *     agent carries out on the reference photo, a recipe, or the reference's own edits. Each
+         *     photo is also evened out toward the reference. Runs in the background: poll the status.
+         */
+        post: operations["startBatchEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/batch/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch */
+        get: operations["getBatchEdit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Photos
+         * @description Render the photos at full resolution with their edits, in one zip file to download.
+         */
+        post: operations["exportPhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["getLibrarySettings"];
+        /** Change Settings */
+        put: operations["changeLibrarySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List People
+         * @description Everyone found in the library's photos: named people first, then by photo count.
+         */
+        get: operations["listPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/people/{person_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Person
+         * @description Stop showing this person. Their faces are not grouped again.
+         */
+        delete: operations["forgetPerson"];
+        options?: never;
+        head?: never;
+        /** Rename Person */
+        patch: operations["renamePerson"];
+        trace?: never;
+    };
+    "/api/library/people/{person_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge People
+         * @description The same person found twice: their faces all go to `into`.
+         */
+        post: operations["mergePeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/{photo_id}/faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Faces
+         * @description The faces found in one photo and who each one is.
+         */
+        get: operations["listFaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/faces/{face_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Face
+         * @description Say who a face is, or that it is nobody in particular ("not this person").
+         */
+        post: operations["changeFace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/faces/{face_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Face Thumbnail */
+        get: operations["getFaceThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library Status
+         * @description How far indexing has got: the web app polls this while photos are being indexed.
+         */
+        get: operations["getLibraryStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -772,6 +1318,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Album */
+        Album: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Count
+             * @description Photos in the album.
+             */
+            count: number;
+            /**
+             * Cover
+             * @description A photo to show for the album.
+             */
+            cover?: string | null;
+        };
+        /** AlbumChange */
+        AlbumChange: {
+            /** Name */
+            name: string;
+        };
         /**
          * AutoStraighten
          * @description What to fix automatically.
@@ -789,6 +1362,74 @@ export interface components {
              * @default true
              */
             perspective: boolean;
+        };
+        /** BatchFailure */
+        BatchFailure: {
+            /** Photo */
+            photo: string;
+            /** Reason */
+            reason: string;
+        };
+        /** BatchRequest */
+        BatchRequest: {
+            /**
+             * Ids
+             * @description The photos to edit.
+             */
+            ids: string[];
+            /**
+             * Instruction
+             * @description What the look should be, in words, for the agent.
+             */
+            instruction?: string | null;
+            /**
+             * Recipe
+             * @description A saved recipe to apply instead.
+             */
+            recipe?: string | null;
+            /**
+             * Reference
+             * @description The photo whose look the others follow (the first by default). With an instruction, the agent edits it first; with neither instruction nor recipe, its current edits are the look.
+             */
+            reference?: string | null;
+            /**
+             * Match
+             * @description How far to even out each photo's color and tone toward the reference; 0 applies the look alone.
+             * @default 60
+             */
+            match: number;
+        };
+        /** BatchStatus */
+        BatchStatus: {
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @default running
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed";
+            /** Total */
+            total: number;
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /** Failed */
+            failed?: components["schemas"]["BatchFailure"][];
+            /**
+             * Current
+             * @description What is happening now.
+             */
+            current?: string | null;
+            /** Reference */
+            reference: string;
+            /**
+             * Message
+             * @description The agent's reply about the look, or why the batch failed.
+             */
+            message?: string | null;
         };
         /**
          * Blacks
@@ -817,6 +1458,11 @@ export interface components {
         Body_createDocument: {
             /** File */
             file: string;
+        };
+        /** Body_importPhotos */
+        Body_importPhotos: {
+            /** Files */
+            files: string[];
         };
         /** Body_openProject */
         Body_openProject: {
@@ -1135,6 +1781,47 @@ export interface components {
              */
             aspect: "free" | "original" | "1:1" | "4:5" | "5:4" | "3:4" | "4:3" | "2:3" | "3:2" | "9:16" | "16:9";
         };
+        /** CullRequest */
+        CullRequest: {
+            /**
+             * Count
+             * @description How many photos to pick.
+             * @default 30
+             */
+            count: number;
+            /**
+             * Ids
+             * @description Pick from these photos (else from the filter).
+             */
+            ids?: string[] | null;
+            /** @description Pick from the photos it lets through. */
+            filter?: components["schemas"]["PhotoFilter"] | null;
+            /**
+             * Explain
+             * @description Ask Claude to explain the picks, when it can.
+             * @default true
+             */
+            explain: boolean;
+        };
+        /** CullResult */
+        CullResult: {
+            /**
+             * Picks
+             * @description Best first.
+             */
+            picks: components["schemas"]["Pick"][];
+            /** Considered */
+            considered: number;
+            /** Moments */
+            moments: number;
+            /** Summary */
+            summary: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "claude" | "built-in";
+        };
         /**
          * Cutout
          * @description Keeps only what the mask selects (the main subject unless told otherwise) and
@@ -1240,6 +1927,25 @@ export interface components {
             chat: components["schemas"]["ChatEntry"][];
             pending_plan?: components["schemas"]["Plan"] | null;
         };
+        /** DuplicateGroup */
+        DuplicateGroup: {
+            /**
+             * Kind
+             * @description "exact": the same photo (resized or re-saved at most); "near": the same shot, slightly different.
+             * @enum {string}
+             */
+            kind: "exact" | "near";
+            /**
+             * Keep
+             * @description The photo suggested to keep.
+             */
+            keep: string;
+            /**
+             * Photos
+             * @description The group, the one to keep first.
+             */
+            photos: components["schemas"]["LibraryPhoto"][];
+        };
         /**
          * EditState
          * @description Everything needed to render the photo from the original.
@@ -1330,6 +2036,12 @@ export interface components {
              */
             prompt: string;
         };
+        /** ExportMany */
+        ExportMany: {
+            /** Ids */
+            ids: string[];
+            options?: components["schemas"]["ExportOptions"];
+        };
         /** ExportOptions */
         ExportOptions: {
             /**
@@ -1378,6 +2090,46 @@ export interface components {
              * @description Exposure change in stops; +1 doubles light.
              */
             stops: number;
+        };
+        /** Face */
+        Face: {
+            /** Id */
+            id: string;
+            /**
+             * Box
+             * @description Left, top, right, bottom, in fractions of the photo.
+             */
+            box: number[];
+            /** Person */
+            person: string | null;
+            /** Person Name */
+            person_name?: string | null;
+        };
+        /** FaceChange */
+        FaceChange: {
+            /**
+             * Person
+             * @description The person this face is, or null for nobody (it is then left alone).
+             */
+            person: string | null;
+        };
+        /** Facet */
+        Facet: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+        };
+        /** Facets */
+        Facets: {
+            /** Cameras */
+            cameras: components["schemas"]["Facet"][];
+            /** Places */
+            places: components["schemas"]["Facet"][];
+            /** Years */
+            years: components["schemas"]["Facet"][];
         };
         /**
          * Flip
@@ -1570,6 +2322,22 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** ImportResult */
+        ImportResult: {
+            /** Imported */
+            imported: components["schemas"]["LibraryPhoto"][];
+            /** Skipped */
+            skipped: components["schemas"]["Skipped"][];
+        };
+        /** IndexStatus */
+        IndexStatus: {
+            /** Total */
+            total: number;
+            /** Pending */
+            pending: number;
+            /** Current */
+            current?: string | null;
+        };
         /** JobStatus */
         JobStatus: {
             /** Id */
@@ -1658,6 +2426,105 @@ export interface components {
              * @default 0
              */
             distortion: number;
+        };
+        /**
+         * LibraryPhoto
+         * @description What the library shows of one photo.
+         */
+        LibraryPhoto: {
+            /**
+             * Id
+             * @description The photo's document id; open it in the editor with this.
+             */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Format */
+            format: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** File Size */
+            file_size: number;
+            /**
+             * Imported At
+             * Format: date-time
+             */
+            imported_at: string;
+            /** Revision */
+            revision: string;
+            /** Edited */
+            edited: boolean;
+            /**
+             * Rating
+             * @description Stars, 0 to 5.
+             * @default 0
+             */
+            rating: number;
+            /**
+             * Flag
+             * @default none
+             * @enum {string}
+             */
+            flag: "picked" | "rejected" | "none";
+            /** Label */
+            label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+            /**
+             * Albums
+             * @description Ids of albums it is in.
+             */
+            albums?: string[];
+            /**
+             * Taken At
+             * @description When it was taken, in the camera's local time, if known.
+             */
+            taken_at?: string | null;
+            /** Camera */
+            camera?: string | null;
+            /** Lens */
+            lens?: string | null;
+            /** Iso */
+            iso?: number | null;
+            /**
+             * Exposure Time
+             * @description Seconds.
+             */
+            exposure_time?: number | null;
+            /** F Number */
+            f_number?: number | null;
+            /**
+             * Focal Length
+             * @description Millimetres.
+             */
+            focal_length?: number | null;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /**
+             * Place
+             * @description The place it was taken (see facets).
+             */
+            place?: string | null;
+            /**
+             * Tags
+             * @description What is in it, best first.
+             */
+            tags?: string[];
+            /**
+             * People
+             * @description Ids of people in it.
+             */
+            people?: string[];
+        };
+        /** LibrarySettings */
+        LibrarySettings: {
+            /**
+             * Faces
+             * @description People albums: find and group faces, on this computer only. Turning it off forgets every face and person.
+             */
+            faces: boolean;
         };
         /**
          * LinearGradientMask
@@ -1756,6 +2623,33 @@ export interface components {
              */
             coalesce?: string | null;
         };
+        /** Marked */
+        Marked: {
+            /** Changed */
+            changed: number;
+            /** Photos */
+            photos: components["schemas"]["LibraryPhoto"][];
+        };
+        /**
+         * Marks
+         * @description Changes to apply to several photos at once; leave out what should stay as it is.
+         */
+        Marks: {
+            /** Ids */
+            ids: string[];
+            /**
+             * Rating
+             * @description Stars, 0 to clear.
+             */
+            rating?: number | null;
+            /** Flag */
+            flag?: ("picked" | "rejected" | "none") | null;
+            /**
+             * Label
+             * @description A color label, or "none" to clear it.
+             */
+            label?: ("red" | "yellow" | "green" | "blue" | "purple") | "none" | null;
+        };
         /**
          * MatchReference
          * @description Make the photo's color and tone look like a reference photo the person shared ("make
@@ -1799,6 +2693,21 @@ export interface components {
             /** @description Recorded by the app. */
             stats?: components["schemas"]["ReferenceStats"] | null;
         };
+        /** Merge */
+        Merge: {
+            /**
+             * Into
+             * @description The person to keep.
+             */
+            into: string;
+        };
+        /** NewAlbum */
+        NewAlbum: {
+            /** Name */
+            name: string;
+            /** Photo Ids */
+            photo_ids?: string[];
+        };
         /** NewRecipe */
         NewRecipe: {
             /** Name */
@@ -1836,6 +2745,11 @@ export interface components {
              * @default 0
              */
             color: number;
+        };
+        /** NotDuplicates */
+        NotDuplicates: {
+            /** Ids */
+            ids: string[];
         };
         /** OperationSpec */
         OperationSpec: {
@@ -1896,6 +2810,34 @@ export interface components {
             /** Default */
             default?: unknown;
         };
+        /** Person */
+        Person: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @description Given by the person using the app; None if unnamed.
+             */
+            name: string | null;
+            /**
+             * Photos
+             * @description How many photos they are in.
+             */
+            photos: number;
+            /**
+             * Cover
+             * @description One of their faces, to show (see the face thumbnail).
+             */
+            cover: string;
+        };
+        /** PersonChange */
+        PersonChange: {
+            /**
+             * Name
+             * @description A name, or null to clear it.
+             */
+            name?: string | null;
+        };
         /**
          * Perspective
          * @description Fix lines that converge because the camera was tilted: buildings that lean in toward
@@ -1925,6 +2867,104 @@ export interface components {
              * @default 0
              */
             horizontal: number;
+        };
+        /**
+         * PhotoFilter
+         * @description Which photos to show. Every condition given must hold.
+         */
+        PhotoFilter: {
+            /**
+             * Album
+             * @description Only photos in this album.
+             */
+            album?: string | null;
+            /**
+             * Min Rating
+             * @description Only photos with at least this many stars.
+             * @default 0
+             */
+            min_rating: number;
+            /**
+             * Flag
+             * @description Only picked, rejected, or unflagged photos.
+             */
+            flag?: ("picked" | "rejected" | "none") | null;
+            /**
+             * Label
+             * @description Only photos with this color label.
+             */
+            label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+            /**
+             * Taken After
+             * @description Only photos taken on or after this day.
+             */
+            taken_after?: string | null;
+            /**
+             * Taken Before
+             * @description Only photos taken on or before this day.
+             */
+            taken_before?: string | null;
+            /**
+             * Camera
+             * @description Only photos from this camera (see facets).
+             */
+            camera?: string | null;
+            /**
+             * Place
+             * @description Only photos from this place (see facets).
+             */
+            place?: string | null;
+            /**
+             * Has Location
+             * @description Only photos with (or without) GPS.
+             */
+            has_location?: boolean | null;
+            /**
+             * Tags
+             * @description Only photos with every one of these tags.
+             */
+            tags?: string[];
+            /**
+             * People
+             * @description Only photos with all these people in.
+             */
+            people?: string[];
+            /**
+             * Sort
+             * @description Newest first by when they were taken (or imported).
+             * @default taken
+             * @enum {string}
+             */
+            sort: "taken" | "imported";
+        };
+        /** PhotoIds */
+        PhotoIds: {
+            /** Ids */
+            ids: string[];
+        };
+        /** Pick */
+        Pick: {
+            photo: components["schemas"]["LibraryPhoto"];
+            /**
+             * Score
+             * @description 0 to 1: how good a shot it is, all things weighed.
+             */
+            score: number;
+            /**
+             * Moment
+             * @description Which moment it is from (numbered in time order).
+             */
+            moment: number;
+            /**
+             * Moment Size
+             * @description How many shots that moment has.
+             */
+            moment_size: number;
+            /**
+             * Reasons
+             * @description Why it was picked, in plain words.
+             */
+            reasons: string[];
         };
         /**
          * Plan
@@ -2110,6 +3150,11 @@ export interface components {
              * @default 20
              */
             grow: number;
+        };
+        /** Removed */
+        Removed: {
+            /** Removed */
+            removed: number;
         };
         /**
          * ReplaceBackground
@@ -2316,6 +3361,38 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** SearchRequest */
+        SearchRequest: {
+            /** Query */
+            query: string;
+            /**
+             * Album
+             * @description Search within this album.
+             */
+            album?: string | null;
+        };
+        /** SearchResult */
+        SearchResult: {
+            /** Query */
+            query: string;
+            understood: components["schemas"]["Understood"];
+            /** Summary */
+            summary: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "claude" | "built-in";
+            /** Matched Words By */
+            matched_words_by?: ("look" | "file name") | null;
+            /**
+             * Picked
+             * @description When the best few were asked for: how they were picked.
+             */
+            picked?: string | null;
+            /** Photos */
+            photos: components["schemas"]["LibraryPhoto"][];
+        };
         /** SelectPoint */
         SelectPoint: {
             /** X */
@@ -2421,6 +3498,18 @@ export interface components {
              * @default 1
              */
             radius: number;
+        };
+        /** Skipped */
+        Skipped: {
+            /** Filename */
+            filename: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Existing
+             * @description The library photo it is a copy of.
+             */
+            existing?: string | null;
         };
         /**
          * SmoothSkin
@@ -2590,6 +3679,22 @@ export interface components {
              */
             refresh: boolean;
         };
+        /** TagChange */
+        TagChange: {
+            /** Ids */
+            ids: string[];
+            /** Add */
+            add?: string[];
+            /** Remove */
+            remove?: string[];
+        };
+        /** TagCount */
+        TagCount: {
+            /** Tag */
+            tag: string;
+            /** Count */
+            count: number;
+        };
         /** TaskStatus */
         TaskStatus: {
             /** Task */
@@ -2649,6 +3754,46 @@ export interface components {
              * @enum {string}
              */
             channel: "rgb" | "red" | "green" | "blue";
+        };
+        /**
+         * Understood
+         * @description What a search was taken to ask for.
+         */
+        Understood: {
+            /**
+             * Tags
+             * @description Tags every photo must have.
+             */
+            tags?: string[];
+            /**
+             * People
+             * @description Named people who must be in it.
+             */
+            people?: string[];
+            /** Taken After */
+            taken_after?: string | null;
+            /** Taken Before */
+            taken_before?: string | null;
+            /** Camera */
+            camera?: string | null;
+            /**
+             * Min Rating
+             * @default 0
+             */
+            min_rating: number;
+            /** Flag */
+            flag?: ("picked" | "rejected" | "none") | null;
+            /**
+             * Best
+             * @description Cull to this many best shots.
+             */
+            best?: number | null;
+            /**
+             * Words
+             * @description What is left, matched by look or by file name.
+             * @default
+             */
+            words: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -4109,6 +5254,1103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listLibraryPhotos: {
+        parameters: {
+            query?: {
+                /** @description Only photos in this album. */
+                album?: string | null;
+                /** @description Only photos with at least this many stars. */
+                min_rating?: number;
+                /** @description Only picked, rejected, or unflagged photos. */
+                flag?: ("picked" | "rejected" | "none") | null;
+                /** @description Only photos with this color label. */
+                label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+                /** @description Only photos taken on or after this day. */
+                taken_after?: string | null;
+                /** @description Only photos taken on or before this day. */
+                taken_before?: string | null;
+                /** @description Only photos from this camera (see facets). */
+                camera?: string | null;
+                /** @description Only photos from this place (see facets). */
+                place?: string | null;
+                /** @description Only photos with (or without) GPS. */
+                has_location?: boolean | null;
+                /** @description Only photos with every one of these tags. */
+                tags?: string[];
+                /** @description Only photos with all these people in. */
+                people?: string[];
+                /** @description Newest first by when they were taken (or imported). */
+                sort?: "taken" | "imported";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    importPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_importPhotos"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Too many files at once */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getFacets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Facets"];
+                };
+            };
+        };
+    };
+    getLibraryPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"];
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removeLibraryPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Removed"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    markPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Marks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Marked"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagCount"][];
+                };
+            };
+        };
+    };
+    tagPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    searchLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listAlbums: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"][];
+                };
+            };
+        };
+    };
+    createAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAlbum"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renameAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    addToAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removeFromAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Album"];
+                };
+            };
+            /** @description No such album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cullPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CullRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CullResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateGroup"][];
+                };
+            };
+        };
+    };
+    dismissDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotDuplicates"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    startBatchEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchStatus"];
+                };
+            };
+            /** @description Editing by instruction without an API key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such photo or recipe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getBatchEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchStatus"];
+                };
+            };
+            /** @description No such batch */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportMany"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLibrarySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySettings"];
+                };
+            };
+        };
+    };
+    changeLibrarySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibrarySettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"][];
+                };
+            };
+        };
+    };
+    forgetPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renamePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            /** @description No such person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mergePeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Merge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            /** @description No such person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listFaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Face"][];
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    changeFace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Face"];
+                };
+            };
+            /** @description No such face or person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getFaceThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such face */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLibraryStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
             };
         };
     };

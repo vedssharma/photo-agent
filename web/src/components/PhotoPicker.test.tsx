@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -79,5 +79,35 @@ describe('PhotoPicker', () => {
     expect(container.querySelector('.picker')).toHaveClass('dragging')
     fireEvent.dragLeave(window, { dataTransfer: { types: ['Files'] } })
     expect(container.querySelector('.picker')).not.toHaveClass('dragging')
+  })
+
+  it('imports several dropped photos into the library', async () => {
+    const onPick = vi.fn()
+    const onImport = vi.fn()
+    render(<PhotoPicker onPick={onPick} onImport={onImport} />)
+
+    const files = [photo('a.jpg'), photo('b.jpg')]
+    fireEvent.drop(window, {
+      dataTransfer: { types: ['Files'], files, items: [] },
+    })
+
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(files))
+    expect(onPick).not.toHaveBeenCalled()
+  })
+
+  it('offers to import a folder only where there is a library', async () => {
+    const onImport = vi.fn()
+    const { rerender } = render(<PhotoPicker onPick={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Import a folder' })).toBeNull()
+
+    rerender(<PhotoPicker onPick={vi.fn()} onImport={onImport} />)
+    await userEvent.upload(screen.getByLabelText('Folder to import'), [
+      photo('1.jpg'),
+      photo('2.jpg'),
+    ])
+    expect(onImport).toHaveBeenCalledWith([
+      expect.objectContaining({ name: '1.jpg' }),
+      expect.objectContaining({ name: '2.jpg' }),
+    ])
   })
 })

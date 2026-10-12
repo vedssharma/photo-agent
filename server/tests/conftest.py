@@ -27,6 +27,7 @@ def settings(tmp_path: Path) -> Iterator[Settings]:
         data_dir=tmp_path / "data",
         model_worker="inline",
         model_backends="classical",
+        library_indexing="inline",
     )
     app.dependency_overrides[get_settings] = lambda: test_settings
     yield test_settings

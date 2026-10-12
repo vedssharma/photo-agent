@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -9,7 +9,13 @@ import {
   rememberOpenProject,
 } from './lib/projectStore'
 import { FakeSocket } from './test/fakeSocket'
-import { healthy, makeDoc, stubApi } from './test/fixtures'
+import {
+  healthy,
+  libraryRoutes,
+  makeDoc,
+  makePhoto,
+  stubApi,
+} from './test/fixtures'
 
 function stubFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -243,6 +249,35 @@ describe('Projects', () => {
     expect(lastOpenProject()).toBeNull()
     expect(
       await screen.findByRole('button', { name: /cat\.heic/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('moves between the start page, the library, and the editor', async () => {
+    const doc = makeDoc()
+    stubApi({
+      'GET /api/health': healthy,
+      ...libraryRoutes(() => [makePhoto(doc.id, { filename: 'cat.heic' })]),
+      [`GET /api/documents/${doc.id}`]: () => Response.json(doc),
+    })
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Library' }))
+    const thumb = await screen.findByRole('option', { name: 'cat.heic' })
+    fireEvent.doubleClick(thumb)
+    fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(
+      await screen.findByRole('img', { name: 'cat.heic' }),
+    ).toHaveAttribute('src', expect.stringContaining('/preview'))
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Library' }))
+    expect(
+      await screen.findByRole('option', { name: 'cat.heic' }),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Home' }))
+    expect(
+      screen.getByRole('button', { name: 'Choose a photo' }),
     ).toBeInTheDocument()
   })
 })

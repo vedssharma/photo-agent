@@ -1,0 +1,785 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import {
+  type Album,
+  type BatchRequest,
+  type BatchStatus,
+  type CullResult,
+  type Face,
+  type Facets,
+  type IndexStatus,
+  type Label,
+  type LibraryPhoto,
+  type Marks,
+  type Person,
+  type PhotoFilter,
+  type SearchResult,
+  addToAlbum,
+  batchStatus,
+  changeFace,
+  changeLibrarySettings,
+  changeTags,
+  createAlbum,
+  cullPhotos,
+  deleteAlbum,
+  exportPhotos,
+  fetchFacets,
+  filterQuery,
+  forgetPerson,
+  librarySettings,
+  libraryStatus,
+  listAlbums,
+  listPeople,
+  listPhotos,
+  markPhotos,
+  mergePeople,
+  removeFromAlbum,
+  removePhotos,
+  renameAlbum,
+  renamePerson,
+  searchLibrary,
+  startBatch,
+} from '../../api/library'
+import { type ExportedFile, saveFile } from '../../api/documents'
+import { useDropAnywhere } from '../../hooks/useDropAnywhere'
+import { type Importer, importText } from '../../hooks/useImporter'
+import { droppedFiles } from '../../lib/dropFiles'
+import {
+  type ClickKeys,
+  NOTHING,
+  type Selection,
+  clickSelect,
+  keepOnly,
+  moveFocus,
+  selectAll,
+  selectedIds,
+} from '../../lib/selection'
+import { Badges } from './Badges'
+import { BatchDialog } from './BatchDialog'
+import { DuplicatesView } from './DuplicatesView'
+import { FilterBar } from './FilterBar'
+import { ImportButtons } from './ImportButtons'
+import { LibrarySidebar } from './LibrarySidebar'
+import { Loupe } from './Loupe'
+import { PeopleSection } from './PeopleSection'
+import { PhotoGrid } from './PhotoGrid'
+import { PhotoDetails } from './PhotoDetails'
+import { PhotoInfo } from './PhotoInfo'
+import { PhotoPeople } from './PhotoPeople'
+import { PicksView } from './PicksView'
+import { SearchBar } from './SearchBar'
+import { TagEditor } from './TagEditor'
+
+/** Keys that mark the selection, as in other photo apps. */
+const MARK_KEYS: Record<string, Omit<Marks, 'ids'>> = {
+  '0': { rating: 0 },
+  '1': { rating: 1 },
+  '2': { rating: 2 },
+  '3': { rating: 3 },
+  '4': { rating: 4 },
+  '5': { rating: 5 },
+  p: { flag: 'picked' },
+  x: { flag: 'rejected' },
+  u: { flag: 'none' },
+  ...Object.fromEntries(
+    (['red', 'yellow', 'green', 'blue'] satisfies Label[]).map((label, i) => [
+      String(6 + i),
+      { label },
+    ]),
+  ),
+}
+
+const badges = (photo: LibraryPhoto) => <Badges photo={photo} />
+
+type View = 'grid' | 'loupe'
+/** What the main area shows: photos (filtered or searched), duplicates to review, or
+ * the best shots picked. */
+type Section = 'photos' | 'duplicates' | 'picks'
+
+interface Props {
+  importer: Importer
+  /** Open a photo in the editor. */
+  onEdit: (id: string) => void
+  /** How often to check on indexing while it runs, in ms. */
+  pollMs?: number
+  /** Overridable for tests; defaults to a browser download. */
+  save?: (file: ExportedFile) => void
+}
+
+/** Whether a key press belongs to a text field rather than the library. */
+function typing(e: KeyboardEvent): boolean {
+  const el = e.target as HTMLElement | null
+  return (
+    !!el &&
+    (el.isContentEditable ||
+      ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+  )
+}
+
+/** How many thumbnails fit in a row of the grid, for moving up and down. */
+function columns(grid: Element | null): number {
+  if (!grid) return 1
+  const template = getComputedStyle(grid).gridTemplateColumns
+  const count = template ? template.split(' ').filter(Boolean).length : 1
+  return Math.max(1, count)
+}
+
+/** The whole collection: import, browse as a grid or one at a time, and act on a selection. */
+export function LibraryView({
+  importer,
+  onEdit,
+  pollMs = 1500,
+  save = saveFile,
+}: Props) {
+  const [photos, setPhotos] = useState<LibraryPhoto[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [picked, setSelection] = useState<Selection>(NOTHING)
+  const [view, setView] = useState<View>('grid')
+  const [section, setSection] = useState<Section>('photos')
+  const [status, setStatus] = useState<IndexStatus | null>(null)
+  const [filter, setFilter] = useState<PhotoFilter>({})
+  const [albums, setAlbums] = useState<Album[]>([])
+  const [facets, setFacets] = useState<Facets | null>(null)
+  const [facesOn, setFacesOn] = useState<boolean | null>(null)
+  const [people, setPeople] = useState<Person[]>([])
+  const [search, setSearch] = useState<SearchResult | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [picks, setPicks] = useState<CullResult | null>(null)
+  const [culling, setCulling] = useState(false)
+  // The photos to edit together, while choosing how.
+  const [batching, setBatching] = useState<LibraryPhoto[] | null>(null)
+  const [batch, setBatch] = useState<BatchStatus | null>(null)
+  const [exporting, setExporting] = useState(0)
+  const main = useRef<HTMLDivElement>(null)
+
+  // Bumped to fetch the photo list again.
+  const [version, setVersion] = useState(0)
+  const reload = useCallback(() => setVersion((v) => v + 1), [])
+
+  useEffect(() => {
+    let live = true
+    Promise.all([
+      listPhotos(filter),
+      listAlbums(),
+      fetchFacets(),
+      librarySettings(),
+      listPeople(),
+    ]).then(
+      ([found, albumList, facetList, settings, peopleList]) => {
+        if (!live) return
+        setPhotos(found)
+        setAlbums(albumList)
+        setFacets(facetList)
+        setFacesOn(settings.faces)
+        setPeople(peopleList)
+        setError(null)
+      },
+      (err: Error) => {
+        if (live) setError(`Could not load the library: ${err.message}`)
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [version, importer.batches, filter])
+
+  // Watch indexing while there is any, refreshing as photos finish.
+  const lastPending = useRef<number | null>(null)
+  useEffect(() => {
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const check = async () => {
+      try {
+        const next = await libraryStatus()
+        if (!live) return
+        if (
+          lastPending.current !== null &&
+          lastPending.current !== next.pending
+        )
+          reload()
+        lastPending.current = next.pending
+        setStatus(next)
+        if (next.pending > 0) timer = setTimeout(check, pollMs)
+      } catch {
+        // Indexing status is a nicety; the library works without it.
+      }
+    }
+    void check()
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [importer.batches, pollMs, reload])
+
+  // Follow a batch edit until it is done, refreshing thumbnails as photos change.
+  const batchId = batch?.state === 'running' ? batch.id : null
+  useEffect(() => {
+    if (!batchId) return
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let done = -1
+    const check = async () => {
+      try {
+        const next = await batchStatus(batchId)
+        if (!live) return
+        setBatch(next)
+        if (next.done !== done) reload()
+        done = next.done
+        if (next.state === 'running') timer = setTimeout(check, pollMs)
+      } catch (err) {
+        if (live)
+          setError(`Lost track of the batch edit: ${(err as Error).message}`)
+      }
+    }
+    timer = setTimeout(check, pollMs)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [batchId, pollMs, reload])
+
+  const shown = useMemo(() => {
+    if (!search) return photos ?? []
+    // Keep the search's order, with each photo as it is now (marks change).
+    const latest = new Map((photos ?? []).map((p) => [p.id, p]))
+    return search.photos.map((p) => latest.get(p.id) ?? p)
+  }, [photos, search])
+  const order = useMemo(() => shown.map((p) => p.id), [shown])
+  // Photos that left (deleted, or filtered out) drop out of the selection.
+  const selection = keepOnly(picked, order)
+  const chosen = selectedIds(selection, order)
+  const focused =
+    chosen.length === 1 ? (shown.find((p) => p.id === chosen[0]) ?? null) : null
+
+  const select = useCallback(
+    (id: string, keys: ClickKeys) =>
+      setSelection((sel) => clickSelect(sel, order, id, keys)),
+    [order],
+  )
+
+  const lookAt = (id: string) => {
+    setSelection((sel) => clickSelect(sel, order, id))
+    setView('loupe')
+  }
+
+  /** Run a change, then show the library as it is after it. */
+  async function change(what: string, run: () => Promise<unknown>) {
+    try {
+      await run()
+      reload()
+    } catch (err) {
+      setError(`Could not ${what}: ${(err as Error).message}`)
+    }
+  }
+
+  const mark = (marks: Omit<Marks, 'ids'>) => {
+    if (chosen.length)
+      void change('mark the photos', () =>
+        markPhotos({ ...marks, ids: chosen }),
+      )
+  }
+
+  async function runSearch(query: string) {
+    setSection('photos')
+    setSearching(true)
+    try {
+      setSearch(await searchLibrary(query, filter.album ?? null))
+      setError(null)
+    } catch (err) {
+      setError(`Could not search: ${(err as Error).message}`)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  async function pickBest() {
+    const from = chosen.length > 1 ? chosen : order
+    const answer = window.prompt(
+      `Pick the best of the ${from.length} ${chosen.length > 1 ? 'selected' : 'shown'} photos. How many?`,
+      String(Math.min(30, from.length)),
+    )
+    const count = Number.parseInt(answer ?? '', 10)
+    if (!count || count < 1) return
+    setCulling(true)
+    try {
+      setPicks(
+        await cullPhotos({
+          count: Math.min(count, 500),
+          ids: from,
+          explain: true,
+        }),
+      )
+      setSection('picks')
+      setError(null)
+    } catch (err) {
+      setError(`Could not pick the best: ${(err as Error).message}`)
+    } finally {
+      setCulling(false)
+    }
+  }
+
+  const pickedIds = picks?.picks.map((p) => p.photo.id) ?? []
+  // The picks with each photo as it is now (flagging them changes their badges).
+  const latestPicks = useMemo(() => {
+    if (!picks) return null
+    const latest = new Map((photos ?? []).map((p) => [p.id, p]))
+    return {
+      ...picks,
+      picks: picks.picks.map((pick) => ({
+        ...pick,
+        photo: latest.get(pick.photo.id) ?? pick.photo,
+      })),
+    }
+  }, [picks, photos])
+
+  function albumOfPicks() {
+    const name = window.prompt(
+      `Name the album for the ${pickedIds.length} best shots:`,
+      'Best shots',
+    )
+    if (name?.trim())
+      void change('make the album', () => createAlbum(name.trim(), pickedIds))
+  }
+
+  async function editTogether(request: BatchRequest) {
+    setBatching(null)
+    try {
+      setBatch(await startBatch(request))
+      setError(null)
+    } catch (err) {
+      setError(`Could not edit the photos: ${(err as Error).message}`)
+    }
+  }
+
+  async function download(ids: string[]) {
+    setExporting(ids.length)
+    try {
+      save(
+        await exportPhotos(ids, {
+          format: 'jpeg',
+          quality: 92,
+          keep_location: false,
+          upscale: 1,
+        }),
+      )
+    } catch (err) {
+      setError(`Could not download: ${(err as Error).message}`)
+    } finally {
+      setExporting(0)
+    }
+  }
+
+  const showFilter = (next: PhotoFilter) => {
+    setSection('photos')
+    setSearch(null)
+    setFilter(next)
+  }
+
+  function newAlbum() {
+    const name = window.prompt(
+      chosen.length
+        ? `Name the new album for the ${chosen.length} selected photo${chosen.length === 1 ? '' : 's'}:`
+        : 'Name the new album:',
+    )
+    if (name?.trim())
+      void change('make the album', () => createAlbum(name.trim(), chosen))
+  }
+
+  function rename(album: Album) {
+    const name = window.prompt('Rename the album:', album.name)
+    if (name?.trim() && name.trim() !== album.name)
+      void change('rename the album', () => renameAlbum(album.id, name.trim()))
+  }
+
+  function dropAlbum(album: Album) {
+    if (
+      !window.confirm(
+        `Delete the album “${album.name}”? Its photos stay in the library.`,
+      )
+    )
+      return
+    setFilter({})
+    void change('delete the album', () => deleteAlbum(album.id))
+  }
+
+  function turnFaces(on: boolean) {
+    if (
+      !on &&
+      !window.confirm(
+        'Turn off people albums? Every face and name found so far is forgotten.',
+      )
+    )
+      return
+    if (!on && filter.people?.length) setFilter({})
+    void change(on ? 'turn on people albums' : 'turn off people albums', () =>
+      changeLibrarySettings({ faces: on }),
+    )
+  }
+
+  function namePerson(person: Person) {
+    const name = window.prompt('Who is this?', person.name ?? '')
+    if (name !== null && name.trim() !== (person.name ?? ''))
+      void change('name the person', () =>
+        renamePerson(person.id, name.trim() || null),
+      )
+  }
+
+  function mergePerson(person: Person, into: string) {
+    setFilter({ people: [into] })
+    void change('merge the people', () => mergePeople(person.id, into))
+  }
+
+  function forget(person: Person) {
+    if (
+      !window.confirm(
+        `Forget ${person.name ?? 'this person'}? Their photos stay; their faces are no longer grouped.`,
+      )
+    )
+      return
+    setFilter({})
+    void change('forget the person', () => forgetPerson(person.id))
+  }
+
+  const correctFace = (face: Face, person: string | null) =>
+    void change('change who is in the photo', () => changeFace(face.id, person))
+
+  async function remove(ids: string[]) {
+    if (ids.length === 0) return
+    const what = ids.length === 1 ? 'this photo' : `these ${ids.length} photos`
+    if (
+      !window.confirm(`Delete ${what} and their edits? This cannot be undone.`)
+    )
+      return
+    try {
+      await removePhotos(ids)
+      reload()
+    } catch (err) {
+      setError(`Could not delete: ${(err as Error).message}`)
+    }
+  }
+
+  // Keyboard: arrows move, Enter looks closer, Escape steps back.
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {})
+  const onKey = (e: KeyboardEvent) => {
+    if (typing(e) || e.altKey) return
+    const step =
+      view === 'grid'
+        ? columns(main.current?.querySelector('.photo-grid') ?? null)
+        : 1
+    const moves: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -step,
+      ArrowDown: step,
+    }
+    if (e.key in moves && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault()
+      setSelection((sel) => moveFocus(sel, order, moves[e.key], e.shiftKey))
+    } else if (e.key === 'Enter' && selection.focus) {
+      e.preventDefault()
+      if (view === 'grid') setView('loupe')
+      else onEdit(selection.focus)
+    } else if (e.key === 'Escape' && view === 'loupe') {
+      setView('grid')
+    } else if (e.key === 'a' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      setSelection((sel) => selectAll(order, sel))
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault()
+      void remove(chosen)
+    } else if (e.key.toLowerCase() in MARK_KEYS && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault()
+      mark(MARK_KEYS[e.key.toLowerCase()])
+    }
+  }
+  useEffect(() => {
+    keys.current = onKey
+  })
+  useEffect(() => {
+    const listen = (e: KeyboardEvent) => keys.current(e)
+    window.addEventListener('keydown', listen)
+    return () => window.removeEventListener('keydown', listen)
+  }, [])
+
+  const [dragging, setDragging] = useState(false)
+  useDropAnywhere(setDragging, (files, transfer) => {
+    void droppedFiles(transfer).then((all) =>
+      importer.start(all.length ? all : Array.from(files)),
+    )
+  })
+
+  const importing = importText(importer.progress)
+  const batchText = !batch
+    ? null
+    : batch.state === 'running'
+      ? `Editing ${batch.done} of ${batch.total} photos${batch.current ? ` (${batch.current})` : ''}…`
+      : batch.state === 'failed'
+        ? `The batch edit stopped: ${batch.message ?? 'something went wrong'}.`
+        : `Edited ${batch.total - batch.failed.length} of ${batch.total} photos together.${batch.message ? ` ${batch.message}` : ''}${batch.failed.length ? ` ${batch.failed.length} could not be edited.` : ''}`
+  const exportText =
+    exporting > 0
+      ? `Preparing ${exporting} photo${exporting === 1 ? '' : 's'} to download…`
+      : null
+  const indexing =
+    status && status.pending > 0
+      ? `Indexing ${status.pending} of ${status.total} photos${status.current ? ` (${status.current})` : ''}…`
+      : null
+
+  return (
+    <main className={`library${dragging ? ' dragging' : ''}`}>
+      <LibrarySidebar
+        albums={albums}
+        filter={section === 'photos' ? filter : null}
+        onFilter={showFilter}
+        duplicates={section === 'duplicates'}
+        onDuplicates={() => {
+          setSearch(null)
+          setSection('duplicates')
+        }}
+        onNewAlbum={newAlbum}
+        onRenameAlbum={rename}
+        onDeleteAlbum={dropAlbum}
+      >
+        <PeopleSection
+          on={facesOn}
+          people={people}
+          filter={section === 'photos' ? filter : {}}
+          onFilter={showFilter}
+          onTurnOn={() => turnFaces(true)}
+          onTurnOff={() => turnFaces(false)}
+          onRename={namePerson}
+          onMerge={mergePerson}
+          onForget={forget}
+        />
+      </LibrarySidebar>
+      <section className="library-main" ref={main}>
+        <div className="library-toolbar">
+          <ImportButtons
+            onImport={(files) => void importer.start(files)}
+            busy={importer.progress.running}
+          />
+          <SearchBar onSearch={(q) => void runSearch(q)} busy={searching} />
+          <button
+            type="button"
+            disabled={culling || shown.length === 0}
+            onClick={() => void pickBest()}
+            title="Pick the best shot of each moment, judged on sharpness, exposure, closed eyes, and appeal"
+          >
+            {culling ? 'Picking…' : 'Pick the best…'}
+          </button>
+          <span className="library-count">
+            {photos === null
+              ? 'Loading…'
+              : `${shown.length} photo${shown.length === 1 ? '' : 's'}`}
+            {chosen.length > 1 && `, ${chosen.length} selected`}
+          </span>
+          <span className="spacer" />
+          <div className="segmented" role="group" aria-label="View">
+            <button
+              type="button"
+              aria-pressed={view === 'grid'}
+              onClick={() => setView('grid')}
+            >
+              Grid
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === 'loupe'}
+              onClick={() => setView('loupe')}
+              disabled={shown.length === 0}
+            >
+              Filmstrip
+            </button>
+          </div>
+          <button
+            type="button"
+            className="primary"
+            disabled={!selection.focus}
+            onClick={() => selection.focus && onEdit(selection.focus)}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length < 2 || batch?.state === 'running'}
+            onClick={() =>
+              setBatching(shown.filter((p) => selection.ids.has(p.id)))
+            }
+            title="Give the selected photos one look, evened out to match"
+          >
+            Edit together…
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length === 0 || exporting > 0}
+            onClick={() => void download(chosen)}
+            title="Download the selected photos with their edits, at full size, in a zip file"
+          >
+            Download
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length === 0}
+            onClick={() => void remove(chosen)}
+            title="Delete the selected photos and their edits"
+          >
+            Delete
+          </button>
+        </div>
+        {section === 'photos' &&
+          (search ? (
+            <p className="search-summary" role="status">
+              {search.photos.length} photo
+              {search.photos.length === 1 ? '' : 's'}: {search.summary}
+              {search.source === 'built-in' && ' (read without Claude)'}
+              {search.picked && <> {search.picked}</>}
+              <button
+                type="button"
+                className="link"
+                onClick={() => setSearch(null)}
+              >
+                Clear search
+              </button>
+            </p>
+          ) : (
+            <FilterBar
+              filter={filter}
+              onFilter={setFilter}
+              facets={facets}
+              people={people}
+            />
+          ))}
+        {(importing || indexing || error || batchText || exportText) && (
+          <p className="library-status" role="status">
+            {error && <span className="error">{error} </span>}
+            {[batchText, exportText, importing, indexing]
+              .filter(Boolean)
+              .join(' ')}
+            {batch && batch.state !== 'running' && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => setBatch(null)}
+              >
+                OK
+              </button>
+            )}
+            {importer.progress.total > 0 && !importer.progress.running && (
+              <button type="button" className="link" onClick={importer.dismiss}>
+                Dismiss
+              </button>
+            )}
+          </p>
+        )}
+        {section === 'picks' && latestPicks ? (
+          <PicksView
+            result={latestPicks}
+            onFlag={() =>
+              void change('flag the picks', () =>
+                markPhotos({ ids: pickedIds, flag: 'picked' }),
+              )
+            }
+            onAlbum={albumOfPicks}
+            onEditTogether={
+              batch?.state === 'running'
+                ? undefined
+                : () => setBatching(latestPicks.picks.map((p) => p.photo))
+            }
+            onDownload={
+              exporting > 0 ? undefined : () => void download(pickedIds)
+            }
+            onEdit={onEdit}
+            onClose={() => setSection('photos')}
+          />
+        ) : section === 'duplicates' ? (
+          <DuplicatesView
+            version={version}
+            onChanged={reload}
+            onError={setError}
+          />
+        ) : photos !== null && shown.length === 0 ? (
+          search || Object.keys(filterQuery(filter)).length > 0 ? (
+            <div className="library-empty">
+              <h2>No photos here</h2>
+              <p>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => showFilter({})}
+                >
+                  Show all photos
+                </button>
+              </p>
+            </div>
+          ) : (
+            <div className="library-empty">
+              <h2>Your library is empty</h2>
+              <p>
+                Import a folder or a handful of photos, or drop them anywhere
+                here.
+              </p>
+            </div>
+          )
+        ) : view === 'grid' ? (
+          <PhotoGrid
+            photos={shown}
+            selection={selection}
+            onSelect={select}
+            onOpen={lookAt}
+            badges={badges}
+          />
+        ) : (
+          <Loupe
+            photos={shown}
+            selection={selection}
+            onSelect={select}
+            onEdit={onEdit}
+            badges={badges}
+          />
+        )}
+      </section>
+      <PhotoInfo
+        photos={shown.filter((p) => selection.ids.has(p.id))}
+        albums={albums}
+        onMark={mark}
+        onAddToAlbum={(id) =>
+          void change('add to the album', () => addToAlbum(id, chosen))
+        }
+        onRemoveFromAlbum={(id) =>
+          void change('take out of the album', () =>
+            removeFromAlbum(id, chosen),
+          )
+        }
+      >
+        <TagEditor
+          tags={focused?.tags ?? []}
+          onAdd={(tag) =>
+            void change('add the tag', () => changeTags(chosen, { add: [tag] }))
+          }
+          onRemove={(tag) =>
+            void change('remove the tag', () =>
+              changeTags(chosen, { remove: [tag] }),
+            )
+          }
+          onShow={(tag) => showFilter({ tags: [tag] })}
+        />
+        {focused && facesOn && (
+          <PhotoPeople
+            photoId={focused.id}
+            version={version}
+            people={people}
+            onChange={correctFace}
+          />
+        )}
+        {focused && <PhotoDetails photo={focused} />}
+      </PhotoInfo>
+      {batching && (
+        <BatchDialog
+          photos={batching}
+          onStart={(request) => void editTogether(request)}
+          onClose={() => setBatching(null)}
+        />
+      )}
+    </main>
+  )
+}

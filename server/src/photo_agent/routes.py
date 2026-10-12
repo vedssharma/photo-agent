@@ -51,6 +51,8 @@ from photo_agent.diagnostics import measure
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import EditState, Layer, new_layer_id
+from photo_agent.library import Library
+from photo_agent.library.indexer import IndexingMode
 from photo_agent.operations import MAX_OPTIONS, GenerativeBase, MatchReference
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
@@ -97,6 +99,22 @@ def get_store(settings: Annotated[Settings, Depends(get_settings)]) -> DocumentS
 
 
 Store = Annotated[DocumentStore, Depends(get_store)]
+
+
+@lru_cache
+def _library_for(
+    data_dir: Path, store: DocumentStore, worker: ModelWorker, indexing: IndexingMode
+) -> Library:
+    return Library(data_dir, store, worker, previews, indexing)
+
+
+def get_library(settings: Annotated[Settings, Depends(get_settings)]) -> Library:
+    return _library_for(
+        settings.data_dir, get_store(settings), get_worker(settings), settings.library_indexing
+    )
+
+
+LibraryDep = Annotated[Library, Depends(get_library)]
 
 
 @lru_cache
@@ -150,8 +168,8 @@ def load(store: DocumentStore, doc_id: str) -> Document:
     status_code=status.HTTP_201_CREATED,
     responses={413: {"description": "File too large"}, 415: {"description": "Not a photo"}},
 )
-async def create_document(file: UploadFile, store: Store) -> DocumentView:
-    """Upload a JPEG, PNG, or HEIC photo to start editing it."""
+async def create_document(file: UploadFile, store: Store, library: LibraryDep) -> DocumentView:
+    """Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too."""
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Photos up to 64 MB are supported.")
@@ -159,6 +177,8 @@ async def create_document(file: UploadFile, store: Store) -> DocumentView:
         doc = store.create(file.filename or "photo", data)
     except imaging.UnsupportedImageError as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from None
+    library.add(doc, data)
+    library.indexer.kick()
     return DocumentView.of(doc)
 
 
@@ -173,6 +193,7 @@ async def create_document(file: UploadFile, store: Store) -> DocumentView:
 )
 async def open_project(
     store: Store,
+    library: LibraryDep,
     file: UploadFile | None = None,
     original: UploadFile | None = None,
     graph: Annotated[str | None, Form()] = None,
@@ -195,6 +216,8 @@ async def open_project(
         doc = store.create(edits.filename, source, edits)
     except (projects.ProjectError, MismatchError, imaging.UnsupportedImageError) as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from None
+    library.add(doc, source)
+    library.indexer.kick()
     return DocumentView.of(doc)
 
 
