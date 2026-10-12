@@ -8,6 +8,8 @@ export type Skipped = components['schemas']['Skipped']
 export type IndexStatus = components['schemas']['IndexStatus']
 export type Album = components['schemas']['Album']
 export type Marks = components['schemas']['Marks']
+export type Facets = components['schemas']['Facets']
+export type Facet = components['schemas']['Facet']
 export type Flag = LibraryPhoto['flag']
 export type Label = NonNullable<LibraryPhoto['label']>
 export type PhotoFilter = NonNullable<
@@ -92,6 +94,12 @@ export async function markPhotos(marks: Marks): Promise<LibraryPhoto[]> {
   )
   if (!data) throw new ApiError(detail(error, response.status))
   return data.photos
+}
+
+export async function fetchFacets(): Promise<Facets> {
+  const { data, error, response } = await api.GET('/api/library/facets')
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
 }
 
 export async function listAlbums(): Promise<Album[]> {

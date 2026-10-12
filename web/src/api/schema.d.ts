@@ -734,6 +734,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Facets
+         * @description The cameras, places, and years in the library, with how many photos each has.
+         */
+        get: operations["getFacets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/photos/{photo_id}": {
         parameters: {
             query?: never;
@@ -1617,6 +1637,24 @@ export interface components {
              */
             stops: number;
         };
+        /** Facet */
+        Facet: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+        };
+        /** Facets */
+        Facets: {
+            /** Cameras */
+            cameras: components["schemas"]["Facet"][];
+            /** Places */
+            places: components["schemas"]["Facet"][];
+            /** Years */
+            years: components["schemas"]["Facet"][];
+        };
         /**
          * Flip
          * @description Mirror the photo.
@@ -1961,6 +1999,38 @@ export interface components {
              * @description Ids of albums it is in.
              */
             albums?: string[];
+            /**
+             * Taken At
+             * @description When it was taken, in the camera's local time, if known.
+             */
+            taken_at?: string | null;
+            /** Camera */
+            camera?: string | null;
+            /** Lens */
+            lens?: string | null;
+            /** Iso */
+            iso?: number | null;
+            /**
+             * Exposure Time
+             * @description Seconds.
+             */
+            exposure_time?: number | null;
+            /** F Number */
+            f_number?: number | null;
+            /**
+             * Focal Length
+             * @description Millimetres.
+             */
+            focal_length?: number | null;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /**
+             * Place
+             * @description The place it was taken (see facets).
+             */
+            place?: string | null;
         };
         /**
          * LinearGradientMask
@@ -4482,6 +4552,18 @@ export interface operations {
                 flag?: ("picked" | "rejected" | "none") | null;
                 /** @description Only photos with this color label. */
                 label?: ("red" | "yellow" | "green" | "blue" | "purple") | null;
+                /** @description Only photos taken on or after this day. */
+                taken_after?: string | null;
+                /** @description Only photos taken on or before this day. */
+                taken_before?: string | null;
+                /** @description Only photos from this camera (see facets). */
+                camera?: string | null;
+                /** @description Only photos from this place (see facets). */
+                place?: string | null;
+                /** @description Only photos with (or without) GPS. */
+                has_location?: boolean | null;
+                /** @description Newest first by when they were taken (or imported). */
+                sort?: "taken" | "imported";
             };
             header?: never;
             path?: never;
@@ -4545,6 +4627,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getFacets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Facets"];
                 };
             };
         };

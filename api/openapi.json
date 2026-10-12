@@ -1819,6 +1819,114 @@
               "title": "Label"
             },
             "description": "Only photos with this color label."
+          },
+          {
+            "name": "taken_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos taken on or after this day.",
+              "title": "Taken After"
+            },
+            "description": "Only photos taken on or after this day."
+          },
+          {
+            "name": "taken_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos taken on or before this day.",
+              "title": "Taken Before"
+            },
+            "description": "Only photos taken on or before this day."
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos from this camera (see facets).",
+              "title": "Camera"
+            },
+            "description": "Only photos from this camera (see facets)."
+          },
+          {
+            "name": "place",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos from this place (see facets).",
+              "title": "Place"
+            },
+            "description": "Only photos from this place (see facets)."
+          },
+          {
+            "name": "has_location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only photos with (or without) GPS.",
+              "title": "Has Location"
+            },
+            "description": "Only photos with (or without) GPS."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "taken",
+                "imported"
+              ],
+              "type": "string",
+              "description": "Newest first by when they were taken (or imported).",
+              "default": "taken",
+              "title": "Sort"
+            },
+            "description": "Newest first by when they were taken (or imported)."
           }
         ],
         "responses": {
@@ -1842,6 +1950,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/facets": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Facets",
+        "description": "The cameras, places, and years in the library, with how many photos each has.",
+        "operationId": "getFacets",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Facets"
                 }
               }
             }
@@ -3619,6 +3749,61 @@
         "title": "Exposure",
         "description": "Brighten or darken the whole photo, like changing the camera exposure."
       },
+      "Facet": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
+        "title": "Facet"
+      },
+      "Facets": {
+        "properties": {
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Cameras"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Places"
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Years"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cameras",
+          "places",
+          "years"
+        ],
+        "title": "Facets"
+      },
       "Flip": {
         "properties": {
           "id": {
@@ -4359,6 +4544,121 @@
             "type": "array",
             "title": "Albums",
             "description": "Ids of albums it is in."
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At",
+            "description": "When it was taken, in the camera's local time, if known."
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "iso": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iso"
+          },
+          "exposure_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure Time",
+            "description": "Seconds."
+          },
+          "f_number": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F Number"
+          },
+          "focal_length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Length",
+            "description": "Millimetres."
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place",
+            "description": "The place it was taken (see facets)."
           }
         },
         "type": "object",

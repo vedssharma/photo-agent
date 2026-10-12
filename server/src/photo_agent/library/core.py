@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from photo_agent import imaging
 from photo_agent.graph import Document
 from photo_agent.library.db import LibraryDB, Row, placeholders
-from photo_agent.library.filters import Flag, Label, PhotoFilter, where
+from photo_agent.library.filters import Flag, Label, PhotoFilter, order_by, where
 from photo_agent.library.indexer import Indexer, IndexingMode
 from photo_agent.render import RenderCache
 from photo_agent.store import DocumentNotFoundError, DocumentStore
@@ -50,6 +50,18 @@ class LibraryPhoto(BaseModel):
     flag: Flag = "none"
     label: Label | None = None
     albums: list[str] = Field(default_factory=list, description="Ids of albums it is in.")
+    taken_at: datetime | None = Field(
+        None, description="When it was taken, in the camera's local time, if known."
+    )
+    camera: str | None = None
+    lens: str | None = None
+    iso: int | None = None
+    exposure_time: float | None = Field(None, description="Seconds.")
+    f_number: float | None = None
+    focal_length: float | None = Field(None, description="Millimetres.")
+    latitude: float | None = None
+    longitude: float | None = None
+    place: str | None = Field(None, description="The place it was taken (see facets).")
 
 
 class Skipped(BaseModel):
@@ -188,10 +200,10 @@ class Library:
 
     def photos(self, f: PhotoFilter | None = None) -> list[LibraryPhoto]:
         """The photos a filter lets through (all of them by default), newest import first."""
-        clause, params = where(f or PhotoFilter())
+        f = f or PhotoFilter()
+        clause, params = where(f)
         rows = self.db.all(
-            f"SELECT p.* FROM photos p WHERE {clause} ORDER BY p.imported_at DESC, p.id DESC",
-            params,
+            f"SELECT p.* FROM photos p WHERE {clause} ORDER BY {order_by(f)}", params
         )
         return self._with_albums([photo_of(row) for row in rows])
 
@@ -252,4 +264,14 @@ def photo_of(row: Row) -> LibraryPhoto:
         rating=row["rating"],
         flag=row["flag"],
         label=row["label"],
+        taken_at=datetime.fromisoformat(row["taken_at"]) if row["taken_at"] else None,
+        camera=row["camera"],
+        lens=row["lens"],
+        iso=row["iso"],
+        exposure_time=row["exposure_time"],
+        f_number=row["f_number"],
+        focal_length=row["focal_length"],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
+        place=row["place"],
     )

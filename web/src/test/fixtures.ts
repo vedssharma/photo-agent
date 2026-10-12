@@ -164,6 +164,8 @@ export function libraryRoutes(
   return {
     'GET /api/library/photos': () => Response.json(photos()),
     'GET /api/library/albums': () => Response.json([]),
+    'GET /api/library/facets': () =>
+      Response.json({ cameras: [], places: [], years: [] }),
     'GET /api/library/status': idle,
   }
 }

@@ -18,6 +18,7 @@ from photo_agent.library import (
     Skipped,
     organize,
 )
+from photo_agent.library.facets import Facets, facets
 from photo_agent.library.filters import PhotoFilter
 from photo_agent.library.indexer import IndexStatus
 from photo_agent.routes import MAX_UPLOAD_BYTES, LibraryDep
@@ -77,6 +78,12 @@ def list_photos(
 ) -> list[LibraryPhoto]:
     """The library's photos, newest import first, narrowed down by any filters given."""
     return library.photos(filters)
+
+
+@router.get("/facets", operation_id="getFacets")
+def get_facets(library: LibraryDep) -> Facets:
+    """The cameras, places, and years in the library, with how many photos each has."""
+    return facets(library.db)
 
 
 @router.get(

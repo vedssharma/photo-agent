@@ -63,6 +63,20 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX album_photos_photo ON album_photos (photo_id);
     """,
+    # 3: metadata read from EXIF.
+    """
+    ALTER TABLE photos ADD COLUMN taken_at TEXT;
+    ALTER TABLE photos ADD COLUMN camera TEXT;
+    ALTER TABLE photos ADD COLUMN lens TEXT;
+    ALTER TABLE photos ADD COLUMN iso INTEGER;
+    ALTER TABLE photos ADD COLUMN exposure_time REAL;
+    ALTER TABLE photos ADD COLUMN f_number REAL;
+    ALTER TABLE photos ADD COLUMN focal_length REAL;
+    ALTER TABLE photos ADD COLUMN latitude REAL;
+    ALTER TABLE photos ADD COLUMN longitude REAL;
+    ALTER TABLE photos ADD COLUMN place TEXT;
+    CREATE INDEX photos_taken ON photos (taken_at);
+    """,
 ]
 
 Row = sqlite3.Row

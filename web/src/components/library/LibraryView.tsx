@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   type Album,
+  type Facets,
   type IndexStatus,
   type Label,
   type LibraryPhoto,
@@ -10,6 +11,7 @@ import {
   addToAlbum,
   createAlbum,
   deleteAlbum,
+  fetchFacets,
   filterQuery,
   libraryStatus,
   listAlbums,
@@ -38,6 +40,7 @@ import { ImportButtons } from './ImportButtons'
 import { LibrarySidebar } from './LibrarySidebar'
 import { Loupe } from './Loupe'
 import { PhotoGrid } from './PhotoGrid'
+import { PhotoDetails } from './PhotoDetails'
 import { PhotoInfo } from './PhotoInfo'
 
 /** Keys that mark the selection, as in other photo apps. */
@@ -98,6 +101,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [status, setStatus] = useState<IndexStatus | null>(null)
   const [filter, setFilter] = useState<PhotoFilter>({})
   const [albums, setAlbums] = useState<Album[]>([])
+  const [facets, setFacets] = useState<Facets | null>(null)
   const main = useRef<HTMLDivElement>(null)
 
   // Bumped to fetch the photo list again.
@@ -106,11 +110,12 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
 
   useEffect(() => {
     let live = true
-    Promise.all([listPhotos(filter), listAlbums()]).then(
-      ([found, albumList]) => {
+    Promise.all([listPhotos(filter), listAlbums(), fetchFacets()]).then(
+      ([found, albumList, facetList]) => {
         if (!live) return
         setPhotos(found)
         setAlbums(albumList)
+        setFacets(facetList)
         setError(null)
       },
       (err: Error) => {
@@ -155,6 +160,8 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   // Photos that left (deleted, or filtered out) drop out of the selection.
   const selection = keepOnly(picked, order)
   const chosen = selectedIds(selection, order)
+  const focused =
+    chosen.length === 1 ? (shown.find((p) => p.id === chosen[0]) ?? null) : null
 
   const select = useCallback(
     (id: string, keys: ClickKeys) =>
@@ -339,7 +346,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             Delete
           </button>
         </div>
-        <FilterBar filter={filter} onFilter={setFilter} />
+        <FilterBar filter={filter} onFilter={setFilter} facets={facets} />
         {(importing || indexing || error) && (
           <p className="library-status" role="status">
             {error && <span className="error">{error} </span>}
@@ -406,7 +413,9 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             removeFromAlbum(id, chosen),
           )
         }
-      />
+      >
+        {focused && <PhotoDetails photo={focused} />}
+      </PhotoInfo>
     </main>
   )
 }

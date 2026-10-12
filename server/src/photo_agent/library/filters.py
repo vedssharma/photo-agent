@@ -1,7 +1,8 @@
-"""Narrowing the library down: by album, rating, flag, and color label."""
+"""Narrowing the library down: by album, rating, flag, color label, date, camera, and place."""
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -17,6 +18,14 @@ class PhotoFilter(BaseModel):
     min_rating: int = Field(0, ge=0, le=5, description="Only photos with at least this many stars.")
     flag: Flag | None = Field(None, description="Only picked, rejected, or unflagged photos.")
     label: Label | None = Field(None, description="Only photos with this color label.")
+    taken_after: date | None = Field(None, description="Only photos taken on or after this day.")
+    taken_before: date | None = Field(None, description="Only photos taken on or before this day.")
+    camera: str | None = Field(None, description="Only photos from this camera (see facets).")
+    place: str | None = Field(None, description="Only photos from this place (see facets).")
+    has_location: bool | None = Field(None, description="Only photos with (or without) GPS.")
+    sort: Literal["taken", "imported"] = Field(
+        "taken", description="Newest first by when they were taken (or imported)."
+    )
 
 
 def where(f: PhotoFilter) -> tuple[str, list[Any]]:
@@ -35,4 +44,25 @@ def where(f: PhotoFilter) -> tuple[str, list[Any]]:
     if f.label:
         clauses.append("p.label = ?")
         params.append(f.label)
+    if f.taken_after:
+        clauses.append("p.taken_at >= ?")
+        params.append(f.taken_after.isoformat())
+    if f.taken_before:
+        clauses.append("p.taken_at < ?")
+        params.append((f.taken_before + timedelta(days=1)).isoformat())
+    if f.camera:
+        clauses.append("p.camera = ?")
+        params.append(f.camera)
+    if f.place:
+        clauses.append("p.place = ?")
+        params.append(f.place)
+    if f.has_location is not None:
+        clauses.append("p.place IS NOT NULL" if f.has_location else "p.place IS NULL")
     return (" AND ".join(clauses) or "1"), params
+
+
+def order_by(f: PhotoFilter) -> str:
+    if f.sort == "imported":
+        return "p.imported_at DESC, p.id DESC"
+    # Photos without a capture time go by when they were imported.
+    return "COALESCE(p.taken_at, p.imported_at) DESC, p.id DESC"

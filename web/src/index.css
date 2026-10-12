@@ -1513,3 +1513,42 @@ button.label-dot.on {
   background: var(--panel-2);
   font-size: 0.85rem;
 }
+
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.date-field input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.3rem;
+  color-scheme: dark;
+}
+
+.info-details dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.6rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.info-details dt {
+  color: var(--muted);
+}
+
+.info-details dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.info-details a {
+  color: var(--accent);
+}
