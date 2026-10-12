@@ -1123,6 +1123,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Photos
+         * @description Merge photos into a new one in the library: an HDR from exposure brackets, or a
+         *     panorama. It is saved as a 16-bit TIFF (so later edits have every bit to work with),
+         *     and the originals are left as they were.
+         */
+        post: operations["mergePhotos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/export": {
         parameters: {
             query?: never;
@@ -2838,6 +2860,20 @@ export interface components {
              * @description The person to keep.
              */
             into: string;
+        };
+        /** MergeRequest */
+        MergeRequest: {
+            /**
+             * Ids
+             * @description The photos to merge, in order (left to right for a panorama).
+             */
+            ids: string[];
+            /**
+             * Kind
+             * @description hdr: blend exposures of one scene into one with detail in the shadows and highlights. panorama: stitch overlapping photos into one wide view.
+             * @enum {string}
+             */
+            kind: "hdr" | "panorama";
         };
         /** NewAlbum */
         NewAlbum: {
@@ -6185,6 +6221,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    mergePhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"];
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The merged photo is already in the library */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The photos cannot be merged that way */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

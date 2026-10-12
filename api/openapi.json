@@ -2885,6 +2885,47 @@
         }
       }
     },
+    "/api/library/merge": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Merge Photos",
+        "description": "Merge photos into a new one in the library: an HDR from exposure brackets, or a\npanorama. It is saved as a 16-bit TIFF (so later edits have every bit to work with),\nand the originals are left as they were.",
+        "operationId": "mergePhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPhoto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "409": {
+            "description": "The merged photo is already in the library"
+          },
+          "422": {
+            "description": "The photos cannot be merged that way"
+          }
+        }
+      }
+    },
     "/api/library/export": {
       "post": {
         "tags": [
@@ -6588,6 +6629,35 @@
           "into"
         ],
         "title": "Merge"
+      },
+      "MergeRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 9,
+            "minItems": 2,
+            "title": "Ids",
+            "description": "The photos to merge, in order (left to right for a panorama)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "hdr",
+              "panorama"
+            ],
+            "title": "Kind",
+            "description": "hdr: blend exposures of one scene into one with detail in the shadows and highlights. panorama: stitch overlapping photos into one wide view."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids",
+          "kind"
+        ],
+        "title": "MergeRequest"
       },
       "NewAlbum": {
         "properties": {

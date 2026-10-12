@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from photo_agent import imaging, recipes
+from photo_agent import imaging, merge, recipes
 from photo_agent.agent import AgentService, ModelClient
 from photo_agent.export import ExportOptions, export_bytes, export_filename
 from photo_agent.library import (
@@ -327,6 +327,50 @@ def get_batch(batch_id: str, library: LibraryDep) -> batch.BatchStatus:
         return library.batches[batch_id]
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such batch.") from None
+
+
+class MergeRequest(BaseModel):
+    ids: list[str] = Field(
+        min_length=2,
+        max_length=merge.MAX_SOURCES,
+        description="The photos to merge, in order (left to right for a panorama).",
+    )
+    kind: merge.MergeKind = Field(
+        description="hdr: blend exposures of one scene into one with detail in the shadows "
+        "and highlights. panorama: stitch overlapping photos into one wide view."
+    )
+
+
+@router.post(
+    "/merge",
+    operation_id="mergePhotos",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"description": "No such photo"},
+        409: {"description": "The merged photo is already in the library"},
+        422: {"description": "The photos cannot be merged that way"},
+    },
+)
+async def merge_photos(body: MergeRequest, library: LibraryDep) -> LibraryPhoto:
+    """Merge photos into a new one in the library: an HDR from exposure brackets, or a
+    panorama. It is saved as a 16-bit TIFF (so later edits have every bit to work with),
+    and the originals are left as they were."""
+    first = _photo(library, body.ids[0])
+    sources = []
+    for photo_id in body.ids:
+        _photo(library, photo_id)
+        sources.append(library.store.original_file(photo_id).read_bytes())
+    try:
+        data, _ = await asyncio.to_thread(merge.merge, body.kind, sources)
+    except merge.MergeError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    stem = first.filename.rsplit(".", 1)[0] or "photo"
+    name = f"{stem}-{'hdr' if body.kind == 'hdr' else 'panorama'}.tif"
+    outcome = await asyncio.to_thread(library.import_file, name, data)
+    if not isinstance(outcome, LibraryPhoto):
+        raise HTTPException(status.HTTP_409_CONFLICT, outcome.reason)
+    await asyncio.to_thread(library.indexer.kick)
+    return outcome
 
 
 class ExportMany(BaseModel):
