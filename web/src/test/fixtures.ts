@@ -167,6 +167,8 @@ export function libraryRoutes(
     'GET /api/library/facets': () =>
       Response.json({ cameras: [], places: [], years: [] }),
     'GET /api/library/status': idle,
+    'GET /api/library/settings': () => Response.json({ faces: false }),
+    'GET /api/library/people': () => Response.json([]),
   }
 }
 

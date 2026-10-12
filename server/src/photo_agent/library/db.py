@@ -93,6 +93,29 @@ MIGRATIONS: list[str] = [
         vector BLOB NOT NULL
     );
     """,
+    # 5: library settings, and faces grouped into people (opt-in).
+    """
+    CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE people (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE faces (
+        id TEXT PRIMARY KEY,
+        photo_id TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+        box TEXT NOT NULL,
+        model TEXT NOT NULL,
+        embedding BLOB NOT NULL,
+        person_id TEXT REFERENCES people (id) ON DELETE SET NULL,
+        assigned TEXT NOT NULL DEFAULT 'auto'
+    );
+    CREATE INDEX faces_photo ON faces (photo_id);
+    CREATE INDEX faces_person ON faces (person_id);
+    """,
 ]
 
 Row = sqlite3.Row

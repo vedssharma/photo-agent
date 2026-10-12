@@ -205,3 +205,84 @@ export function thumbnailUrl(photo: LibraryPhoto): string {
 export function largeUrl(photo: LibraryPhoto): string {
   return `/api/documents/${photo.id}/preview?revision=${photo.revision}`
 }
+
+export type Person = components['schemas']['Person']
+export type Face = components['schemas']['Face']
+export type LibrarySettings = components['schemas']['LibrarySettings']
+
+export async function librarySettings(): Promise<LibrarySettings> {
+  const { data, error, response } = await api.GET('/api/library/settings')
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function changeLibrarySettings(
+  settings: LibrarySettings,
+): Promise<LibrarySettings> {
+  const { data, error, response } = await api.PUT('/api/library/settings', {
+    body: settings,
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function listPeople(): Promise<Person[]> {
+  const { data, error, response } = await api.GET('/api/library/people')
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function renamePerson(
+  id: string,
+  name: string | null,
+): Promise<Person> {
+  const { data, error, response } = await api.PATCH(
+    '/api/library/people/{person_id}',
+    { params: { path: { person_id: id } }, body: { name } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function mergePeople(id: string, into: string): Promise<Person> {
+  const { data, error, response } = await api.POST(
+    '/api/library/people/{person_id}/merge',
+    { params: { path: { person_id: id } }, body: { into } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export async function forgetPerson(id: string): Promise<void> {
+  const { error, response } = await api.DELETE(
+    '/api/library/people/{person_id}',
+    { params: { path: { person_id: id } } },
+  )
+  if (!response.ok) throw new ApiError(detail(error, response.status))
+}
+
+export async function listFaces(photoId: string): Promise<Face[]> {
+  const { data, error, response } = await api.GET(
+    '/api/library/photos/{photo_id}/faces',
+    { params: { path: { photo_id: photoId } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** Say who a face is, or (null) that it is not the person it was grouped with. */
+export async function changeFace(
+  faceId: string,
+  person: string | null,
+): Promise<Face> {
+  const { data, error, response } = await api.POST(
+    '/api/library/faces/{face_id}',
+    { params: { path: { face_id: faceId } }, body: { person } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export function faceUrl(faceId: string): string {
+  return `/api/library/faces/${faceId}/thumbnail`
+}

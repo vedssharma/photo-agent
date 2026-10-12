@@ -1928,6 +1928,21 @@
             "description": "Only photos with every one of these tags."
           },
           {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "description": "Only photos with all these people in.",
+              "title": "People"
+            },
+            "description": "Only photos with all these people in."
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -2534,6 +2549,387 @@
           },
           "404": {
             "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/settings": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Settings",
+        "operationId": "getLibrarySettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Change Settings",
+        "operationId": "changeLibrarySettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibrarySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/people": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List People",
+        "description": "Everyone found in the library's photos: named people first, then by photo count.",
+        "operationId": "listPeople",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Person"
+                  },
+                  "type": "array",
+                  "title": "Response Listpeople"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/people/{person_id}": {
+      "patch": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Rename Person",
+        "operationId": "renamePerson",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Forget Person",
+        "description": "Stop showing this person. Their faces are not grouped again.",
+        "operationId": "forgetPerson",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/people/{person_id}/merge": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Merge People",
+        "description": "The same person found twice: their faces all go to `into`.",
+        "operationId": "mergePeople",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Merge"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/photos/{photo_id}/faces": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Faces",
+        "description": "The faces found in one photo and who each one is.",
+        "operationId": "listFaces",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Face"
+                  },
+                  "title": "Response Listfaces"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/faces/{face_id}": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Change Face",
+        "description": "Say who a face is, or that it is nobody in particular (\"not this person\").",
+        "operationId": "changeFace",
+        "parameters": [
+          {
+            "name": "face_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Face Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaceChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Face"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such face or person"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/faces/{face_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Face Thumbnail",
+        "operationId": "getFaceThumbnail",
+        "parameters": [
+          {
+            "name": "face_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Face Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "No such face"
           },
           "422": {
             "description": "Validation Error",
@@ -3878,6 +4274,72 @@
         "title": "Exposure",
         "description": "Brighten or darken the whole photo, like changing the camera exposure."
       },
+      "Face": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Box",
+            "description": "Left, top, right, bottom, in fractions of the photo."
+          },
+          "person": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person"
+          },
+          "person_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "box",
+          "person"
+        ],
+        "title": "Face"
+      },
+      "FaceChange": {
+        "properties": {
+          "person": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person",
+            "description": "The person this face is, or null for nobody (it is then left alone)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "person"
+        ],
+        "title": "FaceChange"
+      },
       "Facet": {
         "properties": {
           "value": {
@@ -4796,6 +5258,14 @@
             "type": "array",
             "title": "Tags",
             "description": "What is in it, best first."
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "People",
+            "description": "Ids of people in it."
           }
         },
         "type": "object",
@@ -4812,6 +5282,20 @@
         ],
         "title": "LibraryPhoto",
         "description": "What the library shows of one photo."
+      },
+      "LibrarySettings": {
+        "properties": {
+          "faces": {
+            "type": "boolean",
+            "title": "Faces",
+            "description": "People albums: find and group faces, on this computer only. Turning it off forgets every face and person."
+          }
+        },
+        "type": "object",
+        "required": [
+          "faces"
+        ],
+        "title": "LibrarySettings"
       },
       "LinearGradientMask": {
         "properties": {
@@ -5258,6 +5742,20 @@
         "title": "MatchReference",
         "description": "Make the photo's color and tone look like a reference photo the person shared (\"make\nthis look like that one\"): its palette, color cast, brightness, and contrast. Not its\ncontent or framing. Lower color or tone to transfer only one of them."
       },
+      "Merge": {
+        "properties": {
+          "into": {
+            "type": "string",
+            "title": "Into",
+            "description": "The person to keep."
+          }
+        },
+        "type": "object",
+        "required": [
+          "into"
+        ],
+        "title": "Merge"
+      },
       "NewAlbum": {
         "properties": {
           "name": {
@@ -5501,6 +5999,63 @@
           "kind"
         ],
         "title": "ParamSpec"
+      },
+      "Person": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Given by the person using the app; None if unnamed."
+          },
+          "photos": {
+            "type": "integer",
+            "title": "Photos",
+            "description": "How many photos they are in."
+          },
+          "cover": {
+            "type": "string",
+            "title": "Cover",
+            "description": "One of their faces, to show (see the face thumbnail)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "photos",
+          "cover"
+        ],
+        "title": "Person"
+      },
+      "PersonChange": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "A name, or null to clear it."
+          }
+        },
+        "type": "object",
+        "title": "PersonChange"
       },
       "Perspective": {
         "properties": {
@@ -6943,6 +7498,14 @@
             "type": "array",
             "title": "Tags",
             "description": "Tags every photo must have."
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "People",
+            "description": "Named people who must be in it."
           },
           "taken_after": {
             "anyOf": [

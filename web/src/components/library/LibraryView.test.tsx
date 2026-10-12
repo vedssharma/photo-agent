@@ -343,4 +343,98 @@ describe('LibraryView', () => {
       { ids: ['aaaaaaaaaaaa'], add: [], remove: ['beach'] },
     ])
   })
+  it('turns on people albums, names someone, and shows their photos', async () => {
+    let on = false
+    const maya = {
+      id: 'person1',
+      name: null as string | null,
+      photos: 2,
+      cover: 'face1',
+    }
+    const settings = vi.fn()
+    const renamed = vi.fn()
+    const fetchMock = stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'GET /api/library/settings': () => Response.json({ faces: on }),
+      'PUT /api/library/settings': async (req) => {
+        settings(await req.json())
+        on = true
+        return Response.json({ faces: true })
+      },
+      'GET /api/library/people': () => Response.json(on ? [maya] : []),
+      'PATCH /api/library/people/person1': async (req) => {
+        const body = (await req.json()) as { name: string }
+        renamed(body)
+        maya.name = body.name
+        return Response.json(maya)
+      },
+    })
+    vi.stubGlobal(
+      'prompt',
+      vi.fn(() => 'Maya'),
+    )
+    render(<Harness />)
+    await thumbs()
+    const people = screen.getByRole('region', { name: 'People' })
+    expect(
+      within(people).getByText(/on this computer only/),
+    ).toBeInTheDocument()
+    await userEvent.click(
+      within(people).getByRole('button', { name: 'Find people' }),
+    )
+    expect(settings).toHaveBeenCalledWith({ faces: true })
+
+    await userEvent.click(
+      await within(people).findByRole('button', { name: /Unnamed/ }),
+    )
+    await userEvent.click(within(people).getByRole('button', { name: 'Name' }))
+    expect(renamed).toHaveBeenCalledWith({ name: 'Maya' })
+    expect(await screen.findByText('With Maya')).toBeInTheDocument()
+    const urls = fetchMock.mock.calls.map(([r]) => (r as Request).url)
+    expect(
+      urls.some((u) => u.endsWith('/api/library/photos?people=person1')),
+    ).toBe(true)
+  })
+
+  it('says who is in a photo and takes corrections', async () => {
+    const changed = vi.fn()
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'GET /api/library/settings': () => Response.json({ faces: true }),
+      'GET /api/library/people': () =>
+        Response.json([
+          { id: 'person1', name: 'Maya', photos: 2, cover: 'face1' },
+          { id: 'person2', name: null, photos: 3, cover: 'face9' },
+        ]),
+      'GET /api/library/photos/aaaaaaaaaaaa/faces': () =>
+        Response.json([
+          {
+            id: 'face1',
+            box: [0.1, 0.1, 0.3, 0.4],
+            person: 'person1',
+            person_name: 'Maya',
+          },
+        ]),
+      'POST /api/library/faces/face1': async (req) => {
+        changed(await req.json())
+        return Response.json({
+          id: 'face1',
+          box: [0.1, 0.1, 0.3, 0.4],
+          person: null,
+        })
+      },
+    })
+    render(<Harness />)
+    await userEvent.click((await thumbs())[0])
+    const info = screen.getByRole('complementary', { name: 'Photo info' })
+    await userEvent.click(
+      await within(info).findByRole('button', { name: 'This is not Maya' }),
+    )
+    expect(changed).toHaveBeenCalledWith({ person: null })
+    await userEvent.selectOptions(
+      within(info).getByLabelText('Who is this? (Maya)'),
+      'Unnamed',
+    )
+    expect(changed).toHaveBeenLastCalledWith({ person: 'person2' })
+  })
 })

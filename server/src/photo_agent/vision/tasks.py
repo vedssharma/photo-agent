@@ -63,6 +63,7 @@ def _tasks() -> list[Task]:
         # Only a model can put words and photos side by side; without one, search goes by
         # tags alone.
         task("embed_text", "Reading the search", hub.SiglipText()),
+        task("embed_faces", "Finding faces", hub.FaceEmbedder(), Classical(library.faces)),
     ]
 
 

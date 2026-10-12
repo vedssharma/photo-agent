@@ -976,6 +976,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["getLibrarySettings"];
+        /** Change Settings */
+        put: operations["changeLibrarySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List People
+         * @description Everyone found in the library's photos: named people first, then by photo count.
+         */
+        get: operations["listPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/people/{person_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Person
+         * @description Stop showing this person. Their faces are not grouped again.
+         */
+        delete: operations["forgetPerson"];
+        options?: never;
+        head?: never;
+        /** Rename Person */
+        patch: operations["renamePerson"];
+        trace?: never;
+    };
+    "/api/library/people/{person_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge People
+         * @description The same person found twice: their faces all go to `into`.
+         */
+        post: operations["mergePeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/photos/{photo_id}/faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Faces
+         * @description The faces found in one photo and who each one is.
+         */
+        get: operations["listFaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/faces/{face_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Face
+         * @description Say who a face is, or that it is nobody in particular ("not this person").
+         */
+        post: operations["changeFace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/faces/{face_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Face Thumbnail */
+        get: operations["getFaceThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/status": {
         parameters: {
             query?: never;
@@ -1699,6 +1835,28 @@ export interface components {
              */
             stops: number;
         };
+        /** Face */
+        Face: {
+            /** Id */
+            id: string;
+            /**
+             * Box
+             * @description Left, top, right, bottom, in fractions of the photo.
+             */
+            box: number[];
+            /** Person */
+            person: string | null;
+            /** Person Name */
+            person_name?: string | null;
+        };
+        /** FaceChange */
+        FaceChange: {
+            /**
+             * Person
+             * @description The person this face is, or null for nobody (it is then left alone).
+             */
+            person: string | null;
+        };
         /** Facet */
         Facet: {
             /** Value */
@@ -2098,6 +2256,19 @@ export interface components {
              * @description What is in it, best first.
              */
             tags?: string[];
+            /**
+             * People
+             * @description Ids of people in it.
+             */
+            people?: string[];
+        };
+        /** LibrarySettings */
+        LibrarySettings: {
+            /**
+             * Faces
+             * @description People albums: find and group faces, on this computer only. Turning it off forgets every face and person.
+             */
+            faces: boolean;
         };
         /**
          * LinearGradientMask
@@ -2266,6 +2437,14 @@ export interface components {
             /** @description Recorded by the app. */
             stats?: components["schemas"]["ReferenceStats"] | null;
         };
+        /** Merge */
+        Merge: {
+            /**
+             * Into
+             * @description The person to keep.
+             */
+            into: string;
+        };
         /** NewAlbum */
         NewAlbum: {
             /** Name */
@@ -2369,6 +2548,34 @@ export interface components {
             choices?: (string | number)[] | null;
             /** Default */
             default?: unknown;
+        };
+        /** Person */
+        Person: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @description Given by the person using the app; None if unnamed.
+             */
+            name: string | null;
+            /**
+             * Photos
+             * @description How many photos they are in.
+             */
+            photos: number;
+            /**
+             * Cover
+             * @description One of their faces, to show (see the face thumbnail).
+             */
+            cover: string;
+        };
+        /** PersonChange */
+        PersonChange: {
+            /**
+             * Name
+             * @description A name, or null to clear it.
+             */
+            name?: string | null;
         };
         /**
          * Perspective
@@ -3199,6 +3406,11 @@ export interface components {
              * @description Tags every photo must have.
              */
             tags?: string[];
+            /**
+             * People
+             * @description Named people who must be in it.
+             */
+            people?: string[];
             /** Taken After */
             taken_after?: string | null;
             /** Taken Before */
@@ -4709,6 +4921,8 @@ export interface operations {
                 has_location?: boolean | null;
                 /** @description Only photos with every one of these tags. */
                 tags?: string[];
+                /** @description Only photos with all these people in. */
+                people?: string[];
                 /** @description Newest first by when they were taken (or imported). */
                 sort?: "taken" | "imported";
             };
@@ -5224,6 +5438,317 @@ export interface operations {
                 };
             };
             /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLibrarySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySettings"];
+                };
+            };
+        };
+    };
+    changeLibrarySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibrarySettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"][];
+                };
+            };
+        };
+    };
+    forgetPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renamePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            /** @description No such person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mergePeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Merge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            /** @description No such person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listFaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Face"][];
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    changeFace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Face"];
+                };
+            };
+            /** @description No such face or person */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getFaceThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No such face */
             404: {
                 headers: {
                     [name: string]: unknown;

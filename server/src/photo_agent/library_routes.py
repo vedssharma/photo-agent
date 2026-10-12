@@ -16,6 +16,7 @@ from photo_agent.library import (
     LibraryPhoto,
     PhotoNotFoundError,
     Skipped,
+    faces,
     organize,
     tagging,
 )
@@ -224,6 +225,109 @@ async def thumbnail(photo_id: str, library: LibraryDep) -> Response:
     revision) so the browser can keep it until the photo is edited again."""
     _photo(library, photo_id)
     data = await asyncio.to_thread(library.thumbnail, photo_id)
+    return Response(
+        data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"}
+    )
+
+
+class LibrarySettings(BaseModel):
+    faces: bool = Field(
+        description="People albums: find and group faces, on this computer only. Turning it "
+        "off forgets every face and person."
+    )
+
+
+@router.get("/settings", operation_id="getLibrarySettings")
+def get_settings(library: LibraryDep) -> LibrarySettings:
+    return LibrarySettings(faces=faces.enabled(library.db))
+
+
+@router.put("/settings", operation_id="changeLibrarySettings")
+async def change_settings(body: LibrarySettings, library: LibraryDep) -> LibrarySettings:
+    faces.set_enabled(library.db, body.faces)
+    # Either way every photo's index changes: faces to find, or just a new index key.
+    await asyncio.to_thread(library.indexer.kick)
+    return LibrarySettings(faces=faces.enabled(library.db))
+
+
+def _people[R](fn: Callable[[], R]) -> R:
+    try:
+        return fn()
+    except faces.PersonNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such person.") from None
+    except faces.FaceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such face.") from None
+
+
+@router.get("/people", operation_id="listPeople")
+def list_people(library: LibraryDep) -> list[faces.Person]:
+    """Everyone found in the library's photos: named people first, then by photo count."""
+    return faces.people(library.db)
+
+
+@router.patch(
+    "/people/{person_id}",
+    operation_id="renamePerson",
+    responses={404: {"description": "No such person"}},
+)
+def rename_person(person_id: str, body: faces.PersonChange, library: LibraryDep) -> faces.Person:
+    return _people(lambda: faces.rename(library.db, person_id, body))
+
+
+class Merge(BaseModel):
+    into: str = Field(description="The person to keep.")
+
+
+@router.post(
+    "/people/{person_id}/merge",
+    operation_id="mergePeople",
+    responses={404: {"description": "No such person"}},
+)
+def merge_people(person_id: str, body: Merge, library: LibraryDep) -> faces.Person:
+    """The same person found twice: their faces all go to `into`."""
+    return _people(lambda: faces.merge(library.db, person_id, body.into))
+
+
+@router.delete(
+    "/people/{person_id}",
+    operation_id="forgetPerson",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "No such person"}},
+)
+def forget_person(person_id: str, library: LibraryDep) -> None:
+    """Stop showing this person. Their faces are not grouped again."""
+    _people(lambda: faces.forget(library.db, person_id))
+
+
+@router.get(
+    "/photos/{photo_id}/faces",
+    operation_id="listFaces",
+    responses={404: {"description": "No such photo"}},
+)
+def list_faces(photo_id: str, library: LibraryDep) -> list[faces.Face]:
+    """The faces found in one photo and who each one is."""
+    _photo(library, photo_id)
+    return faces.faces_in(library.db, photo_id)
+
+
+@router.post(
+    "/faces/{face_id}",
+    operation_id="changeFace",
+    responses={404: {"description": "No such face or person"}},
+)
+def change_face(face_id: str, body: faces.FaceChange, library: LibraryDep) -> faces.Face:
+    """Say who a face is, or that it is nobody in particular ("not this person")."""
+    return _people(lambda: faces.move_face(library.db, face_id, body))
+
+
+@router.get(
+    "/faces/{face_id}/thumbnail",
+    operation_id="getFaceThumbnail",
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "No such face"}},
+)
+async def face_thumbnail(face_id: str, library: LibraryDep) -> Response:
+    data = await asyncio.to_thread(_people, lambda: faces.face_thumbnail(library, face_id))
     return Response(
         data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"}
     )

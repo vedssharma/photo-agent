@@ -2,8 +2,8 @@
 
 A query is first understood as filters the library already has (tags, a date range, a
 camera, stars, picks) plus any words left over. Claude does the understanding when an API key
-is set (it sees only the query, today's date, and the names of the tags and cameras in the
-library, never the photos or where they were taken); otherwise built-in
+is set (it sees only the query, today's date, and the names of the tags, cameras, and
+people in the library, never the photos, faces, or where they were taken); otherwise built-in
 rules read dates, tags, and a few other phrases.
 
 Left-over words are matched by what the photos look like when the vision model is
@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+from collections.abc import Sequence
 from datetime import date
 from typing import Any, Literal
 
@@ -23,7 +24,7 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from photo_agent.advisor import Advisor, AdvisorError
-from photo_agent.library import dates, tagging
+from photo_agent.library import dates, faces, tagging
 from photo_agent.library.core import Library, LibraryPhoto
 from photo_agent.library.filters import Flag, PhotoFilter
 from photo_agent.library.vocabulary import TAGS, tags_in
@@ -47,6 +48,7 @@ class Understood(BaseModel):
     """What a search was taken to ask for."""
 
     tags: list[str] = Field(default_factory=list, description="Tags every photo must have.")
+    people: list[str] = Field(default_factory=list, description="Named people who must be in it.")
     taken_after: date | None = None
     taken_before: date | None = None
     camera: str | None = None
@@ -72,7 +74,12 @@ class SearchResult(BaseModel):
     photos: list[LibraryPhoto]
 
 
-def understand_built_in(query: str, today: date, cameras: list[str]) -> Understood:
+def understand_built_in(
+    query: str,
+    today: date,
+    cameras: list[str],
+    people: Sequence[str] = (),
+) -> Understood:
     text = f" {query.lower()} "
     out = Understood()
     best = re.search(r"\b(?:best|top)\s+(\d{1,3})\b", text)
@@ -101,6 +108,11 @@ def understand_built_in(query: str, today: date, cameras: list[str]) -> Understo
             out.camera = camera
             text = text.replace(camera.lower(), " ")
             break
+    for person in sorted(people, key=len, reverse=True):
+        pattern = rf"\b{re.escape(person.lower())}(?:'s)?\b"
+        if re.search(pattern, text):
+            out.people.append(person)
+            text = re.sub(pattern, " ", text)
     out.tags, text = tags_in(text)
     out.words = " ".join(w for w in re.findall(r"[\w'&-]+", text) if w not in STOPWORDS)
     return out
@@ -110,6 +122,7 @@ SYSTEM = """You turn a photo library search into filters. Today is {today}.
 
 Use only these tags (map everyday words onto them, e.g. "puppy" -> "dog"): {tags}.
 Cameras in the library: {cameras}.
+People named in the library (only these): {people}.
 
 Dates: a span from taken_after to taken_before (inclusive, YYYY-MM-DD). Seasons are
 meteorological in the northern hemisphere (summer is June 1 to August 31). "Last summer" is
@@ -127,6 +140,7 @@ def _schema() -> dict[str, Any]:
         "type": "object",
         "properties": {
             "tags": {"type": "array", "items": {"type": "string", "enum": list(TAGS)}},
+            "people": {"type": "array", "items": {"type": "string"}},
             "taken_after": nullable_date,
             "taken_before": nullable_date,
             "camera": {"anyOf": [{"type": "string"}, {"type": "null"}]},
@@ -139,6 +153,7 @@ def _schema() -> dict[str, Any]:
         },
         "required": [
             "tags",
+            "people",
             "taken_after",
             "taken_before",
             "camera",
@@ -152,13 +167,14 @@ def _schema() -> dict[str, Any]:
 
 
 async def understand_with_claude(
-    advisor: Advisor, query: str, today: date, cameras: list[str]
+    advisor: Advisor, query: str, today: date, cameras: list[str], people: list[str]
 ) -> Understood:
     answer = await advisor.ask(
         system=SYSTEM.format(
             today=today.isoformat(),
             tags=", ".join(TAGS),
             cameras=", ".join(cameras) or "none",
+            people=", ".join(people) or "none",
         ),
         content=[{"type": "text", "text": f"Search: {query}"}],
         schema=_schema(),
@@ -170,6 +186,7 @@ async def understand_with_claude(
     # Keep to what the library knows; anything else is searched as words.
     unknown = [t for t in found.tags if t not in TAGS]
     found.tags = [t for t in found.tags if t in TAGS]
+    found.people = [p for p in found.people if p in people]
     if found.camera not in cameras:
         found.camera = None
     found.words = " ".join([found.words, *unknown]).strip()
@@ -180,6 +197,8 @@ def describe(u: Understood) -> str:
     parts = []
     if u.tags:
         parts.append("tagged " + _join(u.tags))
+    if u.people:
+        parts.append("with " + _join(u.people))
     if u.taken_after and u.taken_before:
         if u.taken_after == u.taken_before:
             parts.append(f"taken {u.taken_after:%b %-d, %Y}")
@@ -218,22 +237,27 @@ async def search(
         r["camera"]
         for r in library.db.all("SELECT DISTINCT camera FROM photos WHERE camera IS NOT NULL")
     ]
+    named = faces.names(library.db)
+    people = list(named)
     source: Literal["claude", "built-in"] = "built-in"
     understood = None
     if advisor is not None:
         try:
-            understood = await understand_with_claude(advisor, request.query, today, cameras)
+            understood = await understand_with_claude(
+                advisor, request.query, today, cameras, people
+            )
             source = "claude"
         except (AdvisorError, ValueError, KeyError, TypeError) as exc:
             log.warning("Claude could not read the search, using built-in rules: %s", exc)
         except Exception as exc:  # Network trouble: built-in rules still give an answer.
             log.warning("Claude was unreachable for search: %s", exc)
     if understood is None:
-        understood = understand_built_in(request.query, today, cameras)
+        understood = understand_built_in(request.query, today, cameras, people)
 
     f = PhotoFilter(
         album=request.album,
         tags=understood.tags,
+        people=[named[name] for name in understood.people],
         taken_after=understood.taken_after,
         taken_before=understood.taken_before,
         camera=understood.camera,

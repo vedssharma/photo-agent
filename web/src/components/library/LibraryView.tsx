@@ -2,26 +2,35 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   type Album,
+  type Face,
   type Facets,
   type IndexStatus,
   type Label,
   type LibraryPhoto,
   type Marks,
+  type Person,
   type PhotoFilter,
   type SearchResult,
   addToAlbum,
+  changeFace,
+  changeLibrarySettings,
   changeTags,
   createAlbum,
   deleteAlbum,
   fetchFacets,
   filterQuery,
+  forgetPerson,
+  librarySettings,
   libraryStatus,
   listAlbums,
+  listPeople,
   listPhotos,
   markPhotos,
+  mergePeople,
   removeFromAlbum,
   removePhotos,
   renameAlbum,
+  renamePerson,
   searchLibrary,
 } from '../../api/library'
 import { useDropAnywhere } from '../../hooks/useDropAnywhere'
@@ -42,9 +51,11 @@ import { FilterBar } from './FilterBar'
 import { ImportButtons } from './ImportButtons'
 import { LibrarySidebar } from './LibrarySidebar'
 import { Loupe } from './Loupe'
+import { PeopleSection } from './PeopleSection'
 import { PhotoGrid } from './PhotoGrid'
 import { PhotoDetails } from './PhotoDetails'
 import { PhotoInfo } from './PhotoInfo'
+import { PhotoPeople } from './PhotoPeople'
 import { SearchBar } from './SearchBar'
 import { TagEditor } from './TagEditor'
 
@@ -107,6 +118,8 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [filter, setFilter] = useState<PhotoFilter>({})
   const [albums, setAlbums] = useState<Album[]>([])
   const [facets, setFacets] = useState<Facets | null>(null)
+  const [facesOn, setFacesOn] = useState<boolean | null>(null)
+  const [people, setPeople] = useState<Person[]>([])
   const [search, setSearch] = useState<SearchResult | null>(null)
   const [searching, setSearching] = useState(false)
   const main = useRef<HTMLDivElement>(null)
@@ -117,12 +130,20 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
 
   useEffect(() => {
     let live = true
-    Promise.all([listPhotos(filter), listAlbums(), fetchFacets()]).then(
-      ([found, albumList, facetList]) => {
+    Promise.all([
+      listPhotos(filter),
+      listAlbums(),
+      fetchFacets(),
+      librarySettings(),
+      listPeople(),
+    ]).then(
+      ([found, albumList, facetList, settings, peopleList]) => {
         if (!live) return
         setPhotos(found)
         setAlbums(albumList)
         setFacets(facetList)
+        setFacesOn(settings.faces)
+        setPeople(peopleList)
         setError(null)
       },
       (err: Error) => {
@@ -247,6 +268,47 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     void change('delete the album', () => deleteAlbum(album.id))
   }
 
+  function turnFaces(on: boolean) {
+    if (
+      !on &&
+      !window.confirm(
+        'Turn off people albums? Every face and name found so far is forgotten.',
+      )
+    )
+      return
+    if (!on && filter.people?.length) setFilter({})
+    void change(on ? 'turn on people albums' : 'turn off people albums', () =>
+      changeLibrarySettings({ faces: on }),
+    )
+  }
+
+  function namePerson(person: Person) {
+    const name = window.prompt('Who is this?', person.name ?? '')
+    if (name !== null && name.trim() !== (person.name ?? ''))
+      void change('name the person', () =>
+        renamePerson(person.id, name.trim() || null),
+      )
+  }
+
+  function mergePerson(person: Person, into: string) {
+    setFilter({ people: [into] })
+    void change('merge the people', () => mergePeople(person.id, into))
+  }
+
+  function forget(person: Person) {
+    if (
+      !window.confirm(
+        `Forget ${person.name ?? 'this person'}? Their photos stay; their faces are no longer grouped.`,
+      )
+    )
+      return
+    setFilter({})
+    void change('forget the person', () => forgetPerson(person.id))
+  }
+
+  const correctFace = (face: Face, person: string | null) =>
+    void change('change who is in the photo', () => changeFace(face.id, person))
+
   async function remove(ids: string[]) {
     if (ids.length === 0) return
     const what = ids.length === 1 ? 'this photo' : `these ${ids.length} photos`
@@ -327,7 +389,19 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
         onNewAlbum={newAlbum}
         onRenameAlbum={rename}
         onDeleteAlbum={dropAlbum}
-      />
+      >
+        <PeopleSection
+          on={facesOn}
+          people={people}
+          filter={filter}
+          onFilter={showFilter}
+          onTurnOn={() => turnFaces(true)}
+          onTurnOff={() => turnFaces(false)}
+          onRename={namePerson}
+          onMerge={mergePerson}
+          onForget={forget}
+        />
+      </LibrarySidebar>
       <section className="library-main" ref={main}>
         <div className="library-toolbar">
           <ImportButtons
@@ -390,7 +464,12 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             </button>
           </p>
         ) : (
-          <FilterBar filter={filter} onFilter={setFilter} facets={facets} />
+          <FilterBar
+            filter={filter}
+            onFilter={setFilter}
+            facets={facets}
+            people={people}
+          />
         )}
         {(importing || indexing || error) && (
           <p className="library-status" role="status">
@@ -471,6 +550,14 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
           }
           onShow={(tag) => showFilter({ tags: [tag] })}
         />
+        {focused && facesOn && (
+          <PhotoPeople
+            photoId={focused.id}
+            version={version}
+            people={people}
+            onChange={correctFace}
+          />
+        )}
         {focused && <PhotoDetails photo={focused} />}
       </PhotoInfo>
     </main>

@@ -20,6 +20,8 @@ its weights' license, so moving to a product later does not mean swapping models
     ddcolor                 piddnad/DDColor-models             Apache-2.0
                             (ddcolor_modelscope.pth)
     siglip-base-patch16-224 google/siglip-base-patch16-224     Apache-2.0
+    yunet-sface             opencv/face_detection_yunet        MIT
+                            opencv/face_recognition_sface      Apache-2.0
 """
 
 from __future__ import annotations
@@ -747,3 +749,55 @@ class SiglipText(Siglip):
             "scale": float(model.logit_scale.exp().item()),
             "bias": float(model.logit_bias.item()),
         }
+
+
+class FaceEmbedder(HubBackend):
+    """YuNet finds faces and SFace describes each one, so the same person's faces match.
+    Both are small ONNX models that OpenCV runs on the CPU, no PyTorch needed."""
+
+    name = "yunet-sface"
+    license = "MIT (YuNet), Apache-2.0 (SFace)"
+    packages = ("huggingface_hub",)
+    detector = ("opencv/face_detection_yunet", "face_detection_yunet_2023mar.onnx")
+    recognizer = ("opencv/face_recognition_sface", "face_recognition_sface_2021dec.onnx")
+    MIN_CONFIDENCE = 0.75
+    MIN_SIDE = 24
+    """Faces smaller than this many pixels across are too small to tell people apart."""
+
+    def _load(self, env: Env) -> Any:
+        from huggingface_hub import hf_hub_download
+
+        return (
+            hf_hub_download(*self.detector, cache_dir=self._cache(env)),
+            hf_hub_download(*self.recognizer, cache_dir=self._cache(env)),
+        )
+
+    def run(self, image: Any, params: dict[str, Any], progress: Progress, env: Env) -> Any:
+        detector_path, recognizer_path = self.model(env, progress)
+        x = np.asarray(image, np.float32)
+        h, w = x.shape[:2]
+        bgr = np.ascontiguousarray((np.clip(x[..., ::-1], 0, 1) * 255).astype(np.uint8))
+        detector = cv2.FaceDetectorYN.create(detector_path, "", (w, h), self.MIN_CONFIDENCE)
+        recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+        _, found = detector.detect(bgr)
+        faces = []
+        for row in [] if found is None else found:
+            fx, fy, fw, fh = (float(v) for v in row[:4])
+            if min(fw, fh) < self.MIN_SIDE:
+                continue
+            raw = recognizer.feature(recognizer.alignCrop(bgr, row))
+            feature = np.asarray(raw, np.float32).reshape(-1)
+            feature = feature / max(float(np.linalg.norm(feature)), 1e-6)
+            faces.append(
+                {
+                    "box": [
+                        max(0.0, fx / w),
+                        max(0.0, fy / h),
+                        min(1.0, (fx + fw) / w),
+                        min(1.0, (fy + fh) / h),
+                    ],
+                    "embedding": [float(v) for v in feature],
+                    "confidence": float(row[-1]),
+                }
+            )
+        return faces

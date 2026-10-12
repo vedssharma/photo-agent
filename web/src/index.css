@@ -1597,3 +1597,58 @@ button.label-dot.on {
   background: var(--panel-2);
   font-size: 0.85rem;
 }
+
+/* People albums */
+.face {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--panel-2);
+}
+
+.sources.people button {
+  align-items: center;
+}
+
+.sources.people .source-name {
+  flex: 1;
+}
+
+.source-actions {
+  flex-wrap: wrap;
+}
+
+.source-actions select {
+  max-width: 100%;
+  font-size: 0.8rem;
+}
+
+.people-off p {
+  margin: 0 0 0.5rem;
+}
+
+.info-people h3 {
+  margin-bottom: 0.4rem;
+}
+
+.faces {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.faces li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.faces select {
+  font-size: 0.8rem;
+}

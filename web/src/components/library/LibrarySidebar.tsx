@@ -23,7 +23,7 @@ export function LibrarySidebar({
   onDeleteAlbum,
   children,
 }: Props) {
-  const everything = !filter.album && !filter.flag
+  const everything = !filter.album && !filter.flag && !filter.people?.length
   return (
     <aside className="library-side" aria-label="Library sections">
       <section>
@@ -40,7 +40,11 @@ export function LibrarySidebar({
           <li>
             <button
               type="button"
-              aria-pressed={!filter.album && filter.flag === 'picked'}
+              aria-pressed={
+                !filter.album &&
+                !filter.people?.length &&
+                filter.flag === 'picked'
+              }
               onClick={() => onFilter({ flag: 'picked' })}
             >
               Picks

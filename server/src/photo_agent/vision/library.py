@@ -94,6 +94,39 @@ def embed(image: Array, **_: Any) -> list[float]:
     return [float(v) for v in vector]
 
 
+FACE_SIZE = 24
+
+
+def faces(image: Array, **_: Any) -> list[dict[str, Any]]:
+    """Faces (boxes in fractions of the photo) with a rough description of each: the
+    face's evened-out grayscale pattern and its colors. Enough to group the same person
+    across a shoot, not to recognize them across years."""
+    h, w = image.shape[:2]
+    found = []
+    for x0, y0, x1, y1 in classical.find_faces(image):
+        crop = np.clip(image[int(y0) : int(y1), int(x0) : int(x1)], 0, 1)
+        if crop.size == 0 or min(crop.shape[:2]) < 12:
+            continue
+        gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+        small = cv2.resize(gray, (FACE_SIZE, FACE_SIZE), interpolation=cv2.INTER_AREA)
+        small = cv2.equalizeHist((small * 255).astype(np.uint8)).astype(np.float32) / 255
+        pattern = (small - small.mean()).reshape(-1)
+        pattern /= max(float(np.linalg.norm(pattern)), 1e-6)
+        hsv = cv2.cvtColor(crop, cv2.COLOR_RGB2HSV)
+        hist = cv2.calcHist([hsv], [0, 1], None, [8, 4], [0, 360, 0, 1]).flatten()
+        hist = np.sqrt(hist / max(float(hist.sum()), 1.0)) * 0.5
+        vector = np.concatenate([pattern, hist]).astype(np.float32)
+        vector /= max(float(np.linalg.norm(vector)), 1e-6)
+        found.append(
+            {
+                "box": [x0 / w, y0 / h, x1 / w, y1 / h],
+                "embedding": [float(v) for v in vector],
+                "confidence": 0.5,
+            }
+        )
+    return found
+
+
 def tag_photo(image: Array, **params: Any) -> dict[str, Any]:
     """Tags and an embedding in one go, as the model backend returns them."""
     return {"tags": tag(image), "embedding": embed(image), "text_search": False}

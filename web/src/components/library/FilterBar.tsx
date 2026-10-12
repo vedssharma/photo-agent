@@ -1,9 +1,16 @@
-import { type Facets, LABELS, type PhotoFilter } from '../../api/library'
+import {
+  type Facets,
+  LABELS,
+  type Person,
+  type PhotoFilter,
+} from '../../api/library'
+import { personName } from '../../lib/people'
 
 interface Props {
   filter: PhotoFilter
   onFilter: (filter: PhotoFilter) => void
   facets: Facets | null
+  people?: Person[]
 }
 
 /** The year a date range covers exactly, if it is one whole year. */
@@ -15,7 +22,7 @@ function wholeYear(filter: PhotoFilter): string {
 }
 
 /** Narrow the photos shown by rating, flag, label, date, camera, and place. */
-export function FilterBar({ filter, onFilter, facets }: Props) {
+export function FilterBar({ filter, onFilter, facets, people = [] }: Props) {
   const set = (change: PhotoFilter) => onFilter({ ...filter, ...change })
   const year = wholeYear(filter)
   return (
@@ -141,6 +148,24 @@ export function FilterBar({ filter, onFilter, facets }: Props) {
           </button>
         </span>
       ))}
+      {(filter.people ?? []).map((id) => {
+        const who = personName(people.find((p) => p.id === id) ?? {})
+        return (
+          <span key={id} className="chips filter-chip">
+            <span>With {who}</span>
+            <button
+              type="button"
+              className="link"
+              aria-label={`Stop filtering by ${who}`}
+              onClick={() =>
+                set({ people: (filter.people ?? []).filter((p) => p !== id) })
+              }
+            >
+              ×
+            </button>
+          </span>
+        )
+      })}
       <select
         aria-label="Sort"
         value={filter.sort ?? 'taken'}

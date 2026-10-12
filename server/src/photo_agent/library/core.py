@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from photo_agent import imaging
 from photo_agent.graph import Document
-from photo_agent.library import tagging
+from photo_agent.library import faces, tagging
 from photo_agent.library.db import LibraryDB, Row, placeholders
 from photo_agent.library.filters import Flag, Label, PhotoFilter, order_by, where
 from photo_agent.library.indexer import Indexer, IndexingMode
@@ -64,6 +64,7 @@ class LibraryPhoto(BaseModel):
     longitude: float | None = None
     place: str | None = Field(None, description="The place it was taken (see facets).")
     tags: list[str] = Field(default_factory=list, description="What is in it, best first.")
+    people: list[str] = Field(default_factory=list, description="Ids of people in it.")
 
 
 class Skipped(BaseModel):
@@ -210,14 +211,16 @@ class Library:
         return self._with_extras([photo_of(row) for row in rows])
 
     def _with_extras(self, photos: list[LibraryPhoto]) -> list[LibraryPhoto]:
-        """Fill in what lives in other tables: albums and tags."""
+        """Fill in what lives in other tables: albums, tags, and people."""
         member: dict[str, list[str]] = {}
         for r in self.db.all("SELECT album_id, photo_id FROM album_photos ORDER BY album_id"):
             member.setdefault(r["photo_id"], []).append(r["album_id"])
         tags = tagging.tags_of(self.db)
+        people = faces.people_in(self.db)
         for photo in photos:
             photo.albums = member.get(photo.id, [])
             photo.tags = tags.get(photo.id, [])
+            photo.people = people.get(photo.id, [])
         return photos
 
     # Thumbnails

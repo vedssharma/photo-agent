@@ -104,3 +104,32 @@ def scene(top: tuple[float, float, float], bottom: tuple[float, float, float]) -
 BEACH = ((0.45, 0.65, 0.95), (0.1, 0.45, 0.75))
 SNOW = ((0.8, 0.85, 0.9), (0.95, 0.95, 0.97))
 NIGHT = ((0.02, 0.02, 0.05), (0.08, 0.07, 0.06))
+
+
+def face(who: str, background: tuple[float, float, float], dx: int = 0, seed: int = 0) -> bytes:
+    """A PNG of a drawn face the classical face finder sees: person "a" (round eyes and a
+    smile) or "b" (a brow line, lower eyes, and a flat mouth), against a background."""
+    import io
+
+    import cv2
+
+    rng = np.random.default_rng(seed)
+    h, w = 320, 240
+    pixels = np.zeros((h, w, 3), np.float32) + np.array(background, np.float32)
+    pixels += rng.normal(0, 0.02, pixels.shape).astype(np.float32)
+    cx, cy = w // 2 + dx, h // 2
+    dark = (0.05, 0.05, 0.05)
+    if who == "a":
+        cv2.ellipse(pixels, (cx, cy), (40, 52), 0, 0, 360, (0.85, 0.65, 0.5), -1)
+        cv2.circle(pixels, (cx - 15, cy - 12), 5, dark, -1)
+        cv2.circle(pixels, (cx + 15, cy - 12), 5, dark, -1)
+        cv2.ellipse(pixels, (cx, cy + 22), (14, 5), 0, 0, 360, (0.5, 0.2, 0.2), -1)
+    else:
+        cv2.ellipse(pixels, (cx, cy), (40, 52), 0, 0, 360, (0.8, 0.6, 0.48), -1)
+        cv2.rectangle(pixels, (cx - 30, cy - 26), (cx + 30, cy - 18), (0.1, 0.1, 0.1), -1)
+        cv2.circle(pixels, (cx - 18, cy - 6), 4, dark, -1)
+        cv2.circle(pixels, (cx + 18, cy - 6), 4, dark, -1)
+        cv2.rectangle(pixels, (cx - 22, cy + 28), (cx + 22, cy + 34), (0.4, 0.15, 0.15), -1)
+    buf = io.BytesIO()
+    Image.fromarray((np.clip(pixels, 0, 1) * 255).astype(np.uint8)).save(buf, format="PNG")
+    return buf.getvalue()

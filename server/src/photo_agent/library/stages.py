@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from photo_agent.library import metadata, tagging
+from photo_agent.library import faces, metadata, tagging
 from photo_agent.library.indexer import Stage
 
 if TYPE_CHECKING:
@@ -41,8 +41,13 @@ def _has_worker(library: Library) -> bool:
     return library.worker is not None
 
 
+def _faces_on(library: Library) -> bool:
+    return library.worker is not None and faces.enabled(library.db)
+
+
 STAGES: list[Stage] = [
     Stage("thumbnail", 1, "Making a thumbnail", _thumbnail),
     Stage("metadata", 1, "Reading photo details", _metadata),
     Stage("tags", 1, "Tagging", tagging.tag_photo, _has_worker),
+    Stage("faces", 1, "Finding faces", faces.find_faces, _faces_on),
 ]
