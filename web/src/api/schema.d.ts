@@ -976,6 +976,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Duplicates
+         * @description Photos that are the same photo, or the same shot, each group with one suggested to
+         *     keep. Photos still being indexed are not compared yet.
+         */
+        get: operations["listDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/duplicates/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Duplicates
+         * @description These photos are different, however alike: stop grouping them as duplicates.
+         */
+        post: operations["dismissDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/settings": {
         parameters: {
             query?: never;
@@ -1695,6 +1736,25 @@ export interface components {
             /** Chat */
             chat: components["schemas"]["ChatEntry"][];
             pending_plan?: components["schemas"]["Plan"] | null;
+        };
+        /** DuplicateGroup */
+        DuplicateGroup: {
+            /**
+             * Kind
+             * @description "exact": the same photo (resized or re-saved at most); "near": the same shot, slightly different.
+             * @enum {string}
+             */
+            kind: "exact" | "near";
+            /**
+             * Keep
+             * @description The photo suggested to keep.
+             */
+            keep: string;
+            /**
+             * Photos
+             * @description The group, the one to keep first.
+             */
+            photos: components["schemas"]["LibraryPhoto"][];
         };
         /**
          * EditState
@@ -2489,6 +2549,11 @@ export interface components {
              * @default 0
              */
             color: number;
+        };
+        /** NotDuplicates */
+        NotDuplicates: {
+            /** Ids */
+            ids: string[];
         };
         /** OperationSpec */
         OperationSpec: {
@@ -5439,6 +5504,57 @@ export interface operations {
             };
             /** @description No such photo */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateGroup"][];
+                };
+            };
+        };
+    };
+    dismissDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotDuplicates"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

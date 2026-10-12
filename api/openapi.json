@@ -2563,6 +2563,67 @@
         }
       }
     },
+    "/api/library/duplicates": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Duplicates",
+        "description": "Photos that are the same photo, or the same shot, each group with one suggested to\nkeep. Photos still being indexed are not compared yet.",
+        "operationId": "listDuplicates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DuplicateGroup"
+                  },
+                  "type": "array",
+                  "title": "Response Listduplicates"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/duplicates/dismiss": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Dismiss Duplicates",
+        "description": "These photos are different, however alike: stop grouping them as duplicates.",
+        "operationId": "dismissDuplicates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotDuplicates"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/settings": {
       "get": {
         "tags": [
@@ -4027,6 +4088,39 @@
         ],
         "title": "DocumentView",
         "description": "What the web app sees of a document."
+      },
+      "DuplicateGroup": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "near"
+            ],
+            "title": "Kind",
+            "description": "\"exact\": the same photo (resized or re-saved at most); \"near\": the same shot, slightly different."
+          },
+          "keep": {
+            "type": "string",
+            "title": "Keep",
+            "description": "The photo suggested to keep."
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPhoto"
+            },
+            "type": "array",
+            "title": "Photos",
+            "description": "The group, the one to keep first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "keep",
+          "photos"
+        ],
+        "title": "DuplicateGroup"
       },
       "EditState": {
         "properties": {
@@ -5838,6 +5932,24 @@
         "type": "object",
         "title": "NoiseReduction",
         "description": "Smooth out grain and color speckles, typical of low-light photos."
+      },
+      "NotDuplicates": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 2,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "NotDuplicates"
       },
       "OperationSpec": {
         "properties": {

@@ -47,6 +47,7 @@ import {
   selectedIds,
 } from '../../lib/selection'
 import { Badges } from './Badges'
+import { DuplicatesView } from './DuplicatesView'
 import { FilterBar } from './FilterBar'
 import { ImportButtons } from './ImportButtons'
 import { LibrarySidebar } from './LibrarySidebar'
@@ -81,6 +82,8 @@ const MARK_KEYS: Record<string, Omit<Marks, 'ids'>> = {
 const badges = (photo: LibraryPhoto) => <Badges photo={photo} />
 
 type View = 'grid' | 'loupe'
+/** What the main area shows: photos (filtered or searched), or duplicates to review. */
+type Section = 'photos' | 'duplicates'
 
 interface Props {
   importer: Importer
@@ -114,6 +117,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [picked, setSelection] = useState<Selection>(NOTHING)
   const [view, setView] = useState<View>('grid')
+  const [section, setSection] = useState<Section>('photos')
   const [status, setStatus] = useState<IndexStatus | null>(null)
   const [filter, setFilter] = useState<PhotoFilter>({})
   const [albums, setAlbums] = useState<Album[]>([])
@@ -225,6 +229,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   }
 
   async function runSearch(query: string) {
+    setSection('photos')
     setSearching(true)
     try {
       setSearch(await searchLibrary(query, filter.album ?? null))
@@ -237,6 +242,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
   }
 
   const showFilter = (next: PhotoFilter) => {
+    setSection('photos')
     setSearch(null)
     setFilter(next)
   }
@@ -384,8 +390,13 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
     <main className={`library${dragging ? ' dragging' : ''}`}>
       <LibrarySidebar
         albums={albums}
-        filter={filter}
+        filter={section === 'photos' ? filter : null}
         onFilter={showFilter}
+        duplicates={section === 'duplicates'}
+        onDuplicates={() => {
+          setSearch(null)
+          setSection('duplicates')
+        }}
         onNewAlbum={newAlbum}
         onRenameAlbum={rename}
         onDeleteAlbum={dropAlbum}
@@ -393,7 +404,7 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
         <PeopleSection
           on={facesOn}
           people={people}
-          filter={filter}
+          filter={section === 'photos' ? filter : {}}
           onFilter={showFilter}
           onTurnOn={() => turnFaces(true)}
           onTurnOff={() => turnFaces(false)}
@@ -450,27 +461,28 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             Delete
           </button>
         </div>
-        {search ? (
-          <p className="search-summary" role="status">
-            {search.photos.length} photo{search.photos.length === 1 ? '' : 's'}:{' '}
-            {search.summary}
-            {search.source === 'built-in' && ' (read without Claude)'}
-            <button
-              type="button"
-              className="link"
-              onClick={() => setSearch(null)}
-            >
-              Clear search
-            </button>
-          </p>
-        ) : (
-          <FilterBar
-            filter={filter}
-            onFilter={setFilter}
-            facets={facets}
-            people={people}
-          />
-        )}
+        {section === 'photos' &&
+          (search ? (
+            <p className="search-summary" role="status">
+              {search.photos.length} photo
+              {search.photos.length === 1 ? '' : 's'}: {search.summary}
+              {search.source === 'built-in' && ' (read without Claude)'}
+              <button
+                type="button"
+                className="link"
+                onClick={() => setSearch(null)}
+              >
+                Clear search
+              </button>
+            </p>
+          ) : (
+            <FilterBar
+              filter={filter}
+              onFilter={setFilter}
+              facets={facets}
+              people={people}
+            />
+          ))}
         {(importing || indexing || error) && (
           <p className="library-status" role="status">
             {error && <span className="error">{error} </span>}
@@ -484,7 +496,13 @@ export function LibraryView({ importer, onEdit, pollMs = 1500 }: Props) {
             )}
           </p>
         )}
-        {photos !== null && shown.length === 0 ? (
+        {section === 'duplicates' ? (
+          <DuplicatesView
+            version={version}
+            onChanged={reload}
+            onError={setError}
+          />
+        ) : photos !== null && shown.length === 0 ? (
           search || Object.keys(filterQuery(filter)).length > 0 ? (
             <div className="library-empty">
               <h2>No photos here</h2>

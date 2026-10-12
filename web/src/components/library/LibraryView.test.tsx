@@ -437,4 +437,59 @@ describe('LibraryView', () => {
     )
     expect(changed).toHaveBeenLastCalledWith({ person: 'person2' })
   })
+  it('reviews duplicates and keeps the chosen photo of each group', async () => {
+    let groups = [
+      {
+        kind: 'near',
+        keep: 'aaaaaaaaaaaa',
+        photos: [PHOTOS[0], PHOTOS[1]],
+      },
+    ]
+    const removed = vi.fn()
+    const dismissed = vi.fn()
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'GET /api/library/duplicates': () => Response.json(groups),
+      'POST /api/library/photos/remove': async (req) => {
+        removed(await req.json())
+        groups = []
+        return Response.json({ removed: 1 })
+      },
+      'POST /api/library/duplicates/dismiss': async (req) => {
+        dismissed(await req.json())
+        return new Response(null, { status: 204 })
+      },
+    })
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    )
+    render(<Harness />)
+    await thumbs()
+    await userEvent.click(screen.getByRole('button', { name: 'Duplicates' }))
+    const group = await screen.findByRole('region', { name: /Same shot/ })
+    expect(
+      within(group).getByRole('button', { name: 'Keep aaaaaaaaaaaa.jpg' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(
+      within(group).getByRole('button', { name: 'Not duplicates' }),
+    )
+    expect(dismissed).toHaveBeenCalledWith({
+      ids: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb'],
+    })
+
+    // Keep the other one instead, and delete the rest.
+    await userEvent.click(
+      within(group).getByRole('button', { name: 'Keep bbbbbbbbbbbb.jpg' }),
+    )
+    await userEvent.click(
+      within(group).getByRole('button', { name: 'Delete the other 1 photo' }),
+    )
+    expect(removed).toHaveBeenCalledWith({ ids: ['aaaaaaaaaaaa'] })
+    expect(await screen.findByText('No duplicates')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'All photos' }))
+    expect(await thumbs()).toHaveLength(3)
+  })
 })

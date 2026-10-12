@@ -16,6 +16,7 @@ from photo_agent.library import (
     LibraryPhoto,
     PhotoNotFoundError,
     Skipped,
+    duplicates,
     faces,
     organize,
     tagging,
@@ -228,6 +229,23 @@ async def thumbnail(photo_id: str, library: LibraryDep) -> Response:
     return Response(
         data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"}
     )
+
+
+@router.get("/duplicates", operation_id="listDuplicates")
+def list_duplicates(library: LibraryDep) -> list[duplicates.DuplicateGroup]:
+    """Photos that are the same photo, or the same shot, each group with one suggested to
+    keep. Photos still being indexed are not compared yet."""
+    return duplicates.groups(library)
+
+
+@router.post(
+    "/duplicates/dismiss",
+    operation_id="dismissDuplicates",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def dismiss_duplicates(body: duplicates.NotDuplicates, library: LibraryDep) -> None:
+    """These photos are different, however alike: stop grouping them as duplicates."""
+    duplicates.mark_not_duplicates(library.db, body.ids)
 
 
 class LibrarySettings(BaseModel):

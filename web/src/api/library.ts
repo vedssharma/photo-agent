@@ -286,3 +286,22 @@ export async function changeFace(
 export function faceUrl(faceId: string): string {
   return `/api/library/faces/${faceId}/thumbnail`
 }
+
+export type DuplicateGroup = components['schemas']['DuplicateGroup']
+
+export async function listDuplicates(): Promise<DuplicateGroup[]> {
+  const { data, error, response } = await api.GET('/api/library/duplicates')
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+/** These photos are different, however alike: stop grouping them. */
+export async function dismissDuplicates(ids: string[]): Promise<void> {
+  const { error, response } = await api.POST(
+    '/api/library/duplicates/dismiss',
+    {
+      body: { ids },
+    },
+  )
+  if (!response.ok) throw new ApiError(detail(error, response.status))
+}

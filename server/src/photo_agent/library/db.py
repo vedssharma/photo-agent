@@ -116,6 +116,16 @@ MIGRATIONS: list[str] = [
     CREATE INDEX faces_photo ON faces (photo_id);
     CREATE INDEX faces_person ON faces (person_id);
     """,
+    # 6: a fingerprint of each photo's look, to find near duplicates, and pairs someone
+    # said are not duplicates.
+    """
+    ALTER TABLE photos ADD COLUMN fingerprint TEXT;
+    CREATE TABLE not_duplicates (
+        photo_a TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+        photo_b TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+        PRIMARY KEY (photo_a, photo_b)
+    );
+    """,
 ]
 
 Row = sqlite3.Row

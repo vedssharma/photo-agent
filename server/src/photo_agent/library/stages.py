@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from photo_agent.library import faces, metadata, tagging
+from photo_agent.library import faces, fingerprints, metadata, tagging
 from photo_agent.library.indexer import Stage
 
 if TYPE_CHECKING:
@@ -48,6 +48,7 @@ def _faces_on(library: Library) -> bool:
 STAGES: list[Stage] = [
     Stage("thumbnail", 1, "Making a thumbnail", _thumbnail),
     Stage("metadata", 1, "Reading photo details", _metadata),
+    Stage("fingerprint", 1, "Looking for duplicates", fingerprints.fingerprint_photo),
     Stage("tags", 1, "Tagging", tagging.tag_photo, _has_worker),
     Stage("faces", 1, "Finding faces", faces.find_faces, _faces_on),
 ]

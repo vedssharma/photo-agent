@@ -4,8 +4,12 @@ import type { Album, PhotoFilter } from '../../api/library'
 
 interface Props {
   albums: Album[]
-  filter: PhotoFilter
+  /** The filter shown, or null when something else (duplicates) is. */
+  filter: PhotoFilter | null
   onFilter: (filter: PhotoFilter) => void
+  /** Whether duplicates are being reviewed. */
+  duplicates: boolean
+  onDuplicates: () => void
   onNewAlbum: () => void
   onRenameAlbum: (album: Album) => void
   onDeleteAlbum: (album: Album) => void
@@ -16,14 +20,19 @@ interface Props {
 /** Where to look: the whole library, the picks, or an album. */
 export function LibrarySidebar({
   albums,
-  filter,
+  filter: shown,
   onFilter,
+  duplicates,
+  onDuplicates,
   onNewAlbum,
   onRenameAlbum,
   onDeleteAlbum,
   children,
 }: Props) {
-  const everything = !filter.album && !filter.flag && !filter.people?.length
+  // Nothing in the photo list is pressed while duplicates are shown.
+  const filter: PhotoFilter = shown ?? {}
+  const everything =
+    shown !== null && !filter.album && !filter.flag && !filter.people?.length
   return (
     <aside className="library-side" aria-label="Library sections">
       <section>
@@ -41,6 +50,7 @@ export function LibrarySidebar({
             <button
               type="button"
               aria-pressed={
+                shown !== null &&
                 !filter.album &&
                 !filter.people?.length &&
                 filter.flag === 'picked'
@@ -48,6 +58,16 @@ export function LibrarySidebar({
               onClick={() => onFilter({ flag: 'picked' })}
             >
               Picks
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              aria-pressed={duplicates}
+              onClick={onDuplicates}
+              title="Find copies of the same photo or shot, and keep one"
+            >
+              Duplicates
             </button>
           </li>
         </ul>
