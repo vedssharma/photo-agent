@@ -40,7 +40,7 @@ def _metadata(library: Library, photo_id: str) -> None:
 
 def assess(library: Library, photo_id: str) -> None:
     """How good a shot it is: sharpness, exposure, appeal, and closed eyes."""
-    found = quality.measure(library.store.image(photo_id).proxy)
+    found = quality.measure(library.store.image(photo_id).srgb_proxy)
     library.db.run(
         "UPDATE photos SET sharpness = ?, exposure = ?, appeal = ?, faces = ?, eyes_closed = ? "
         "WHERE id = ?",

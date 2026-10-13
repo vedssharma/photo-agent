@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
+import numpy as np
 from fastapi import (
     APIRouter,
     Body,
@@ -23,10 +24,13 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from photo_agent import (
+    color,
     critique,
     generative,
     geometry,
+    icc,
     imaging,
+    lens,
     looks,
     portrait,
     projects,
@@ -48,7 +52,7 @@ from photo_agent.agent import (
 )
 from photo_agent.analyses import AnalysisCache
 from photo_agent.diagnostics import measure
-from photo_agent.export import ExportOptions, export_bytes, export_filename
+from photo_agent.export import MEDIA_TYPES, ExportOptions, export_bytes, export_filename
 from photo_agent.graph import ChatEntry, Document, DocumentView, Step
 from photo_agent.layers import EditState, Layer, new_layer_id
 from photo_agent.library import Library
@@ -56,11 +60,12 @@ from photo_agent.library.indexer import IndexingMode
 from photo_agent.operations import MAX_OPTIONS, GenerativeBase, MatchReference
 from photo_agent.render import RenderCache, render, render_layer_mask
 from photo_agent.settings import Settings, get_settings
-from photo_agent.store import DocumentNotFoundError, DocumentStore, MismatchError
+from photo_agent.store import DocumentNotFoundError, DocumentStore, LoadedImage, MismatchError
 from photo_agent.vision.backends import BackendMode, WorkerConfig
 from photo_agent.vision.worker import JobStatus, Mode, ModelWorker
 
-MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+"""Big enough for the largest camera RAW files (uncompressed 60+ megapixel ones)."""
 PREVIEW_QUALITY = 88
 
 previews = RenderCache()
@@ -169,10 +174,11 @@ def load(store: DocumentStore, doc_id: str) -> Document:
     responses={413: {"description": "File too large"}, 415: {"description": "Not a photo"}},
 )
 async def create_document(file: UploadFile, store: Store, library: LibraryDep) -> DocumentView:
-    """Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too."""
+    """Upload a JPEG, PNG, HEIC, TIFF, or camera RAW photo to start editing it. It joins the
+    library too."""
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Photos up to 64 MB are supported.")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Photos up to 200 MB are supported.")
     try:
         doc = store.create(file.filename or "photo", data)
     except imaging.UnsupportedImageError as exc:
@@ -413,7 +419,7 @@ def get_option(doc_id: str, op_id: str, seed: int, store: Store) -> Response:
     option = variants.with_seed(doc.state, op_id, seed)
     pixels = previews.get_or_render(doc.id, loaded.proxy, option, loaded.proxy_context)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, pixels),
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=86400"},
     )
@@ -527,11 +533,11 @@ def checkout(doc_id: str, body: Checkout, store: Store) -> DocumentView:
     responses={200: {"content": {"image/jpeg": {}}}},
 )
 def original(doc_id: str, store: Store) -> Response:
-    """The unedited photo at preview size, as JPEG (browsers cannot show HEIC)."""
+    """The unedited photo at preview size, as JPEG (browsers cannot show HEIC, TIFF, or RAW)."""
     load(store, doc_id)
-    pixels = store.image(doc_id).proxy
+    loaded = store.image(doc_id)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, loaded.proxy),
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=31536000, immutable"},
     )
@@ -543,15 +549,22 @@ def original(doc_id: str, store: Store) -> Response:
     response_class=Response,
     responses={200: {"content": {"image/jpeg": {}}}},
 )
-def preview(doc_id: str, store: Store) -> Response:
+def preview(
+    doc_id: str,
+    store: Store,
+    proof: ProofSpace | None = None,
+    gamut_warning: bool = False,
+) -> Response:
     """The photo with the current edits applied, at preview size, as JPEG.
 
     Add `?revision=<document revision>` to make the URL unique per edit state; the response
-    is the current state either way.
+    is the current state either way. `proof` soft-proofs it: shows it as it will look
+    saved in sRGB or Display P3, and with `gamut_warning`, paints the colors that will not
+    fit in magenta.
     """
     doc = load(store, doc_id)
     return Response(
-        imaging.encode_jpeg(render_preview(store, doc), PREVIEW_QUALITY),
+        preview_jpeg(store.image(doc_id), render_preview(store, doc), proof, gamut_warning),
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache"},
     )
@@ -561,7 +574,7 @@ def preview(doc_id: str, store: Store) -> Response:
     "/{doc_id}/export",
     operation_id="exportDocument",
     response_class=Response,
-    responses={200: {"content": {"image/jpeg": {}, "image/png": {}}}},
+    responses={200: {"content": {media: {} for media in MEDIA_TYPES.values()}}},
 )
 async def export(doc_id: str, options: ExportOptions, store: Store, taste: Style) -> Response:
     """Render the edits at full resolution and return the file to download."""
@@ -573,7 +586,7 @@ async def export(doc_id: str, options: ExportOptions, store: Store, taste: Style
     filename = export_filename(doc, options)
     return Response(
         data,
-        media_type="image/png" if options.format == "png" else "image/jpeg",
+        media_type=MEDIA_TYPES[options.format],
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
@@ -592,10 +605,43 @@ def before(doc_id: str, store: Store) -> Response:
     framing = EditState(framing=doc.state.framing)
     pixels = previews.get_or_render(doc.id, loaded.proxy, framing, loaded.proxy_context)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, pixels),
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+class GamutView(BaseModel):
+    """How much of the edited photo's color fits each output space."""
+
+    color_space: color.WorkingSpace
+    """The space the photo is edited in."""
+    outside_srgb: float = Field(ge=0, le=1)
+    """Share of the photo whose colors do not fit sRGB (and will be mapped into it)."""
+    outside_display_p3: float = Field(ge=0, le=1)
+    """Share of the photo whose colors do not fit Display P3."""
+
+
+@router.get("/{doc_id}/gamut", operation_id="getGamut")
+def gamut(doc_id: str, store: Store) -> GamutView:
+    """Which output spaces hold all of the edited photo's colors, for soft-proofing and for
+    choosing what to export in."""
+    doc = load(store, doc_id)
+    loaded = store.image(doc_id)
+    pixels = render_preview(store, doc)
+    return GamutView(
+        color_space=loaded.space,
+        outside_srgb=float(color.out_of_gamut(pixels, loaded.space, "srgb").mean()),
+        outside_display_p3=float(color.out_of_gamut(pixels, loaded.space, "display-p3").mean()),
+    )
+
+
+@router.get("/{doc_id}/lens", operation_id="getLens")
+def lens_info(doc_id: str, store: Store, lens_name: str = "") -> lens.LensView:
+    """The camera and lens the photo was taken with, and the Lensfun profile a
+    `lens_profile` operation corrects it with (with `lens_name`, for that lens instead)."""
+    load(store, doc_id)
+    return lens.describe(store.image(doc_id).shot, lens_name)
 
 
 @router.get(
@@ -626,6 +672,31 @@ def list_jobs(doc_id: str, store: Store, worker: Worker) -> list[JobStatus]:
     The web app polls this while it waits on a change."""
     load(store, doc_id)
     return worker.jobs(doc_id)
+
+
+ProofSpace = Literal["srgb", "display-p3"]
+
+GAMUT_WARNING = np.array([1.0, 0.0, 1.0], dtype=np.float32)
+"""Paints colors that will not fit when soft-proofing: a magenta no photo is made of."""
+
+
+def preview_jpeg(
+    loaded: LoadedImage,
+    pixels: imaging.Array,
+    proof: ProofSpace | None = None,
+    gamut_warning: bool = False,
+) -> bytes:
+    """A rendered preview as JPEG for the browser, through the output transform.
+
+    Wide-gamut photos are shown in Display P3, tagged so, which wide-gamut screens show in
+    full and others map down. Soft-proofing (`proof`) shows the photo as it will look saved
+    in that space instead, and `gamut_warning` paints the colors that do not fit it."""
+    space: color.Space = proof or ("srgb" if loaded.space == "srgb" else "display-p3")
+    out = color.convert(pixels, loaded.space, space)
+    if proof is not None and gamut_warning:
+        outside = color.out_of_gamut(pixels, loaded.space, proof)[..., None]
+        out = np.asarray(out * (1 - outside) + GAMUT_WARNING * outside, dtype=np.float32)
+    return imaging.encode_jpeg(out, PREVIEW_QUALITY, profile=icc.profile(space))
 
 
 def render_preview(store: DocumentStore, doc: Document) -> imaging.Array:
@@ -702,9 +773,10 @@ async def suggest_edits(
         store.file(doc_id, "suggestions.json").write_text(cached.model_dump_json())
         return cached
     loaded = store.image(doc_id)
-    pixels = await asyncio.to_thread(
+    rendered = await asyncio.to_thread(
         previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
     )
+    pixels = loaded.to_srgb(rendered)
     source: suggestions.Source = "built-in"
     directions = suggestions.built_in_directions(pixels)
     if advisor is not None:
@@ -746,7 +818,7 @@ def suggestion_preview(doc_id: str, suggestion_id: str, store: Store) -> Respons
     rendered = previews.get_or_render(doc.id, loaded.proxy, state, loaded.proxy_context)
     pixels = imaging.resize_long_edge(rendered, suggestions.THUMBNAIL_LONG_EDGE)
     return Response(
-        imaging.encode_jpeg(pixels, PREVIEW_QUALITY),
+        preview_jpeg(loaded, pixels),
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=86400"},
     )
@@ -798,9 +870,10 @@ async def critique_photo(doc_id: str, store: Store, advisor: AdvisorDep) -> Docu
     found = cache.get("critique", doc.revision, who, critique.Critique)
     if found is None:
         loaded = store.image(doc_id)
-        pixels = await asyncio.to_thread(
+        rendered = await asyncio.to_thread(
             previews.get_or_render, doc.id, loaded.proxy, doc.state, loaded.proxy_context
         )
+        pixels = loaded.to_srgb(rendered)
         if advisor is None:
             found = critique.built_in(pixels)
         else:

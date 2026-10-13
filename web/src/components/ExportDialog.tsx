@@ -8,6 +8,29 @@ import {
   saveFile,
 } from '../api/documents'
 
+const FORMATS: {
+  value: ExportOptions['format']
+  name: string
+  about: string
+}[] = [
+  { value: 'jpeg', name: 'JPEG', about: 'smaller, best for sharing' },
+  { value: 'png', name: 'PNG', about: 'lossless, larger file' },
+  {
+    value: 'tiff',
+    name: 'TIFF',
+    about: 'lossless, for printing or editing elsewhere',
+  },
+  {
+    value: 'avif',
+    name: 'AVIF',
+    about: 'smallest for the same quality, for the web',
+  },
+  { value: 'webp', name: 'WebP', about: 'small, for the web' },
+]
+
+/** Formats that take a quality setting. */
+const LOSSY: ExportOptions['format'][] = ['jpeg', 'avif', 'webp']
+
 interface Props {
   doc: DocumentView
   onClose: () => void
@@ -23,6 +46,9 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
     transparent ? 'png' : 'jpeg',
   )
   const [quality, setQuality] = useState(92)
+  const [bitDepth, setBitDepth] = useState<ExportOptions['bit_depth']>(
+    doc.format === 'RAW' || doc.format === 'TIFF' ? 16 : 8,
+  )
   const [keepLocation, setKeepLocation] = useState(false)
   const generated =
     doc.state.framing.some((op) => 'seed' in op) ||
@@ -33,6 +59,9 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
         layer.operations.some((op) => 'seed' in op),
     )
   const [upscale, setUpscale] = useState<ExportOptions['upscale']>(1)
+  const wide = doc.color_space !== 'srgb'
+  const [colorSpace, setColorSpace] =
+    useState<ExportOptions['color_space']>('srgb')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,8 +81,10 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
         await exportDocument(doc, {
           format,
           quality,
+          bit_depth: bitDepth,
           keep_location: keepLocation,
           upscale,
+          color_space: colorSpace,
         }),
       )
       onClose()
@@ -80,29 +111,22 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
 
         <fieldset>
           <legend>Format</legend>
-          <label>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'jpeg'}
-              onChange={() => setFormat('jpeg')}
-            />
-            JPEG <span className="status">smaller, best for sharing</span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'png'}
-              onChange={() => setFormat('png')}
-            />
-            PNG{' '}
-            <span className="status">
-              {transparent
-                ? 'keeps the transparent background'
-                : 'lossless, larger file'}
-            </span>
-          </label>
+          {FORMATS.map(({ value, name, about }) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="format"
+                checked={format === value}
+                onChange={() => setFormat(value)}
+              />
+              {name}{' '}
+              <span className="status">
+                {transparent && value !== 'jpeg'
+                  ? 'keeps the transparent background'
+                  : about}
+              </span>
+            </label>
+          ))}
         </fieldset>
         {transparent && format === 'jpeg' && (
           <p className="hint">
@@ -110,7 +134,24 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           </p>
         )}
 
-        {format === 'jpeg' && (
+        {(format === 'png' || format === 'tiff') && (
+          <label className="bit-depth">
+            Bits per channel{' '}
+            <select
+              value={bitDepth}
+              onChange={(e) =>
+                setBitDepth(
+                  Number(e.target.value) as ExportOptions['bit_depth'],
+                )
+              }
+            >
+              <option value={8}>8, for viewing and printing</option>
+              <option value={16}>16, for further editing</option>
+            </select>
+          </label>
+        )}
+
+        {LOSSY.includes(format) && (
           <label className="quality">
             Quality {quality}
             <input
@@ -140,6 +181,33 @@ export function ExportDialog({ doc, onClose, save = saveFile }: Props) {
           <p className="hint">
             Good for prints. Enlarging adds new fine detail and takes longer.
           </p>
+        )}
+
+        {wide && (
+          <>
+            <label className="color-space">
+              Colors{' '}
+              <select
+                value={colorSpace}
+                onChange={(e) =>
+                  setColorSpace(e.target.value as ExportOptions['color_space'])
+                }
+              >
+                <option value="srgb">sRGB, for sharing and the web</option>
+                <option value="display-p3">
+                  Display P3, for phone and laptop screens
+                </option>
+                <option value="rec2020">
+                  Rec.2020, every color, for further editing
+                </option>
+              </select>
+            </label>
+            <p className="hint">
+              {colorSpace === 'srgb'
+                ? 'This photo has colors beyond sRGB; they are gently toned down to fit.'
+                : 'The file keeps colors beyond sRGB and says so in its color profile.'}
+            </p>
+          </>
         )}
 
         <label>

@@ -188,6 +188,20 @@ export async function removeFromAlbum(
   return data
 }
 
+export type MergeKind = components['schemas']['MergeRequest']['kind']
+
+/** Merge photos into a new one in the library: an HDR from a bracket, or a panorama. */
+export async function mergePhotos(
+  ids: string[],
+  kind: MergeKind,
+): Promise<LibraryPhoto> {
+  const { data, error, response } = await api.POST('/api/library/merge', {
+    body: { ids, kind },
+  })
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
 export async function removePhotos(ids: string[]): Promise<number> {
   const { data, error, response } = await api.POST(
     '/api/library/photos/remove',

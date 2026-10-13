@@ -654,8 +654,49 @@ describe('LibraryView', () => {
         quality: 92,
         keep_location: false,
         upscale: 1,
+        color_space: 'srgb',
+        bit_depth: 8,
       },
     })
     expect(save.mock.calls[0][0].filename).toBe('photos-2.zip')
+  })
+
+  it('stitches a panorama from the selection, and says why when it cannot', async () => {
+    const asked = vi.fn()
+    let attempt = 0
+    stubApi({
+      ...libraryRoutes(() => PHOTOS),
+      'POST /api/library/merge': async (req) => {
+        asked(await req.json())
+        attempt += 1
+        return attempt === 1
+          ? Response.json(makePhoto('dddddddddddd'), { status: 201 })
+          : Response.json(
+              { detail: 'These photos could not be stitched.' },
+              { status: 422 },
+            )
+      },
+    })
+    render(<Harness />)
+    const options = await thumbs()
+    await userEvent.click(options[1])
+    fireEvent.click(options[2], { ctrlKey: true })
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Stitch panorama' }),
+    )
+    await waitFor(() =>
+      expect(asked).toHaveBeenCalledWith({
+        ids: ['bbbbbbbbbbbb', 'cccccccccccc'],
+        kind: 'panorama',
+      }),
+    )
+    await userEvent.click(options[1])
+    fireEvent.click(options[2], { ctrlKey: true })
+    await userEvent.click(screen.getByRole('button', { name: 'Merge to HDR' }))
+    expect(
+      await screen.findByText(
+        /Could not merge to HDR: These photos could not be stitched./,
+      ),
+    ).toBeInTheDocument()
   })
 })

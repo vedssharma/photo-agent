@@ -23,6 +23,8 @@ import {
   cullPhotos,
   deleteAlbum,
   exportPhotos,
+  type MergeKind,
+  mergePhotos,
   fetchFacets,
   filterQuery,
   forgetPerson,
@@ -360,6 +362,8 @@ export function LibraryView({
           quality: 92,
           keep_location: false,
           upscale: 1,
+          color_space: 'srgb',
+          bit_depth: 8,
         }),
       )
     } catch (err) {
@@ -442,6 +446,22 @@ export function LibraryView({
 
   const correctFace = (face: Face, person: string | null) =>
     void change('change who is in the photo', () => changeFace(face.id, person))
+
+  const [merging, setMerging] = useState<MergeKind | null>(null)
+  async function combine(ids: string[], kind: MergeKind) {
+    setMerging(kind)
+    setError(null)
+    try {
+      const made = await mergePhotos(ids, kind)
+      reload()
+      setSelection({ ids: new Set([made.id]), focus: made.id, anchor: made.id })
+    } catch (err) {
+      const what = kind === 'hdr' ? 'merge to HDR' : 'stitch the panorama'
+      setError(`Could not ${what}: ${(err as Error).message}`)
+    } finally {
+      setMerging(null)
+    }
+  }
 
   async function remove(ids: string[]) {
     if (ids.length === 0) return
@@ -608,6 +628,22 @@ export function LibraryView({
             title="Give the selected photos one look, evened out to match"
           >
             Edit together…
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length < 2 || merging !== null}
+            onClick={() => void combine(chosen, 'hdr')}
+            title="Blend exposures of one scene into one photo with detail in the shadows and the highlights"
+          >
+            {merging === 'hdr' ? 'Merging…' : 'Merge to HDR'}
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length < 2 || merging !== null}
+            onClick={() => void combine(chosen, 'panorama')}
+            title="Stitch overlapping photos into one wide view"
+          >
+            {merging === 'panorama' ? 'Stitching…' : 'Stitch panorama'}
           </button>
           <button
             type="button"

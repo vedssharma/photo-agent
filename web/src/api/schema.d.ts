@@ -15,7 +15,8 @@ export interface paths {
         put?: never;
         /**
          * Create Document
-         * @description Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too.
+         * @description Upload a JPEG, PNG, HEIC, TIFF, or camera RAW photo to start editing it. It joins the
+         *     library too.
          */
         post: operations["createDocument"];
         delete?: never;
@@ -314,7 +315,7 @@ export interface paths {
         };
         /**
          * Original
-         * @description The unedited photo at preview size, as JPEG (browsers cannot show HEIC).
+         * @description The unedited photo at preview size, as JPEG (browsers cannot show HEIC, TIFF, or RAW).
          */
         get: operations["getOriginal"];
         put?: never;
@@ -337,7 +338,9 @@ export interface paths {
          * @description The photo with the current edits applied, at preview size, as JPEG.
          *
          *     Add `?revision=<document revision>` to make the URL unique per edit state; the response
-         *     is the current state either way.
+         *     is the current state either way. `proof` soft-proofs it: shows it as it will look
+         *     saved in sRGB or Display P3, and with `gamut_warning`, paints the colors that will not
+         *     fit in magenta.
          */
         get: operations["getPreview"];
         put?: never;
@@ -381,6 +384,48 @@ export interface paths {
          *     up with the preview for before/after comparison.
          */
         get: operations["getBefore"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/gamut": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamut
+         * @description Which output spaces hold all of the edited photo's colors, for soft-proofing and for
+         *     choosing what to export in.
+         */
+        get: operations["getGamut"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{doc_id}/lens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lens Info
+         * @description The camera and lens the photo was taken with, and the Lensfun profile a
+         *     `lens_profile` operation corrects it with (with `lens_name`, for that lens instead).
+         */
+        get: operations["getLens"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1072,6 +1117,28 @@ export interface paths {
         get: operations["getBatchEdit"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Photos
+         * @description Merge photos into a new one in the library: an HDR from exposure brackets, or a
+         *     panorama. It is saved as a 16-bit TIFF (so later edits have every bit to work with),
+         *     and the originals are left as they were.
+         */
+        post: operations["mergePhotos"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1878,6 +1945,12 @@ export interface components {
             /** Height */
             height: number;
             /**
+             * Color Space
+             * @default srgb
+             * @enum {string}
+             */
+            color_space: "srgb" | "rec2020";
+            /**
              * Created At
              * Format: date-time
              */
@@ -1906,6 +1979,11 @@ export interface components {
             width: number;
             /** Height */
             height: number;
+            /**
+             * Color Space
+             * @enum {string}
+             */
+            color_space: "srgb" | "rec2020";
             /** Revision */
             revision: string;
             state: components["schemas"]["EditState"];
@@ -1955,7 +2033,7 @@ export interface components {
              * Framing
              * @default []
              */
-            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"] | components["schemas"]["Expand"])[];
+            framing: (components["schemas"]["Crop"] | components["schemas"]["Rotate"] | components["schemas"]["Straighten"] | components["schemas"]["Flip"] | components["schemas"]["Perspective"] | components["schemas"]["LensCorrection"] | components["schemas"]["LensProfile"] | components["schemas"]["Expand"])[];
             /**
              * Layers
              * @default []
@@ -2046,16 +2124,24 @@ export interface components {
         ExportOptions: {
             /**
              * Format
+             * @description JPEG for sharing; PNG lossless; TIFF lossless for printing or further editing; AVIF and WebP for the web, smaller than JPEG at the same quality.
              * @default jpeg
              * @enum {string}
              */
-            format: "jpeg" | "png";
+            format: "jpeg" | "png" | "tiff" | "avif" | "webp";
             /**
              * Quality
-             * @description JPEG quality; ignored for PNG.
+             * @description Quality for JPEG, AVIF, and WebP; ignored otherwise.
              * @default 92
              */
             quality: number;
+            /**
+             * Bit Depth
+             * @description Bits per color channel for PNG and TIFF; 16 keeps the smooth gradations of RAW and 16-bit photos for further editing. Other formats are 8.
+             * @default 8
+             * @enum {integer}
+             */
+            bit_depth: 8 | 16;
             /**
              * Keep Location
              * @description Keep GPS location from the original. Off by default for privacy.
@@ -2069,6 +2155,13 @@ export interface components {
              * @enum {integer}
              */
             upscale: 1 | 2 | 4;
+            /**
+             * Color Space
+             * @description The color space the file is saved in, with its ICC profile embedded. sRGB suits sharing and the web; Display P3 keeps the extra color of modern phone and laptop screens; Rec.2020 keeps every color a RAW file holds, for further editing (best with 16 bits).
+             * @default srgb
+             * @enum {string}
+             */
+            color_space: "srgb" | "display-p3" | "rec2020";
         };
         /**
          * Exposure
@@ -2152,6 +2245,21 @@ export interface components {
              * @enum {string}
              */
             axis: "horizontal" | "vertical";
+        };
+        /**
+         * GamutView
+         * @description How much of the edited photo's color fits each output space.
+         */
+        GamutView: {
+            /**
+             * Color Space
+             * @enum {string}
+             */
+            color_space: "srgb" | "rec2020";
+            /** Outside Srgb */
+            outside_srgb: number;
+            /** Outside Display P3 */
+            outside_display_p3: number;
         };
         /**
          * Generate
@@ -2428,6 +2536,66 @@ export interface components {
             distortion: number;
         };
         /**
+         * LensProfile
+         * @description Correct the lens the photo was taken with, using its measured profile: straighten
+         *     the lines it bends, brighten the corners it darkens (vignetting), and remove the color
+         *     fringes it adds at edges (chromatic aberration). The camera and lens come from the
+         *     photo itself, so the defaults are right; it does nothing when the lens is unknown or
+         *     has no profile. Prefer it to lens_correction when it applies.
+         */
+        LensProfile: {
+            /**
+             * Id
+             * @description Stable id of this operation.
+             */
+            id?: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "lens_profile";
+            /**
+             * Distortion
+             * @description How much of the distortion fix to use.
+             * @default 100
+             */
+            distortion: number;
+            /**
+             * Vignetting
+             * @description How much of the vignetting fix to use.
+             * @default 100
+             */
+            vignetting: number;
+            /**
+             * Chromatic Aberration
+             * @description How much of the color fringing fix to use.
+             * @default 100
+             */
+            chromatic_aberration: number;
+            /**
+             * Lens
+             * @description A lens to use instead of the one the photo records (say, for an adapted manual lens); leave empty to use the photo's own.
+             * @default
+             */
+            lens: string;
+        };
+        /**
+         * LensView
+         * @description What is known about the lens a photo was taken with, and its profile.
+         */
+        LensView: {
+            /** Camera */
+            camera?: string | null;
+            /** Lens */
+            lens?: string | null;
+            /** Focal Length */
+            focal_length?: number | null;
+            /** Aperture */
+            aperture?: number | null;
+            /** Profile */
+            profile?: string | null;
+        };
+        /**
          * LibraryPhoto
          * @description What the library shows of one photo.
          */
@@ -2700,6 +2868,20 @@ export interface components {
              * @description The person to keep.
              */
             into: string;
+        };
+        /** MergeRequest */
+        MergeRequest: {
+            /**
+             * Ids
+             * @description The photos to merge, in order (left to right for a panorama).
+             */
+            ids: string[];
+            /**
+             * Kind
+             * @description hdr: blend exposures of one scene into one with detail in the shadows and highlights. panorama: stitch overlapping photos into one wide view.
+             * @enum {string}
+             */
+            kind: "hdr" | "panorama";
         };
         /** NewAlbum */
         NewAlbum: {
@@ -4574,7 +4756,10 @@ export interface operations {
     };
     getPreview: {
         parameters: {
-            query?: never;
+            query?: {
+                proof?: ("srgb" | "display-p3") | null;
+                gamut_warning?: boolean;
+            };
             header?: never;
             path: {
                 doc_id: string;
@@ -4626,6 +4811,9 @@ export interface operations {
                 content: {
                     "image/jpeg": unknown;
                     "image/png": unknown;
+                    "image/tiff": unknown;
+                    "image/avif": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Validation Error */
@@ -4657,6 +4845,70 @@ export interface operations {
                 };
                 content: {
                     "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getGamut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GamutView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getLens: {
+        parameters: {
+            query?: {
+                lens_name?: string;
+            };
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LensView"];
                 };
             };
             /** @description Validation Error */
@@ -5980,6 +6232,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    mergePhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPhoto"];
+                };
+            };
+            /** @description No such photo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The merged photo is already in the library */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The photos cannot be merged that way */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

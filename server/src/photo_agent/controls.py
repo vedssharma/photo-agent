@@ -37,6 +37,7 @@ GROUPS: dict[str, Group] = {
     "flip": "framing",
     "perspective": "framing",
     "lens_correction": "framing",
+    "lens_profile": "framing",
     "expand": "framing",
     "vignette": "finishing",
     "grain": "finishing",

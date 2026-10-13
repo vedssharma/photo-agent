@@ -69,7 +69,7 @@ def set_enabled(db: LibraryDB, on: bool) -> None:
 def find_faces(library: Library, photo_id: str) -> None:
     """Indexing stage: find and describe the faces in one photo, then group them."""
     assert library.worker is not None
-    result = library.worker.run("embed_faces", library.store.image(photo_id).proxy)
+    result = library.worker.run("embed_faces", library.store.image(photo_id).srgb_proxy)
     model = result.backend
     db = library.db
     with db.transaction():
@@ -258,7 +258,7 @@ def face_thumbnail(library: Library, face_id: str, size: int = 160) -> bytes:
     row = library.db.one("SELECT photo_id, box FROM faces WHERE id = ?", (face_id,))
     if row is None:
         raise FaceNotFoundError(face_id)
-    proxy = library.store.image(row["photo_id"]).proxy
+    proxy = library.store.image(row["photo_id"]).srgb_proxy
     h, w = proxy.shape[:2]
     x0, y0, x1, y1 = json.loads(row["box"])
     side = max((x1 - x0) * w, (y1 - y0) * h) * 1.4

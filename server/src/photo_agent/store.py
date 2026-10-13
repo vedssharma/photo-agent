@@ -16,19 +16,26 @@ import re
 import shutil
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from photo_agent import imaging
+import numpy as np
+import numpy.typing as npt
+
+from photo_agent import color, imaging
+from photo_agent import operations as ops
 from photo_agent.graph import Document, new_id
-from photo_agent.render import RenderContext
+from photo_agent.lens import Shot, shot_from_exif
+from photo_agent.masks import SemanticMask
+from photo_agent.render import RenderContext, Vision
 from photo_agent.vision.backends import BackendMode
-from photo_agent.vision.selection import DocumentVision
+from photo_agent.vision.selection import GENERATE_EDGE, DocumentVision
 from photo_agent.vision.tasks import TASKS
 from photo_agent.vision.worker import ModelWorker
 
-EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "HEIF": ".heic"}
+EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "HEIF": ".heic", "TIFF": ".tif"}
 _ID_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
@@ -44,8 +51,28 @@ class MismatchError(ValueError):
 class LoadedImage:
     source: imaging.DecodedImage
     proxy: imaging.Array
+    """The preview-size working copy, in the photo's working space."""
     vision: DocumentVision | None = None
     """Runs the models behind semantic masks; None when the store has no model worker."""
+    _srgb_proxy: imaging.Array | None = field(default=None, repr=False)
+    shot: Shot | None = None
+    """The camera and lens from the photo's EXIF, for lens profile corrections."""
+
+    @property
+    def space(self) -> color.WorkingSpace:
+        """The working color space of this photo's pixels."""
+        return self.source.space
+
+    @property
+    def srgb_proxy(self) -> imaging.Array:
+        """The proxy in sRGB, for analysis that expects ordinary photos (tags, faces, ...)."""
+        if self._srgb_proxy is None:
+            self._srgb_proxy = imaging.to_srgb(self.proxy, self.space)
+        return self._srgb_proxy
+
+    def to_srgb(self, pixels: imaging.Array) -> imaging.Array:
+        """Rendered pixels of this photo as sRGB, for screens and Claude."""
+        return imaging.to_srgb(pixels, self.space)
 
     @property
     def proxy_scale(self) -> float:
@@ -58,14 +85,57 @@ class LoadedImage:
         return RenderContext(
             scale=self.proxy_scale,
             source_aspect=self.source.width / self.source.height,
-            vision=self.vision,
+            vision=self._vision_in_space,
+            space=self.space,
+            shot=self.shot,
         )
 
     @property
     def full_context(self) -> RenderContext:
         return RenderContext(
-            scale=1.0, source_aspect=self.source.width / self.source.height, vision=self.vision
+            scale=1.0,
+            source_aspect=self.source.width / self.source.height,
+            vision=self._vision_in_space,
+            space=self.space,
+            shot=self.shot,
         )
+
+    @property
+    def _vision_in_space(self) -> Vision | None:
+        if self.vision is None or self.space == "srgb":
+            return self.vision
+        return SrgbModels(self.vision, self.space)
+
+
+class SrgbModels:
+    """Image models for a photo edited in a wide working space. The models were trained on
+    sRGB photos, so they get sRGB and what they make comes back into the working space."""
+
+    def __init__(self, vision: Vision, space: color.WorkingSpace) -> None:
+        self.vision = vision
+        self.space = space
+
+    def mask(
+        self, mask: SemanticMask, framing: Sequence[ops.OpBase], shape: tuple[int, int]
+    ) -> imaging.Array:
+        return self.vision.mask(mask, framing, shape)
+
+    def fill(self, image: imaging.Array, hole: npt.NDArray[np.bool_], key: str) -> imaging.Array:
+        made = self.vision.fill(imaging.to_srgb(image, self.space), hole, key)
+        return color.convert(made, "srgb", self.space)
+
+    def generate(
+        self,
+        task: str,
+        image: imaging.Array,
+        hole: npt.NDArray[np.bool_] | None,
+        params: dict[str, Any],
+        key: str,
+        edge: int = GENERATE_EDGE,
+    ) -> imaging.Array:
+        srgb = imaging.to_srgb(image, self.space)
+        made = self.vision.generate(task, srgb, hole, params, key, edge)
+        return color.convert(made, "srgb", self.space)
 
 
 class DocumentStore:
@@ -97,19 +167,24 @@ class DocumentStore:
                 format=decoded.format,
                 width=decoded.width,
                 height=decoded.height,
+                color_space=decoded.space,
             )
         else:
             if (edits.width, edits.height) != (decoded.width, decoded.height):
                 raise MismatchError("The photo does not match the edits saved with it.")
             doc = edits.model_copy(
-                update={"filename": _safe_filename(edits.filename), "format": decoded.format}
+                update={
+                    "filename": _safe_filename(edits.filename),
+                    "format": decoded.format,
+                    "color_space": decoded.space,
+                }
             )
             # Keep the id so links and browser autosaves still find it, unless it is taken.
             if not _ID_RE.match(doc.id) or self.exists(doc.id):
                 doc.id = new_id()
         folder = self._folder(doc.id)
         folder.mkdir(parents=True)
-        (folder / f"original{EXTENSIONS[decoded.format]}").write_bytes(data)
+        (folder / f"original{original_extension(decoded.format, filename)}").write_bytes(data)
         self.save(doc)
         self._remember(doc.id, self._loaded(doc.id, decoded))
         return doc
@@ -183,16 +258,19 @@ class DocumentStore:
         return loaded
 
     def _loaded(self, doc_id: str, decoded: imaging.DecodedImage) -> LoadedImage:
-        loaded = LoadedImage(decoded, imaging.make_proxy(decoded.pixels))
+        loaded = LoadedImage(
+            decoded, imaging.make_proxy(decoded.pixels), shot=shot_from_exif(decoded.exif)
+        )
         if self.worker is not None:
             loaded.vision = DocumentVision(
                 doc_id,
-                loaded.proxy,
+                loaded.srgb_proxy,
                 source_aspect=decoded.width / decoded.height,
                 scale=loaded.proxy_scale,
                 worker=self.worker,
                 folder=self._folder(doc_id) / "vision",
                 backends=self.backends,
+                shot=loaded.shot,
             )
         return loaded
 
@@ -207,6 +285,15 @@ class DocumentStore:
         if not _ID_RE.match(doc_id):
             raise DocumentNotFoundError(doc_id)
         return self.root / doc_id
+
+
+def original_extension(fmt: str, filename: str) -> str:
+    """The extension to keep an original under. RAW files keep their own (".cr2", ".nef",
+    ...), since there are many RAW formats; LibRaw reads them by content either way."""
+    if fmt == imaging.RAW:
+        suffix = Path(filename.replace("\\", "/")).suffix.lower()
+        return suffix if suffix in imaging.RAW_EXTENSIONS else ".raw"
+    return EXTENSIONS[fmt]
 
 
 def _safe_filename(name: str) -> str:

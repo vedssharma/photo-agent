@@ -120,7 +120,16 @@ def test_manifest_lists_visible_generative_edits() -> None:
     assert "a red kite" in actions[1]["description"]
 
 
-@pytest.mark.parametrize(("fmt", "mime"), [("jpeg", "image/jpeg"), ("png", "image/png")])
+@pytest.mark.parametrize(
+    ("fmt", "mime"),
+    [
+        ("jpeg", "image/jpeg"),
+        ("png", "image/png"),
+        ("tiff", "image/tiff"),
+        ("avif", "image/avif"),
+        ("webp", "image/webp"),
+    ],
+)
 def test_exports_with_generative_edits_carry_content_credentials(
     client: TestClient, settings: Settings, upload: Upload, fmt: str, mime: str
 ) -> None:

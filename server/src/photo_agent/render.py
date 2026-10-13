@@ -25,10 +25,13 @@ import numpy as np
 import numpy.typing as npt
 
 from photo_agent import operations as ops
+from photo_agent.color import WorkingSpace
 from photo_agent.compositing import harmonize
 from photo_agent.generative import cache_identity, job_params, task_for
 from photo_agent.imaging import Array, resize_long_edge
 from photo_agent.layers import BlendMode, EditState, Layer
+from photo_agent.lens import Shot
+from photo_agent.lens import correct as correct_lens
 from photo_agent.masks import Mask, SemanticMask, render_mask
 from photo_agent.vision.classical import guided_filter
 
@@ -73,6 +76,10 @@ class RenderContext:
     """Runs the models behind semantic masks; without it they cannot render."""
     framing: tuple[ops.OpBase, ...] = field(default=(), compare=False)
     """The framing of the state being rendered, which semantic masks are found in."""
+    space: WorkingSpace = "srgb"
+    """The working color space of the pixels (see `photo_agent.color`)."""
+    shot: Shot | None = field(default=None, compare=False)
+    """The camera and lens the photo was taken with, for lens profile corrections."""
 
     def mask(self, mask: Mask, x: Array) -> Array:
         """Render a layer mask for the pixels `x`."""
@@ -334,6 +341,9 @@ def render_layer_mask(pixels: Array, state: EditState, layer_id: str, ctx: Rende
 
 
 def apply_operations(x: Array, operations: Sequence[ops.OpBase], ctx: RenderContext) -> Array:
+    # A lens profile describes the original photo's optics, so it comes before any other
+    # framing, wherever it sits in the list.
+    operations = sorted(operations, key=lambda op: not isinstance(op, ops.LensProfile))
     for i, op in enumerate(operations):
         if isinstance(op, ops.Expand):
             # What it paints depends on the framing before it.
@@ -996,6 +1006,7 @@ _APPLY: dict[type[ops.OpBase], Callable[[Array, Any, RenderContext], Array]] = {
     ops.Straighten: _straighten,
     ops.Perspective: _perspective,
     ops.LensCorrection: _lens_correction,
+    ops.LensProfile: lambda x, op, ctx: correct_lens(x, op, ctx.shot, ctx.space),
     ops.Flip: _flip,
     ops.Vignette: _vignette,
     ops.Grain: _grain,

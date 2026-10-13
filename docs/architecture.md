@@ -194,7 +194,7 @@ BatchDialog ── /batch, /batch/{id} ───────▶ batch.py        
 Download ── POST /export (zip) ───────────▶ library_routes.py
 ```
 
-**Photos are documents.** Every library photo is an ordinary document in the store, so the editor, history, recipes, and export work unchanged; opening one from the library just opens the document. The store tells the library when a document is saved, which bumps the photo's revision (and so its thumbnail URL). Importing skips exact copies (same SHA-256) and anything that is not a photo or is over 64 MB, and says why.
+**Photos are documents.** Every library photo is an ordinary document in the store, so the editor, history, recipes, and export work unchanged; opening one from the library just opens the document. The store tells the library when a document is saved, which bumps the photo's revision (and so its thumbnail URL). Importing skips exact copies (same SHA-256) and anything that is not a photo or is over 200 MB, and says why.
 
 **Database and indexing (`db.py`, `indexer.py`, `stages.py`).** SQLite in WAL mode, schema grown by appending migrations (`PRAGMA user_version`). Indexing runs in one background thread, photo by photo, oldest import first: each stage has a version, so bumping one (or turning on faces) re-runs only that stage. Stages that need a model (tags, faces) go through the model worker, so heavy work stays in that process. A failing stage is recorded and not retried until its version changes. Tests index inline.
 
@@ -205,3 +205,28 @@ Download ── POST /export (zip) ───────────▶ library_
 **Duplicates and culling (`duplicates.py`, `culling.py`, `vision/quality.py`).** A 64-bit difference hash finds resized, re-saved, and lightly edited copies and repeated shots. Quality is measured at index time: sharpness of the most detailed tiles, exposure, closed eyes (a rough check on dark iris spots), and an appeal score from color and contrast. Culling links shots taken within 30 seconds that look alike (or that look nearly the same whenever taken) into moments, takes the best of each moment, strongest first, and adds second frames only if they differ enough. Stars and picks count for a quarter of the score; rejects are never picked. Claude rewrites the reasons from the numbers when a key is set.
 
 **Batch edits and export (`batch.py`).** The look comes from an agent turn on the reference photo, a recipe, or the reference's edits. Its portable layers replace each photo's earlier look, keeping local work, and a `match_reference` layer ("Match the set") moves each photo part way toward the reference as edited. One history step per photo. Batches run as background tasks with a status the web app polls. Export renders the selection at full size into a zip.
+
+## RAW and color fidelity (Phase 7)
+
+```
+Browser (web/src)                            Backend (server/src/photo_agent)
+─────────────────                            ────────────────────────────────
+PhotoPicker: RAW, TIFF ───────────────────▶ imaging.py   decode: LibRaw (rawpy), 16-bit PNG/HEIF/TIFF, ICC
+ProofControl ── /preview?proof=, /gamut ──▶ color.py     working spaces, gamut mapping, soft-proof warnings
+                                            icc.py       read matrix/TRC profiles, write P3 and Rec.2020
+LensNote ── /lens ────────────────────────▶ lens.py      Lensfun: shot from EXIF, distortion, vignetting, CA
+LibraryView: Merge to HDR, Stitch ─ /merge ▶ merge.py     Mertens fusion after alignment; OpenCV stitcher
+ExportDialog: format, bits, color space ──▶ export.py    JPEG, PNG, TIFF, AVIF, WebP; 8 or 16 bits
+```
+
+**Decoding.** Every photo decodes to float32 at its full depth: 16-bit PNG and TIFF, 10- and 12-bit HEIF, float TIFF (treated as linear). RAW files go to LibRaw with the camera’s white balance and highlight blending, demosaiced (LibRaw’s default AHD) and developed into linear Rec.2020 at 16 bits with no auto-brightening; a soft knee then rolls off the highlights that white balance pushes past white, and the sRGB tone curve is applied. RAW EXIF comes from the file's first TIFF header, with shot details that TIFF/EP files keep in the main IFD moved to the EXIF IFD. An embedded ICC profile (matrix and tone curves, read by `icc.py` in float) converts pixels into the working space; LUT profiles fall back to LittleCMS at 8 bits.
+
+**Working space.** A document is edited in sRGB or, when its colors need it (RAW, or a profile bigger than sRGB), in Rec.2020 (`Document.color_space`; older documents are sRGB). Both are stored with the sRGB tone curve, so every operation's math and every slider behaves the same in either. Models only know sRGB, so `LoadedImage.srgb_proxy` and the `SrgbModels` adapter hand them sRGB pixels and convert their results back; the library's thumbnails, tags, faces, and fingerprints also use sRGB. Match-reference statistics are taken in sRGB. HSL band hues are not adjusted for Rec.2020's wider primaries.
+
+**Output transforms and proofing.** Converting to a smaller space maps colors that do not fit onto its edge by desaturating toward their luminance, which keeps hue and brightness. Previews of wide-gamut photos are Display P3 JPEGs with the P3 profile, so wide-gamut screens show the extra color. `?proof=srgb|display-p3` previews the output transform instead, and `gamut_warning` paints colors that will not fit magenta; `/gamut` reports the share of the photo outside each space.
+
+**Lens profiles.** The `lens_profile` framing operation reads the camera, lens, focal length, and aperture from EXIF and looks the lens up in the bundled Lensfun database (loosely, and through another body of the same make when the camera is newer than the database). Vignetting is undone on linear light; distortion and chromatic aberration become per-channel sampling maps, cached by lens and size. It runs before other framing operations, since it describes the camera's own geometry, and does nothing when there is no profile. `lens` overrides the lens, for adapted glass.
+
+**Merging.** HDR aligns the bracket with median threshold bitmaps (up to 64 pixels apart) and blends it with Mertens exposure fusion, which needs no exposure times and yields a displayable image directly. Panoramas use OpenCV's stitcher (panorama mode, then scans mode as a fallback), are checked for a plausible size, and are cropped to the largest rectangle without empty edges; OpenCV only composes them at 8 bits, in the sources' working space. Results are saved as 16-bit TIFFs with the working space's profile and the first source's camera tags (the main IFD only), and imported into the library.
+
+**Export.** TIFF (zlib), and 16-bit PNG, are written with the ICC profile and EXIF; AVIF and WebP go through Pillow. Any format but JPEG keeps a cutout's transparency. Content Credentials are signed into all five formats.

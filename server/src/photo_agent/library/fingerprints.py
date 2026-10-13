@@ -31,5 +31,5 @@ def fingerprint(image: imaging.Array) -> str:
 
 def fingerprint_photo(library: Library, photo_id: str) -> None:
     """Indexing stage: fingerprint one photo (as imported, before any edits)."""
-    value = fingerprint(library.store.image(photo_id).proxy)
+    value = fingerprint(library.store.image(photo_id).srgb_proxy)
     library.db.run("UPDATE photos SET fingerprint = ? WHERE id = ?", (value, photo_id))

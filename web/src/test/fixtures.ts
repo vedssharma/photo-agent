@@ -11,6 +11,7 @@ export function makeDoc(overrides: Partial<DocumentView> = {}): DocumentView {
     format: 'HEIF',
     width: 4032,
     height: 3024,
+    color_space: 'srgb',
     revision: 'original',
     state: { framing: [], layers: [] },
     head: null,

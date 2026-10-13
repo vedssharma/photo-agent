@@ -34,7 +34,7 @@ export function PhotoPicker({
     if (!file) return
     if (!isSupportedFile(file)) {
       setRejected(
-        `${file.name} is not a JPEG, PNG, or HEIC photo or a saved project.`,
+        `${file.name} is not a JPEG, PNG, HEIC, TIFF, or RAW photo or a saved project.`,
       )
       return
     }
@@ -55,7 +55,7 @@ export function PhotoPicker({
       <div className="picker-options">
         <div className="picker-option">
           <h2>New photo</h2>
-          <p>Start editing a JPEG, PNG, or HEIC photo.</p>
+          <p>Start editing a JPEG, PNG, HEIC, TIFF, or camera RAW photo.</p>
           <button
             type="button"
             className="primary"

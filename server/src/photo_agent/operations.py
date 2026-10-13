@@ -279,6 +279,27 @@ class LensCorrection(OpBase):
     )
 
 
+class LensProfile(OpBase):
+    """Correct the lens the photo was taken with, using its measured profile: straighten
+    the lines it bends, brighten the corners it darkens (vignetting), and remove the color
+    fringes it adds at edges (chromatic aberration). The camera and lens come from the
+    photo itself, so the defaults are right; it does nothing when the lens is unknown or
+    has no profile. Prefer it to lens_correction when it applies."""
+
+    op: Literal["lens_profile"] = "lens_profile"
+    distortion: Strength = Field(100, description="How much of the distortion fix to use.")
+    vignetting: Strength = Field(100, description="How much of the vignetting fix to use.")
+    chromatic_aberration: Strength = Field(
+        100, description="How much of the color fringing fix to use."
+    )
+    lens: str = Field(
+        "",
+        max_length=120,
+        description="A lens to use instead of the one the photo records (say, for an "
+        "adapted manual lens); leave empty to use the photo's own.",
+    )
+
+
 ExpandAspect = Literal["free", "1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9"]
 Extension = Annotated[float, Field(ge=0, le=1.5)]
 
@@ -555,6 +576,7 @@ Operation = Annotated[
     | Flip
     | Perspective
     | LensCorrection
+    | LensProfile
     | Vignette
     | ColorGrade
     | Grain
@@ -594,6 +616,7 @@ OPERATION_TYPES: tuple[type[OpBase], ...] = (
     Flip,
     Perspective,
     LensCorrection,
+    LensProfile,
     Vignette,
     ColorGrade,
     Grain,
@@ -620,12 +643,13 @@ GEOMETRY_TYPES: tuple[type[OpBase], ...] = (
     Flip,
     Perspective,
     LensCorrection,
+    LensProfile,
     Expand,
 )
 """Operations that change framing rather than look."""
 
 FramingOperation = Annotated[
-    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection | Expand,
+    Crop | Rotate | Straighten | Flip | Perspective | LensCorrection | LensProfile | Expand,
     Field(discriminator="op"),
 ]
 """Crop, rotation, flips, perspective and lens fixes, and canvas expansion. They apply to

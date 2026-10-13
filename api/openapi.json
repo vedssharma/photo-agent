@@ -11,7 +11,7 @@
           "documents"
         ],
         "summary": "Create Document",
-        "description": "Upload a JPEG, PNG, or HEIC photo to start editing it. It joins the library too.",
+        "description": "Upload a JPEG, PNG, HEIC, TIFF, or camera RAW photo to start editing it. It joins the\nlibrary too.",
         "operationId": "createDocument",
         "requestBody": {
           "content": {
@@ -791,7 +791,7 @@
           "documents"
         ],
         "summary": "Original",
-        "description": "The unedited photo at preview size, as JPEG (browsers cannot show HEIC).",
+        "description": "The unedited photo at preview size, as JPEG (browsers cannot show HEIC, TIFF, or RAW).",
         "operationId": "getOriginal",
         "parameters": [
           {
@@ -830,7 +830,7 @@
           "documents"
         ],
         "summary": "Preview",
-        "description": "The photo with the current edits applied, at preview size, as JPEG.\n\nAdd `?revision=<document revision>` to make the URL unique per edit state; the response\nis the current state either way.",
+        "description": "The photo with the current edits applied, at preview size, as JPEG.\n\nAdd `?revision=<document revision>` to make the URL unique per edit state; the response\nis the current state either way. `proof` soft-proofs it: shows it as it will look\nsaved in sRGB or Display P3, and with `gamut_warning`, paints the colors that will not\nfit in magenta.",
         "operationId": "getPreview",
         "parameters": [
           {
@@ -840,6 +840,36 @@
             "schema": {
               "type": "string",
               "title": "Doc Id"
+            }
+          },
+          {
+            "name": "proof",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "srgb",
+                    "display-p3"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proof"
+            }
+          },
+          {
+            "name": "gamut_warning",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Gamut Warning"
             }
           }
         ],
@@ -897,7 +927,10 @@
             "description": "Successful Response",
             "content": {
               "image/jpeg": {},
-              "image/png": {}
+              "image/png": {},
+              "image/tiff": {},
+              "image/avif": {},
+              "image/webp": {}
             }
           },
           "422": {
@@ -937,6 +970,102 @@
             "description": "Successful Response",
             "content": {
               "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/gamut": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Gamut",
+        "description": "Which output spaces hold all of the edited photo's colors, for soft-proofing and for\nchoosing what to export in.",
+        "operationId": "getGamut",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GamutView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{doc_id}/lens": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Lens Info",
+        "description": "The camera and lens the photo was taken with, and the Lensfun profile a\n`lens_profile` operation corrects it with (with `lens_name`, for that lens instead).",
+        "operationId": "getLens",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "lens_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Lens Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LensView"
+                }
+              }
             }
           },
           "422": {
@@ -2759,6 +2888,47 @@
         }
       }
     },
+    "/api/library/merge": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Merge Photos",
+        "description": "Merge photos into a new one in the library: an HDR from exposure brackets, or a\npanorama. It is saved as a 16-bit TIFF (so later edits have every bit to work with),\nand the originals are left as they were.",
+        "operationId": "mergePhotos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPhoto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such photo"
+          },
+          "409": {
+            "description": "The merged photo is already in the library"
+          },
+          "422": {
+            "description": "The photos cannot be merged that way"
+          }
+        }
+      }
+    },
     "/api/library/export": {
       "post": {
         "tags": [
@@ -4325,6 +4495,15 @@
             "type": "integer",
             "title": "Height"
           },
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "rec2020"
+            ],
+            "title": "Color Space",
+            "default": "srgb"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -4398,6 +4577,14 @@
           "height": {
             "type": "integer",
             "title": "Height"
+          },
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "rec2020"
+            ],
+            "title": "Color Space"
           },
           "revision": {
             "type": "string",
@@ -4490,6 +4677,7 @@
           "format",
           "width",
           "height",
+          "color_space",
           "revision",
           "state",
           "head",
@@ -4561,6 +4749,9 @@
                   "$ref": "#/components/schemas/LensCorrection"
                 },
                 {
+                  "$ref": "#/components/schemas/LensProfile"
+                },
+                {
                   "$ref": "#/components/schemas/Expand"
                 }
               ],
@@ -4571,6 +4762,7 @@
                   "expand": "#/components/schemas/Expand",
                   "flip": "#/components/schemas/Flip",
                   "lens_correction": "#/components/schemas/LensCorrection",
+                  "lens_profile": "#/components/schemas/LensProfile",
                   "perspective": "#/components/schemas/Perspective",
                   "rotate": "#/components/schemas/Rotate",
                   "straighten": "#/components/schemas/Straighten"
@@ -4741,9 +4933,13 @@
             "type": "string",
             "enum": [
               "jpeg",
-              "png"
+              "png",
+              "tiff",
+              "avif",
+              "webp"
             ],
             "title": "Format",
+            "description": "JPEG for sharing; PNG lossless; TIFF lossless for printing or further editing; AVIF and WebP for the web, smaller than JPEG at the same quality.",
             "default": "jpeg"
           },
           "quality": {
@@ -4751,8 +4947,18 @@
             "maximum": 100.0,
             "minimum": 1.0,
             "title": "Quality",
-            "description": "JPEG quality; ignored for PNG.",
+            "description": "Quality for JPEG, AVIF, and WebP; ignored otherwise.",
             "default": 92
+          },
+          "bit_depth": {
+            "type": "integer",
+            "enum": [
+              8,
+              16
+            ],
+            "title": "Bit Depth",
+            "description": "Bits per color channel for PNG and TIFF; 16 keeps the smooth gradations of RAW and 16-bit photos for further editing. Other formats are 8.",
+            "default": 8
           },
           "keep_location": {
             "type": "boolean",
@@ -4770,6 +4976,17 @@
             "title": "Upscale",
             "description": "Enlarge the export with an AI upscaler (up to 8000 pixels across).",
             "default": 1
+          },
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "display-p3",
+              "rec2020"
+            ],
+            "title": "Color Space",
+            "description": "The color space the file is saved in, with its ICC profile embedded. sRGB suits sharing and the web; Display P3 keeps the extra color of modern phone and laptop screens; Rec.2020 keeps every color a RAW file holds, for further editing (best with 16 bits).",
+            "default": "srgb"
           }
         },
         "type": "object",
@@ -4952,6 +5169,38 @@
         "type": "object",
         "title": "Flip",
         "description": "Mirror the photo."
+      },
+      "GamutView": {
+        "properties": {
+          "color_space": {
+            "type": "string",
+            "enum": [
+              "srgb",
+              "rec2020"
+            ],
+            "title": "Color Space"
+          },
+          "outside_srgb": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Outside Srgb"
+          },
+          "outside_display_p3": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Outside Display P3"
+          }
+        },
+        "type": "object",
+        "required": [
+          "color_space",
+          "outside_srgb",
+          "outside_display_p3"
+        ],
+        "title": "GamutView",
+        "description": "How much of the edited photo's color fits each output space."
       },
       "Generate": {
         "properties": {
@@ -5583,6 +5832,118 @@
         "type": "object",
         "title": "LensCorrection",
         "description": "Undo lens distortion: straight lines that bow outward (barrel, wide angle) or inward\n(pincushion, telephoto). Scales up just enough that no edge is left empty."
+      },
+      "LensProfile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable id of this operation."
+          },
+          "op": {
+            "type": "string",
+            "const": "lens_profile",
+            "title": "Op",
+            "default": "lens_profile"
+          },
+          "distortion": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Distortion",
+            "description": "How much of the distortion fix to use.",
+            "default": 100
+          },
+          "vignetting": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Vignetting",
+            "description": "How much of the vignetting fix to use.",
+            "default": 100
+          },
+          "chromatic_aberration": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Chromatic Aberration",
+            "description": "How much of the color fringing fix to use.",
+            "default": 100
+          },
+          "lens": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Lens",
+            "description": "A lens to use instead of the one the photo records (say, for an adapted manual lens); leave empty to use the photo's own.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LensProfile",
+        "description": "Correct the lens the photo was taken with, using its measured profile: straighten\nthe lines it bends, brighten the corners it darkens (vignetting), and remove the color\nfringes it adds at edges (chromatic aberration). The camera and lens come from the\nphoto itself, so the defaults are right; it does nothing when the lens is unknown or\nhas no profile. Prefer it to lens_correction when it applies."
+      },
+      "LensView": {
+        "properties": {
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "focal_length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Length"
+          },
+          "aperture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aperture"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          }
+        },
+        "type": "object",
+        "title": "LensView",
+        "description": "What is known about the lens a photo was taken with, and its profile."
       },
       "LibraryPhoto": {
         "properties": {
@@ -6285,6 +6646,35 @@
           "into"
         ],
         "title": "Merge"
+      },
+      "MergeRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 9,
+            "minItems": 2,
+            "title": "Ids",
+            "description": "The photos to merge, in order (left to right for a panorama)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "hdr",
+              "panorama"
+            ],
+            "title": "Kind",
+            "description": "hdr: blend exposures of one scene into one with detail in the shadows and highlights. panorama: stitch overlapping photos into one wide view."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids",
+          "kind"
+        ],
+        "title": "MergeRequest"
       },
       "NewAlbum": {
         "properties": {

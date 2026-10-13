@@ -69,7 +69,7 @@ describe('PhotoPicker', () => {
 
     expect(onPick).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'notes.pdf is not a JPEG, PNG, or HEIC',
+      'notes.pdf is not a JPEG, PNG, HEIC, TIFF, or RAW',
     )
   })
 

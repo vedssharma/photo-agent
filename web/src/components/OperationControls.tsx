@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import type { Operation } from '../api/documents'
 import type { OperationSpec, ParamSpec } from '../api/operations'
@@ -22,6 +22,8 @@ interface Props {
   onOptions?: () => void
   /** Preview URL of one take, by seed. */
   optionUrl?: (seed: number) => string
+  /** Shown under the title, e.g. which lens profile is in use. */
+  note?: ReactNode
 }
 
 /**
@@ -37,6 +39,7 @@ export function OperationControls({
   onRemove,
   onOptions,
   optionUrl,
+  note,
 }: Props) {
   const values = op as unknown as Record<string, unknown>
   const title = spec?.label ?? opSummary(op)
@@ -67,6 +70,7 @@ export function OperationControls({
           ✕
         </button>
       </div>
+      {note}
       {spec?.params.map((param) => {
         const value = values[param.name]
         if (param.kind === 'number')

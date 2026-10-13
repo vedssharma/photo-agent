@@ -65,5 +65,17 @@
       "gps"
     ],
     "source": "chelsea"
+  },
+  {
+    "file": "raw.dng",
+    "width": 600,
+    "height": 400,
+    "format": "RAW",
+    "tags": [
+      "raw",
+      "dng",
+      "indoor"
+    ],
+    "source": "coffee"
   }
 ]

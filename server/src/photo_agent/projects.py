@@ -24,7 +24,7 @@ EXTENSION = ".photoagent"
 MEDIA_TYPE = "application/vnd.photo-agent.project+zip"
 FORMAT = "photo-agent-project"
 VERSION = 1
-MAX_ORIGINAL_BYTES = 64 * 1024 * 1024
+MAX_ORIGINAL_BYTES = 200 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = MAX_ORIGINAL_BYTES + MAX_DOCUMENT_BYTES + 64 * 1024
 

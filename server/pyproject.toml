@@ -9,12 +9,15 @@ dependencies = [
     "c2pa-python>=0.38",
     "cryptography>=45",
     "fastapi>=0.115",
+    "lensfunpy>=1.18",
     "numpy>=2.5.3",
     "opencv-python-headless>=5.0.0.93",
     "pillow>=12.3.0",
     "pillow-heif>=1.8.0",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
+    "rawpy>=0.27",
+    "tifffile>=2026.9",
     "uvicorn[standard]>=0.30",
 ]
 
@@ -82,6 +85,7 @@ module = [
     "spandrel",
     "spandrel_extra_arches",
     "safetensors.*",
+    "lensfunpy",
 ]
 ignore_missing_imports = true
 
@@ -89,3 +93,8 @@ ignore_missing_imports = true
 # c2pa-python ships no type information.
 module = ["c2pa", "c2pa.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# rawpy re-exports its compiled module's names without listing them in __all__.
+module = ["rawpy"]
+implicit_reexport = true

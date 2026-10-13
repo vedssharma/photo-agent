@@ -15,14 +15,48 @@ export type StepView = DocumentView['history'][number]
 export type ManualEdit = components['schemas']['ManualEdit']
 export type JobStatus = components['schemas']['JobStatus']
 
-/** Photo types the backend can decode. HEIC often has no MIME type in browsers. */
-export const PHOTO_TYPES =
-  '.jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic'
+/** Camera RAW formats the backend can develop (it uses LibRaw, which reads many more). */
+export const RAW_EXTENSIONS = [
+  'dng',
+  'cr2',
+  'cr3',
+  'crw',
+  'nef',
+  'nrw',
+  'arw',
+  'srf',
+  'sr2',
+  'raf',
+  'orf',
+  'rw2',
+  'pef',
+  'srw',
+  'x3f',
+  '3fr',
+  'iiq',
+  'rwl',
+  'erf',
+  'mrw',
+  'kdc',
+  'dcr',
+  'mos',
+]
+
+/** Photo types the backend can decode. HEIC and RAW files often have no MIME type in
+ * browsers, so extensions are listed too. */
+export const PHOTO_TYPES = [
+  '.jpg,.jpeg,.png,.heic,.heif,.tif,.tiff',
+  ...RAW_EXTENSIONS.map((ext) => `.${ext}`),
+  'image/jpeg,image/png,image/heic,image/tiff',
+].join(',')
 
 /** Saved projects, for the file dialog. */
 export const PROJECT_TYPES = '.photoagent'
 
-const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|heic|heif|photoagent)$/i
+const ACCEPTED_EXTENSIONS = new RegExp(
+  `\\.(jpe?g|png|heic|heif|tiff?|photoagent|${RAW_EXTENSIONS.join('|')})$`,
+  'i',
+)
 
 /** Saved projects (original photo plus edits) use this extension. */
 export function isProjectFile(file: File): boolean {
@@ -31,9 +65,13 @@ export function isProjectFile(file: File): boolean {
 
 export function isSupportedFile(file: File): boolean {
   return (
-    ['image/jpeg', 'image/png', 'image/heic', 'image/heif'].includes(
-      file.type,
-    ) || ACCEPTED_EXTENSIONS.test(file.name)
+    [
+      'image/jpeg',
+      'image/png',
+      'image/heic',
+      'image/heif',
+      'image/tiff',
+    ].includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name)
   )
 }
 
@@ -179,9 +217,50 @@ export async function offerOptions(
   return data
 }
 
+export type ColorSpace = ExportOptions['color_space']
+export type ProofSpace = Exclude<ColorSpace, 'rec2020'>
+
+/** Show the photo as it will look saved in `space`, optionally painting the colors that
+ * will not fit it. */
+export interface Proof {
+  space: ProofSpace
+  warn: boolean
+}
+
+export type Gamut = components['schemas']['GamutView']
+
 /** URL of the edited photo at preview size; changes whenever the edits do. */
-export function previewUrl(doc: DocumentView): string {
-  return `/api/documents/${doc.id}/preview?revision=${doc.revision}`
+export function previewUrl(doc: DocumentView, proof?: Proof | null): string {
+  const url = `/api/documents/${doc.id}/preview?revision=${doc.revision}`
+  if (!proof) return url
+  return `${url}&proof=${proof.space}${proof.warn ? '&gamut_warning=true' : ''}`
+}
+
+/** How much of the edited photo's color fits sRGB and Display P3. */
+export async function fetchGamut(docId: string): Promise<Gamut> {
+  const { data, error, response } = await api.GET(
+    '/api/documents/{doc_id}/gamut',
+    { params: { path: { doc_id: docId } } },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
+}
+
+export type LensInfo = components['schemas']['LensView']
+
+/** The camera and lens a photo was taken with, and the profile that corrects it. */
+export async function fetchLens(
+  docId: string,
+  lensName = '',
+): Promise<LensInfo> {
+  const { data, error, response } = await api.GET(
+    '/api/documents/{doc_id}/lens',
+    {
+      params: { path: { doc_id: docId }, query: { lens_name: lensName } },
+    },
+  )
+  if (!data) throw new ApiError(detail(error, response.status))
+  return data
 }
 
 /** AI model jobs running (or just finished) for a document. */
